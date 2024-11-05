@@ -760,6 +760,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "iptables"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43b627935a2f5d654613bea2bcd677cc760b03ecf224ced0f1970c0d174813b9"
+dependencies = [
+ "lazy_static",
+ "nix 0.29.0",
+ "regex",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -866,6 +877,7 @@ dependencies = [
  "defguard_wireguard_rs",
  "ed25519-dalek",
  "env_logger",
+ "iptables",
  "log",
  "net-route",
  "root",

@@ -22,3 +22,6 @@ serde_with = "3.11.0"
 root = "0.1.1"
 ctrlc = "3.4.5"
 base64 = "0.22.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+iptables = "0.5.2"

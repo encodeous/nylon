@@ -5,11 +5,13 @@ use defguard_wireguard_rs::net::IpAddrMask;
 use log::{trace, warn};
 use net_route::{Handle, Route};
 use serde_json::json;
-use crate::routing::routing::NylonSystem;
-use crate::routing::state::{OperatingState, PersistentState};
+use crate::core::routing::NylonSystem;
+use crate::core::structure::state::{NylonState, OperatingState, PersistentState};
 
-pub fn route_table_updater(ps: &PersistentState, os: &mut OperatingState) -> anyhow::Result<()>{
+pub fn timed_sys_route_update(state: &mut NylonState,) -> anyhow::Result<()>{
+    let NylonState{os, mq, ps} = state;
     
+    let table = ps.router.routes.clone();
     let mut active_links = HashSet::new();
     for (vlan, route) in &ps.router.routes{
         active_links.insert(route.link.clone());
@@ -27,6 +29,11 @@ pub fn route_table_updater(ps: &PersistentState, os: &mut OperatingState) -> any
             if active_links.contains(&id) {
                 let prefix = if cfg.addr_vlan.is_ipv4() { 32 } else { 64 };
                 peer.allowed_ips.push(IpAddrMask::new(cfg.addr_vlan, prefix));
+                for route in table.values(){
+                    if route.link == id {
+                        peer.allowed_ips.push(IpAddrMask::new(route.source.data.addr, prefix));
+                    }
+                }
             }
         }
         else{
@@ -43,28 +50,27 @@ pub fn route_table_updater(ps: &PersistentState, os: &mut OperatingState) -> any
         #[cfg(windows)]
         os.wg_api.configure_interface(&os.itf_config, &[], &[])?;
     }
-
-    let table = ps.router.routes.clone();
-    tokio::spawn(async move {
-        let updater = async {
-            let handle = Handle::new()?;
-            for route in table.values(){
-                let src_addr = route.source.data.addr;
-                if src_addr == route.next_hop{
-                    // wireguard can handle this :)
-                    continue;
-                }
-                let s_route = Route::new(src_addr, if src_addr.is_ipv4() { 32 } else { 64 })
-                    .with_gateway(route.next_hop);
-                handle.add(&s_route).await?
-            }
-            anyhow::Result::<()>::Ok(())
-        };
-        if let Err(x) = updater.await{
-            // ignored
-            warn!("Failed to apply system routing rules {x}");
-        }
-    });
+    
+    // tokio::spawn(async move {
+    //     let updater = async {
+    //         let handle = Handle::new()?;
+    //         for route in table.values(){
+    //             let src_addr = route.source.data.addr;
+    //             if src_addr == route.next_hop{
+    //                 // wireguard can handle this :)
+    //                 continue;
+    //             }
+    //             let s_route = Route::new(src_addr, if src_addr.is_ipv4() { 32 } else { 64 })
+    //                 .with_gateway(route.next_hop);
+    //             handle.add(&s_route).await?
+    //         }
+    //         anyhow::Result::<()>::Ok(())
+    //     };
+    //     if let Err(x) = updater.await{
+    //         // ignored
+    //         warn!("Failed to apply system core rules {x}");
+    //     }
+    // });
     
     Ok(())
 }

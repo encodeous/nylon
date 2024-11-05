@@ -13,25 +13,26 @@ use defguard_wireguard_rs::{
 };
 use serde_json::json;
 use x25519_dalek::{EphemeralSecret, PublicKey};
-use log::info;
+use log::{info, warn};
 use root::concepts::neighbour::Neighbour;
 use root::router::{Router, INF};
+use tokio::task::JoinSet;
 use tokio::time::sleep;
 use crate::config::{NodeConfig, LinkConfig};
-use crate::routing::mesh_router::start_router;
-use crate::routing::state::{OperatingState, PersistentState};
-use crate::routing::state::MainLoopEvent::DispatchCommand;
+use crate::core::mesh_router::start_router;
+use core::structure::state::{OperatingState, PersistentState};
+use core::structure::state::NylonEvent::DispatchCommand;
 
 mod config;
-mod routing;
+mod core;
 mod util;
-
-fn reconfigure_interface(){
-    
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // remember to:
+    // sudo iptables -I INPUT -i nylon -j ACCEPT
+    // sudo iptables -I FORWARD -i nylon -o nylon -j ACCEPT
+    
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "info")
     }
@@ -122,7 +123,8 @@ async fn main() -> anyhow::Result<()> {
         node_config: config,
         itf_config: interface_config,
         wg_api: wgapi,
-        prev_itf_config: String::new()
+        prev_itf_config: String::new(),
+        join_set: JoinSet::default(),
     });
 
     let mut input_buf = String::new();
@@ -140,6 +142,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     sleep(Duration::from_secs(1)).await; // wait for main thread to finish
-
+    
     Ok(())
 }

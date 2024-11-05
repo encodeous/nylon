@@ -20,7 +20,7 @@ impl NodeConfig {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct LinkConfig {
     pub id: String,
     pub public_key: String,
