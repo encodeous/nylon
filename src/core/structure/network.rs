@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use anyhow::bail;
+use bitcode::{Decode, Encode};
 use root::concepts::packet::Packet;
 use root::framework::RoutingSystem;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,12 @@ pub struct OutPacket {
     pub packet: NetPacket,
     #[serde(skip_serializing, skip_deserializing)]
     pub failure_event: Option<Arc<NylonEvent>>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OutUdpPacket {
+    pub sock: SocketAddr,
+    pub packet: NetPacket
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,9 +66,9 @@ pub struct ConnectResponse {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum NetPacket{
-    PMetric(MetricPacket),
     PCourier(CourierPacket),
     Routing(Packet<NylonSystem>),
+    PMetric(MetricPacket)
 }
 
 #[derive(Serialize)]
@@ -81,6 +88,7 @@ pub enum NetworkEvent {
     },
     InboundPacket(InPacket),
     OutboundPacket(OutPacket),
+    OutboundUdpPacket(OutUdpPacket),
     ECourier(CourierEvent),
     EMetric(MetricEvent)
 }

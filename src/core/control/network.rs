@@ -1,20 +1,22 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use crossbeam_channel::Receiver;
 use defguard_wireguard_rs::net::IpAddrMask;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use root::framework::RoutingSystem;
 use root::router::DummyMAC;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::select;
 use tokio::time::timeout;
 use crate::core::control::modules::courier::{handle_courier_event, handle_courier_packet};
-use crate::core::control::modules::metric::{handle_metric_event, handle_metric_packet};
+use crate::core::control::modules::metric::{handle_metric_event, handle_metric_packet, MetricPacket};
 use crate::core::control::modules::routing::handle_routing_packet;
 use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{ConnectRequest, InPacket, UnifiedAddr, NetPacket, NetworkEvent, OutPacket};
+use crate::core::structure::network::{ConnectRequest, InPacket, UnifiedAddr, NetPacket, NetworkEvent, OutPacket, OutUdpPacket};
 use crate::core::structure::network::NetPacket::PCourier;
 use crate::core::structure::state::{MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
 use crate::core::structure::network::NetworkEvent::{HandleConnect, InboundPacket, OutboundPacket, SpawnLink};
@@ -157,13 +159,63 @@ fn connect_ctl(state: &mut NylonState, link: <NylonSystem as RoutingSystem>::Lin
 
 // endregion
 
-pub fn start_networking(state: &mut NylonState) {
+pub async fn udp_socket(sock: SocketAddr, mq: MessageQueue, mut out: tokio::sync::mpsc::Receiver<OutUdpPacket>) -> anyhow::Result<()> {
+    let sock = UdpSocket::bind(sock).await?;
+    let mut buf = [0; 512];
+    while !mq.cancellation_token.is_cancelled() {
+        select! {
+            val = sock.recv_from(&mut buf) => {
+                if let Ok(val) = val {
+                    let (len, src) = val;
+                    if let Ok(res) = bitcode::deserialize(&buf[..len]) {
+                        mq.main.send(Network(
+                            InboundPacket(
+                                InPacket{
+                                    src: UnifiedAddr::Udp(src),
+                                    packet: res,
+                                }
+                            )
+                        ))?;
+                    }
+                }
+            }
+            val = out.recv() => {
+                if let Some(pkt) = val {
+                    let bytes = bitcode::serialize(&pkt.packet)?;
+                    if let Err(e) = sock.send_to(bytes.as_slice(), pkt.sock).await{
+                        warn!("Failed to send UDP packet: {e}");
+                    }
+                }
+                else{
+                    break;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn start_networking(state: &mut NylonState) -> anyhow::Result<()> {
     let NylonState{os, mq, ..} = state;
     let addr_ctl = os.node_config.addr_ctl.clone();
-    let mq = mq.clone();
+    let tmq = mq.clone();
     os.join_set.spawn(async move {
-        link_ctl_listener(mq, addr_ctl).await.unwrap();
+        link_ctl_listener(tmq, addr_ctl).await.unwrap();
     });
+    let sock_addr = os.node_config.addr_dg.clone();
+    let tmq = mq.clone();
+    let tmq2 = mq.clone();
+
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    os.udp_sock = Some(tx);
+
+    os.join_set.spawn(async move {
+        if let Err(result) = udp_socket(sock_addr, tmq, rx).await {
+            error!("UDP/metric socket died: {result}");
+            tmq2.shutdown();
+        }
+    });
+    Ok(())
 }
 
 pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow::Result<()> {
@@ -203,7 +255,14 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
             }
         }
         NetworkEvent::ECourier(ce) => handle_courier_event(state, ce)?,
-        NetworkEvent::EMetric(em) => handle_metric_event(state, em)?
+        NetworkEvent::EMetric(em) => handle_metric_event(state, em)?,
+        NetworkEvent::OutboundUdpPacket(pkt) => {
+            if let Some(sock) = &os.udp_sock {
+                if let Err(e) = sock.try_send(pkt){
+                    warn!("Error writing UDP outbound! {e}")
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -227,7 +286,6 @@ fn handle_packet(
     }
 
     match pkt.packet {
-        
         NetPacket::PMetric(mp) => handle_metric_packet(state, mp, pkt.src)?,
         NetPacket::PCourier(cp) => handle_courier_packet(state, cp, pkt.src)?,
         NetPacket::Routing(rt) => handle_routing_packet(state, rt, pkt.src)?

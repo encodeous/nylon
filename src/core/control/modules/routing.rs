@@ -19,7 +19,6 @@ pub fn handle_routing_packet(
         info!("RP From: {}, {}, via {}", link.addr_vlan, json!(pkt), link.id);
     }
     ps.router.handle_packet(&DummyMAC::from(pkt), &link.id, &link.addr_vlan)?;
-    ps.router.update();
     write_routing_packets(state)?;
     Ok(())
 }

@@ -15,6 +15,14 @@ pub enum TimedEvent {
     SysRouteUpdate
 }
 
+pub fn delayed_event(state: &mut NylonState, event: NylonEvent, interval: Duration){
+    let tmq = state.mq.clone();
+    state.os.join_set.spawn(async move {
+        sleep(interval).await;
+        tmq.send(event);
+    });
+}
+
 pub fn timed_repeating_event(state: &mut NylonState, event: TimedEvent, interval: Duration){
     let tmq = state.mq.clone();
     state.os.join_set.spawn(async move {

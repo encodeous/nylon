@@ -1,12 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
-use defguard_wireguard_rs::{Kernel, WGApi, WireguardInterfaceApi};
+use crate::core::structure::state::{NylonState};
 use defguard_wireguard_rs::net::IpAddrMask;
+use defguard_wireguard_rs::{WireguardInterfaceApi};
 use log::{trace, warn};
-use net_route::{Handle, Route};
-use serde_json::json;
-use crate::core::routing::NylonSystem;
-use crate::core::structure::state::{NylonState, OperatingState, PersistentState};
+use std::collections::{HashSet};
 
 pub fn timed_sys_route_update(state: &mut NylonState,) -> anyhow::Result<()>{
     let NylonState{os, mq, ps} = state;
@@ -50,27 +46,6 @@ pub fn timed_sys_route_update(state: &mut NylonState,) -> anyhow::Result<()>{
         #[cfg(windows)]
         os.wg_api.configure_interface(&os.itf_config, &[], &[])?;
     }
-    
-    // tokio::spawn(async move {
-    //     let updater = async {
-    //         let handle = Handle::new()?;
-    //         for route in table.values(){
-    //             let src_addr = route.source.data.addr;
-    //             if src_addr == route.next_hop{
-    //                 // wireguard can handle this :)
-    //                 continue;
-    //             }
-    //             let s_route = Route::new(src_addr, if src_addr.is_ipv4() { 32 } else { 64 })
-    //                 .with_gateway(route.next_hop);
-    //             handle.add(&s_route).await?
-    //         }
-    //         anyhow::Result::<()>::Ok(())
-    //     };
-    //     if let Err(x) = updater.await{
-    //         // ignored
-    //         warn!("Failed to apply system core rules {x}");
-    //     }
-    // });
     
     Ok(())
 }

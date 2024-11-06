@@ -13,7 +13,7 @@ use defguard_wireguard_rs::{
 };
 use serde_json::json;
 use x25519_dalek::{EphemeralSecret, PublicKey};
-use log::{info, warn};
+use log::{error, info, warn};
 use root::concepts::neighbour::Neighbour;
 use root::router::{Router, INF};
 use tokio::task::JoinSet;
@@ -42,13 +42,15 @@ async fn main() -> anyhow::Result<()> {
             addr_vlan: "10.1.0.1/24".to_string(),
             private_key: "<private_key>".to_string(),
             addr_dp: SocketAddr::from_str("0.0.0.0:59162")?,
-            addr_ctl: SocketAddr::from_str("0.0.0.0:59163")?,
+            addr_ctl: SocketAddr::from_str("0.0.0.0:59162")?,
+            addr_dg: SocketAddr::from_str("0.0.0.0:59163")?,
             links: vec![
                 LinkConfig {
                     id: "laptop_via_lan".to_string(),
                     public_key: "<node public key>".to_string(),
                     addr_dp: SocketAddr::from_str("192.168.1.5:59162")?,
-                    addr_ctl: SocketAddr::from_str("192.168.1.5:59163")?,
+                    addr_ctl: SocketAddr::from_str("192.168.1.5:59162")?,
+                    addr_dg: SocketAddr::from_str("0.0.0.0:59163")?,
                     addr_vlan: IpAddr::from_str("10.1.0.2")?
                 }
             ],
@@ -68,7 +70,9 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     let wgapi = WGApi::<Userspace>::new(ifname.clone())?;
 
-    wgapi.create_interface()?;
+    if let Err(x) = wgapi.create_interface() {
+        error!("Failed to create wireguard interface, did Nylon shutdown correctly? {x}");
+    }
 
 
     let interface_config = InterfaceConfiguration {
@@ -118,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         pings: Default::default(),
 
         ctl_links: Default::default(),
+        udp_sock: None,
         log_routing: false,
         log_delivery: false,
         node_config: config,
@@ -125,14 +130,13 @@ async fn main() -> anyhow::Result<()> {
         wg_api: wgapi,
         prev_itf_config: String::new(),
         join_set: JoinSet::default(),
-    });
+    })?;
 
     let mut input_buf = String::new();
 
     let tmq = mq.clone();
     ctrlc::set_handler(move || {
-        tmq.cancellation_token.cancel();
-        tmq.main.send(DispatchCommand(String::new())).unwrap();
+        tmq.shutdown();
     }).expect("Error setting Ctrl-C handler");
 
     while !mq.cancellation_token.is_cancelled(){

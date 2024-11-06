@@ -8,8 +8,12 @@ pub struct NodeConfig {
     pub addr_vlan: String,
     // used for wireguard
     pub private_key: String,
+    /// address used for WireGuard connections, UDP
     pub addr_dp: SocketAddr,
+    /// address used for control messages, TCP
     pub addr_ctl: SocketAddr,
+    /// address used for datagrams, like ping, UDP
+    pub addr_dg: SocketAddr,
     pub links: Vec<LinkConfig>,
     pub network_key: String
 }
@@ -26,5 +30,6 @@ pub struct LinkConfig {
     pub public_key: String,
     pub addr_dp: SocketAddr,
     pub addr_ctl: SocketAddr,
+    pub addr_dg: SocketAddr,
     pub addr_vlan: IpAddr,
 }
