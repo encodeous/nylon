@@ -4,7 +4,7 @@ use root::framework::RoutingSystem;
 use root::router::DummyMAC;
 use serde_json::json;
 use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{NetPacket, UnifiedAddr};
+use crate::core::structure::network::{CtlPacket, UnifiedAddr};
 use crate::core::structure::state::NylonEvent::NoEvent;
 use crate::core::structure::state::NylonState;
 
@@ -39,7 +39,7 @@ fn write_routing_packets(state: &mut NylonState) -> anyhow::Result<()> {
         if let Some(peer) = node.get_link(&pkt.link){
             mq.send_packet(
                 peer.id.clone(),
-                NetPacket::Routing(pkt.packet.data.clone()),
+                CtlPacket::Routing(pkt.packet.data.clone()),
                 NoEvent
             );
         }

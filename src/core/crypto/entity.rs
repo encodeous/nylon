@@ -5,12 +5,14 @@ use anyhow::{bail, Result};
 use aws_lc_rs::rand::SystemRandom;
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
+#[serde(transparent)]
 pub struct Entity {
     #[serde(with = "hex::serde")]
     pub pub_key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
+#[serde(transparent)]
 pub struct EntitySecret {
     #[serde(with = "hex::serde")]
     pub pkcs8: Vec<u8>,
@@ -20,10 +22,14 @@ impl EntitySecret {
     pub fn to_keypair(&self) -> EcdsaKeyPair {
         EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, self.pkcs8.as_slice()).unwrap()
     }
+    pub fn get_pubkey(&self) -> Entity {
+        Entity::from_secret(self)
+    }
 
-    pub fn sign(&self, data: &[u8]) -> Result<&[u8]> {
+    pub fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
         let rand = SystemRandom::new();
-        Ok(self.to_keypair().sign(&rand, data)?.as_ref())
+        let res = self.to_keypair().sign(&rand, data)?;
+        Ok(res.as_ref().to_vec())
     }
 }
 

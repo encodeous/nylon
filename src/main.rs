@@ -18,25 +18,28 @@ use root::concepts::neighbour::Neighbour;
 use root::router::{Router, INF};
 use tokio::task::JoinSet;
 use tokio::time::sleep;
-use crate::config::{NodeConfig, LinkConfig};
+use crate::config::{NodeConfig};
 use crate::core::mesh_router::start_router;
 use core::structure::state::{OperatingState, PersistentState};
 use core::structure::state::NylonEvent::DispatchCommand;
+use crate::cli::cli_main;
 
 mod config;
 mod core;
 mod util;
+mod daemon;
+mod cli;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // remember to:
-    // sudo iptables -I INPUT -i nylon -j ACCEPT
-    // sudo iptables -I FORWARD -i nylon -o nylon -j ACCEPT
-    
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "info")
     }
     env_logger::init();
+    cli_main().await?;
+    // remember to:
+    // sudo iptables -I INPUT -i nylon -j ACCEPT
+    // sudo iptables -I FORWARD -i nylon -o nylon -j ACCEPT
     if !Path::exists(Path::new("./config.json")) {
         let x = NodeConfig{
             addr_vlan: "10.1.0.1/24".to_string(),

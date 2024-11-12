@@ -1,57 +1,56 @@
-use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use aws_lc_rs::signature::EcdsaKeyPair;
-use defguard_wireguard_rs::net::IpAddrMask;
+use std::net::{SocketAddr};
 use serde::{Deserialize, Serialize};
 use crate::core::crypto::entity::{Entity, EntitySecret};
-
-#[derive(Serialize, Deserialize)]
+// Node Specific States
+#[derive(Serialize, Deserialize, Clone)]
 pub struct NodeSecret {
     // used for wireguard
-    pub wg_priv_key: String,
+    pub wg_privkey: String,
     // used for control messages
-    pub node_priv_key: EntitySecret,
-}
-
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct NodeLink {
-    /// address used for WireGuard connections, UDP
-    pub addr_dp: SocketAddr,
-    /// address used for control messages, TCP
-    pub addr_ctl: SocketAddr,
-    /// address used for datagrams, like ping, UDP
-    pub addr_dg: SocketAddr
+    pub node_privkey: EntitySecret,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NodeConfig {
-    pub wg_pub_key: String,
-    pub addr_vlan: String,
-    pub static_links: Vec<NodeLink>,
+    pub node_secret: NodeSecret,
+    pub node_sock: LinkInfo,
+    pub saved_links: Vec<LinkInfo>
 }
 
-impl NodeConfig {
-    pub fn get_link(&self, id: &String) -> Option<&LinkConfig> {
-        self.links.iter().find(|p| p.id == *id)
-    }
+// Shared Config
+#[derive(Serialize, Deserialize, Clone, Eq, Hash, PartialEq, Debug)]
+pub struct NodeIdentity {
+    pub friendly_name: String,
+    pub pubkey: Entity
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct LinkConfig {
-    pub id: String,
-    pub public_key: String,
-    pub addr_dp: SocketAddr,
+pub struct LinkInfo {
+    /// the destination node's friendly name
+    pub friendly_name: String,
+    /// address used for control messages, TCP
     pub addr_ctl: SocketAddr,
+    /// address used for datagrams, like ping, UDP
     pub addr_dg: SocketAddr,
-    pub addr_vlan: IpAddr,
+    /// address used for WireGuard connections, UDP
+    pub addr_dp: SocketAddr,
+    /// public key used for WireGuard
+    pub dp_pubkey: String,
+}
+
+// Global/Central Configuration
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct NodeInfo {
+    pub id: NodeIdentity,
+    pub reachable_via: Vec<LinkInfo>,
+    pub addr_vlan: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CentralConfig {
     pub version: u128,
     pub config_repos: Vec<String>,
-    pub trusted_nodes: Vec<Entity>,
-    pub nodes: Vec<NodeConfig>,
+    pub nodes: Vec<NodeInfo>,
     pub root_ca: Entity,
 }

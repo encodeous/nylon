@@ -3,27 +3,41 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail};
+use chrono::{DateTime, Utc};
 use crossbeam_channel::Sender;
 use defguard_wireguard_rs::{InterfaceConfiguration, Kernel, WGApi};
+use defguard_wireguard_rs::host::Peer;
 use root::concepts::packet::Packet;
 use serde::{Deserialize, Serialize};
 use root::router::Router;
 use root::framework::RoutingSystem;
 use serde_json::json;
-use crate::core::routing::NylonSystem;
+use crate::core::routing::{LinkType, NodeAddrType, NylonSystem};
 use serde_with::serde_as;
 use tokio::net::TcpStream;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use crate::config::{LinkConfig, NodeConfig};
+use uuid::Uuid;
+use crate::config::{CentralConfig, LinkInfo, NodeConfig, NodeIdentity, NodeInfo};
 use crate::core::control::modules::courier::CourierPacket;
 use crate::core::control::modules::metric::MetricEvent;
-use crate::core::structure::network::{ConnectRequest, InPacket, NetPacket, NetworkEvent, OutPacket, OutUdpPacket, UnifiedAddr};
+use crate::core::structure::network::{ConnectRequest, InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
 use crate::core::structure::state::NetworkEvent::OutboundPacket;
 use crate::core::structure::state::NylonEvent::{DispatchCommand, Network};
 use crate::core::control::timing::TimedEvent;
-use crate::core::structure::network::NetworkEvent::OutboundUdpPacket;
+use crate::core::crypto::entity::Entity;
+use crate::core::crypto::sig::{Claim, SignedClaim};
+use crate::core::structure::network::NetworkEvent::{OutboundDatagram};
 use crate::util::channel::DuplexChannel;
+
+/// Represents a link that has passed validation and is active
+pub struct ActiveLink {
+    pub id: Uuid,
+    /// address used for datagrams, like ping, UDP
+    pub addr_dg: Option<SocketAddr>,
+    pub ctl: tokio::sync::mpsc::Sender<OutPacket>,
+    pub dst: NodeIdentity
+}
 
 pub struct NylonState {
     pub ps: PersistentState,
@@ -32,16 +46,37 @@ pub struct NylonState {
 }
 
 impl NylonState {
-    pub fn get_link(&self, id: &String) -> anyhow::Result<&LinkConfig> {
-        self.os.node_config.links.iter().find(|p| p.id == *id).ok_or(anyhow!("Unable to find link matching id {id}"))
+    pub fn get_link(&self, id: &LinkType) -> anyhow::Result<&ActiveLink> {
+        self.os.links.iter()
+            .find(|(_id, link)| link.id == *id)
+            .map(|(_id, link)| link)
+            .ok_or(anyhow!("Unable to find link matching id {id}"))
     }
-    pub fn get_link_uni(&mut self, link: &UnifiedAddr) -> anyhow::Result<&LinkConfig> {
-        if let UnifiedAddr::Link(link) = &link {
-            Ok(self.get_link(link)?)
-        }
-        else {
-            bail!("Unable to find the link matching the specified address {}", json!(link));
-        }
+    pub fn get_node_by_name(&self, friendly_name: &String) -> Option<&NodeInfo> {
+        self.os.central_config.nodes.iter().find(|x| {
+            x.id.friendly_name == *friendly_name
+        })
+    }
+    pub fn get_node_by_pubkey(&self, pubkey: &NodeAddrType) -> Option<&NodeInfo> {
+        self.os.central_config.nodes.iter().find(|x| {
+            x.id.pubkey == *pubkey
+        })
+    }
+    pub fn node_info(&mut self) -> NodeInfo {
+        let pubkey = self.pubkey().clone();
+        self.os.central_config.nodes.iter().find(|x| x.id.pubkey == pubkey).unwrap().clone()
+    }
+    pub fn pubkey(&mut self) -> &Entity {
+        self.os.cached_state.pubkey.get_or_insert_with(|| {
+            self.os.node_config.node_secret.node_privkey.get_pubkey()
+        })
+    }
+    pub fn sign_claim<T: Clone + Serialize + 'static>(&self, claim: Claim<T>) -> SignedClaim<T> {
+        claim.sign_claim(&self.os.node_config.node_secret.node_privkey).unwrap()
+    }
+    /// Signs a piece of data that expires in 10 seconds
+    pub fn sign_ephemeral<T: Clone + Serialize + 'static>(&self, data: T) -> SignedClaim<T> {
+        self.sign_claim(Claim::from_now_until(data, Utc::now() + Duration::from_secs(5)))
     }
 }
 
@@ -59,20 +94,31 @@ pub struct LinkHealth{
 }
 
 pub struct OperatingState {
-    pub health: HashMap<<NylonSystem as RoutingSystem>::Link, LinkHealth>,
-    pub pings: HashMap<<NylonSystem as RoutingSystem>::NodeAddress, Instant>,
-    pub ctl_links: HashMap<<NylonSystem as RoutingSystem>::Link, tokio::sync::mpsc::Sender<OutPacket>>,
-    pub udp_sock: Option<tokio::sync::mpsc::Sender<OutUdpPacket>>,
-    pub log_routing: bool,
-    pub log_delivery: bool,
-    pub node_config: NodeConfig,
+    // Link and Health
+    pub health: HashMap<LinkType, LinkHealth>,
+    pub pings: HashMap<NodeAddrType, Instant>,
+    pub links: HashMap<LinkType, ActiveLink>,
+    
+    // Network IO
+    pub udp_sock: Option<tokio::sync::mpsc::Sender<UdpPacket>>,
     pub itf_config: InterfaceConfiguration,
     #[cfg(not(target_os = "macos"))]
     pub wg_api: WGApi::<Kernel>,
     #[cfg(target_os = "macos")]
     pub wg_api: WGApi::<Userspace>,
+    pub join_set: JoinSet<()>,
     pub prev_itf_config: String,
-    pub join_set: JoinSet<()>
+    
+    // Core Config
+    pub node_config: NodeConfig,
+    pub central_config: CentralConfig,
+    
+    // Core State
+    pub cached_state: CachedState,
+}
+
+pub struct CachedState {
+    pub pubkey: Option<Entity>
 }
 
 #[derive(Clone)]
@@ -82,7 +128,7 @@ pub struct MessageQueue{
 }
 
 impl MessageQueue{
-    pub fn send_packet(&self, to: <NylonSystem as RoutingSystem>::Link, packet: NetPacket, failure: NylonEvent) {
+    pub fn send_packet(&self, to: <NylonSystem as RoutingSystem>::Link, packet: CtlPacket, failure: NylonEvent) {
         self.send_network(
             OutboundPacket(OutPacket{
                 link: to,
@@ -91,10 +137,10 @@ impl MessageQueue{
             })
         );
     }
-    pub fn send_udp_packet(&self, to: SocketAddr, packet: NetPacket) {
+    pub fn send_probe_packet(&self, to: SocketAddr, packet: Datagram) {
         self.send_network(
-            OutboundUdpPacket(OutUdpPacket{
-                sock: to,
+            OutboundDatagram(UdpPacket{
+                addr: to,
                 packet,
             })
         );

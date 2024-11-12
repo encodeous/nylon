@@ -8,8 +8,8 @@ use serde_json::json;
 use crate::core::control::modules::courier::CourierEvent::RoutePacket;
 use crate::core::control::modules::courier::CourierPacket::{Deliver, TraceRoute};
 use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{UnifiedAddr, NetPacket, NetworkEvent};
-use crate::core::structure::network::NetPacket::PCourier;
+use crate::core::structure::network::{UnifiedAddr, CtlPacket, NetworkEvent};
+use crate::core::structure::network::CtlPacket::PCourier;
 use crate::core::structure::state::NylonEvent::{NoEvent};
 use crate::core::structure::state::{NylonState, OperatingState, PersistentState};
 

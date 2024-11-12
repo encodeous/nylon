@@ -50,12 +50,9 @@ impl<T: Clone + Serialize + Any> Claim<T>{
     }
 
     pub fn sign_claim(&self, key_pair: &EntitySecret) -> Result<SignedClaim<T>> {
-        let rand = SystemRandom::new();
-        let sig = key_pair.sign(&rand, &self.to_serialized()?)?;
-
         Ok(SignedClaim {
             claim: self.clone(),
-            signature: sig.as_ref().to_vec()
+            signature: key_pair.sign(&self.to_serialized()?)?
         })
     }
 }

@@ -18,7 +18,7 @@ tokio = { version = "1.41.0", features = ["full"] }
 tokio-util = "0.7.12"
 uuid = { version = "1.11.0", features = ["v4", "serde"] }
 serde_with = "3.11.0"
-root = {git = "https://github.com/encodeous/root.git"}
+root = { git = "https://github.com/encodeous/root.git" }
 ctrlc = "3.4.5"
 base64 = "0.22.1"
 bitcode = { version = "0.6.3", features = ["serde"]}
@@ -27,6 +27,7 @@ thiserror = "2.0.0"
 aws-lc-rs = "1.10.0"
 hex = { version = "0.4.3", features = ["serde"] }
 educe = "0.6.0"
+clap = { version = "4.5.20", features = ["derive"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iptables = "0.5.2"

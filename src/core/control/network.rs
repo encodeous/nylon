@@ -2,8 +2,8 @@ use std::net::{SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use crossbeam_channel::Receiver;
-use defguard_wireguard_rs::net::IpAddrMask;
+use anyhow::{anyhow, bail, Context};
+use chrono::Utc;
 use log::{debug, error, info, trace, warn};
 use root::framework::RoutingSystem;
 use root::router::DummyMAC;
@@ -11,25 +11,30 @@ use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
+use tokio::sync::oneshot;
 use tokio::time::timeout;
+use uuid::Uuid;
+use crate::config::LinkInfo;
 use crate::core::control::modules::courier::{handle_courier_event, handle_courier_packet};
 use crate::core::control::modules::metric::{handle_metric_event, handle_metric_packet, MetricPacket};
 use crate::core::control::modules::routing::handle_routing_packet;
-use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{ConnectRequest, InPacket, UnifiedAddr, NetPacket, NetworkEvent, OutPacket, OutUdpPacket};
-use crate::core::structure::network::NetPacket::PCourier;
-use crate::core::structure::state::{MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
-use crate::core::structure::network::NetworkEvent::{HandleConnect, InboundPacket, OutboundPacket, SpawnLink};
+use crate::core::crypto::entity::EntitySecret;
+use crate::core::crypto::sig::Claim;
+use crate::core::routing::{LinkType, NylonSystem};
+use crate::core::structure::network::{InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram, ConnectResponse, Connect};
+use crate::core::structure::network::CtlPacket::PCourier;
+use crate::core::structure::state::{ActiveLink, MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
+use crate::core::structure::network::NetworkEvent::{InboundPacket, InboundDatagram, OutboundPacket, SetupLink, SpawnLink, ValidateConnect};
 use crate::core::structure::state::NylonEvent::{Network, NoEvent};
 use crate::util::channel::{map_channel_xb, DuplexChannel};
-use crate::util::serialized_io::{read_data, write_data};
+use crate::util::serialized_io::{read_data, read_data_timeout, write_data};
 
 // region Link IO
 
 pub fn spawn_link(
     mq: MessageQueue,
     stream: TcpStream,
-    link: <NylonSystem as RoutingSystem>::Link,
+    link: LinkType,
     upstream: DuplexChannel<OutPacket, InPacket>,
     os: &mut OperatingState
 ) {
@@ -69,10 +74,10 @@ pub fn spawn_link(
         let reader = async {
             let mut bytes: Vec<u8> = Vec::new();
             while !mq1.cancellation_token.is_cancelled() {
-                let packet: NetPacket = read_data(&mut sr, &mut bytes).await?;
+                let packet: CtlPacket = read_data(&mut sr, &mut bytes).await?;
                 trace!("Got packet {} via {link}", json!(packet));
                 send.send(InPacket{
-                    src: UnifiedAddr::Link(link.clone()),
+                    src: link,
                     packet,
                 }).await?;
             }
@@ -86,103 +91,126 @@ pub fn spawn_link(
     });
 }
 
-async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr) -> anyhow::Result<()> {
+async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySecret) -> anyhow::Result<()> {
     info!("Listening on {ctl}");
     let listener = TcpListener::bind(ctl).await?;
     let mut bytes: Vec<u8> = Vec::new();
+    
+    let pubkey = priv_key.get_pubkey();
+    
     while !mq.cancellation_token.is_cancelled(){
-        let (mut sock, addr) = listener.accept().await?;
+        let (mut stream, addr) = listener.accept().await?;
+        
+        tokio::spawn(async move {
+            trace!("Inbound connection from {addr}");
+            let critical = async {
+                let request: Connect = read_data_timeout(&mut stream, &mut vec![], Duration::from_secs(5)).await.context("Failed to get response")?;
 
-        trace!("Inbound connection from {addr}");
+                // validate response
+                let (compl, wait) = oneshot::channel();
+                mq.send_network(ValidateConnect {
+                    expected_node: None,
+                    valid_link: None,
+                    pkt: request.clone(),
+                    result: compl
+                });
+                let identity = wait.await??;
+                
+                let claim = Claim::from_now_until(request.link_id.claim.data, Utc::now() + Duration::from_secs(5));
+                let signed = claim.sign_claim(&priv_key)?;
 
-        if let Ok(Ok(req)) = timeout(Duration::from_secs(5), read_data(&mut sock, &mut bytes)).await{
-            let res: ConnectRequest = req;
-            let (us, ds) = DuplexChannel::new(512);
-            mq.send_network(
-                SpawnLink {
-                    stream: sock,
-                    link: res.link_name.clone(),
-                    upstream: us,
-                }
-            );
-            mq.send_network(
-                HandleConnect {
-                    duplex: ds,
-                    req: res,
-                    incoming_addr: addr
-                }
-            );
-        }
-        else{
-            debug!("Rejected connection from {addr}");
-        }
+                write_data(&mut stream, &mut vec![], &Connect {
+                    peer_addr: pubkey.clone(),
+                    link_id: signed,
+                }).await.context("Failed to send handshake init")?;
+
+                mq.send_network(SetupLink {
+                    id: request.link_id.claim.data, 
+                    addr_dg: None,
+                    dst: identity,
+                    stream
+                });
+                
+                anyhow::Result::Ok(())
+            };
+            if let Err(x) = critical.await {
+                trace!("In link_ctl_listener: {x}")
+            }
+        });
     }
     info!("Listener closed");
     Ok(())
 }
 
-fn connect_ctl(state: &mut NylonState, link: <NylonSystem as RoutingSystem>::Link) -> anyhow::Result<()> {
+fn connect_ctl(state: &mut NylonState, link: LinkInfo) -> anyhow::Result<()> {
     let NylonState{os, mq, ..} = state;
     let mq = mq.clone();
-    let node_id = IpAddrMask::from_str(&os.node_config.addr_vlan)?.ip;
-    if let Some(peer) = os.node_config.get_link(&link){
-        let pid = peer.id.clone();
+    
+    let expected_pubkey = state.get_node_by_name(&link.friendly_name).ok_or(anyhow!("Specified friendly name not found in nodes"))?.id.pubkey.clone();
 
-        let (mut us, ds) = DuplexChannel::new(512);
+    os.join_set.spawn(async move {
+        let client = TcpStream::connect(link.addr_ctl).await;
+        if let Ok(mut stream) = client {
+            let critical = async {
+                let id = Uuid::new_v4();
+                write_data(&mut stream, &mut vec![], &Connect {
+                    peer_addr: state.node_info().id.pubkey,
+                    link_id: state.sign_ephemeral(id)
+                }).await.context("Failed to send handshake init")?;
 
-        os.ctl_links.insert(link.clone(), ds.producer);
+                let resp: Connect = read_data_timeout(&mut stream, &mut vec![], Duration::from_secs(5)).await.context("Failed to get response")?;
 
-        map_channel_xb(ds.sink, mq.main.clone(), |pkt: InPacket| Network(InboundPacket(pkt)), mq.cancellation_token.clone());
-        let addr = peer.addr_ctl;
-
-        os.join_set.spawn(async move {
-            let client = TcpStream::connect(addr).await;
-            if let Ok(mut stream) = client {
-                write_data(&mut stream, &mut vec![], &ConnectRequest {
-                    from: node_id,
-                    link_name: pid.clone(),
-                }).await.unwrap();
-                info!("Connected to peer {} via {}", node_id, pid);
-                mq.send_network(SpawnLink {
-                    stream,
-                    link,
-                    upstream: us,
+                // validate response
+                let (compl, wait) = oneshot::channel();
+                mq.send_network(ValidateConnect {
+                    expected_node: Some(expected_pubkey),
+                    valid_link: Some(id),
+                    pkt: resp,
+                    result: compl
                 });
+                let identity = wait.await??;
+
+                info!("Connected to peer {} via {}", identity.friendly_name, id);
+
+                mq.send_network(SetupLink {
+                    id,
+                    addr_dg: Some(link.addr_dg),
+                    dst: identity,
+                    stream
+                });
+                anyhow::Result::Ok(())
+            };
+
+            if let Err(x) = critical.await {
+                trace!("In connect_ctl: {x}")
             }
-            else{
-                us.close();
-            }
-        });
-    }
+        }
+    });
     Ok(())
 }
 
 // endregion
 
-pub async fn udp_socket(sock: SocketAddr, mq: MessageQueue, mut out: tokio::sync::mpsc::Receiver<OutUdpPacket>) -> anyhow::Result<()> {
+pub async fn udp_socket(sock: SocketAddr, mq: MessageQueue, mut out: tokio::sync::mpsc::Receiver<UdpPacket>) -> anyhow::Result<()> {
     let sock = UdpSocket::bind(sock).await?;
-    let mut buf = [0; 512];
+    let mut buf = [0; 1200];
     while !mq.cancellation_token.is_cancelled() {
         select! {
             val = sock.recv_from(&mut buf) => {
                 if let Ok(val) = val {
                     let (len, src) = val;
                     if let Ok(res) = bitcode::deserialize(&buf[..len]) {
-                        mq.main.send(Network(
-                            InboundPacket(
-                                InPacket{
-                                    src: UnifiedAddr::Udp(src),
-                                    packet: res,
-                                }
-                            )
-                        ))?;
+                        mq.main.send(Network(InboundDatagram(UdpPacket{
+                            addr: src,
+                            packet: res
+                        })))?
                     }
                 }
             }
             val = out.recv() => {
                 if let Some(pkt) = val {
                     let bytes = bitcode::serialize(&pkt.packet)?;
-                    if let Err(e) = sock.send_to(bytes.as_slice(), pkt.sock).await{
+                    if let Err(e) = sock.send_to(bytes.as_slice(), pkt.addr).await{
                         warn!("Failed to send UDP packet: {e}");
                     }
                 }
@@ -197,12 +225,13 @@ pub async fn udp_socket(sock: SocketAddr, mq: MessageQueue, mut out: tokio::sync
 
 pub fn start_networking(state: &mut NylonState) -> anyhow::Result<()> {
     let NylonState{os, mq, ..} = state;
-    let addr_ctl = os.node_config.addr_ctl.clone();
+    let addr_ctl = os.node_config.node_sock.addr_ctl.clone();
     let tmq = mq.clone();
+    let priv_key = os.node_config.node_secret.node_privkey.clone();
     os.join_set.spawn(async move {
-        link_ctl_listener(tmq, addr_ctl).await.unwrap();
+        link_ctl_listener(tmq, addr_ctl, priv_key).await.unwrap();
     });
-    let sock_addr = os.node_config.addr_dg.clone();
+    let sock_addr = os.node_config.node_sock.addr_dg.clone();
     let tmq = mq.clone();
     let tmq2 = mq.clone();
 
@@ -222,15 +251,53 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
     let NylonState{os, mq, ..} = state;
     let mq = mq.clone();
     match event {
-        HandleConnect { req, mut duplex, .. } => {
-            if os.node_config.get_link(&req.link_name).is_none(){
-                info!("Link {} from {} does not match any peer name, rejecting!", req.link_name, req.from);
-                duplex.close();
-                return Ok(());
-            }
-            os.ctl_links.insert(req.link_name.clone(), duplex.producer);
-            info!("Connected to peer {} via {}", req.from, req.link_name);
-            map_channel_xb(duplex.sink, mq.main.clone(), |pkt| Network(InboundPacket(pkt)), mq.cancellation_token.clone());
+        ValidateConnect { expected_node, valid_link, pkt, result } => {
+            let critical = {
+                if let Some(link) = valid_link{
+                    if link != pkt.link_id.claim.data {
+                        bail!("Link ID does not match");
+                    }
+                }
+                if let Some(node) = expected_node {
+                    if pkt.peer_addr != node {
+                        bail!("Peer node is not the expected node")
+                    }
+                }
+                let res = state.get_node_by_pubkey(&pkt.peer_addr);
+                if let None = res {
+                    bail!("Destination peer {} is not trusted", hex::encode(&pkt.peer_addr.pub_key));
+                }
+                pkt.link_id.validate(&pkt.peer_addr)?;
+                if state.get_link(&pkt.link_id.claim.data).is_ok() {
+                    bail!("A link with the same ID is already active!");
+                }
+                Ok(res.unwrap().id.clone())
+            };
+            result.send(critical).unwrap();
+        }
+        SetupLink { id, dst, addr_dg, stream } => {
+            let (us, ds) = DuplexChannel::new(512);
+            mq.send_network(
+                SpawnLink {
+                    stream,
+                    link: id,
+                    upstream: us,
+                }
+            );
+            
+            let name = dst.friendly_name.clone();
+            
+            let active_link = ActiveLink{
+                id,
+                addr_dg,
+                ctl: ds.producer,
+                dst,
+            };
+
+            debug!("Connected to peer {} via {}", name, id);
+            
+            os.links.insert(id, active_link);
+            map_channel_xb(ds.sink, mq.main.clone(), |pkt| Network(InboundPacket(pkt)), mq.cancellation_token.clone());
         }
         SpawnLink { stream, link, upstream } => {
             spawn_link(mq.clone(), stream, link, upstream, os);
@@ -242,11 +309,11 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
             let mut sent = false;
             let link = packet.link.clone();
             let failure = packet.failure_event.clone();
-            if let Some(conn) = os.ctl_links.get(&packet.link){
-                sent = conn.try_send(packet).is_ok();
+            if let Some(conn) = os.links.get(&packet.link){
+                sent = conn.ctl.try_send(packet).is_ok();
             }
             if !sent {
-                connect_ctl(state, link)?;
+                trace!("Failed to send packet via {link}");
                 if let Some(act) = failure{
                     if let Ok(fail) = Arc::try_unwrap(act) {
                         mq.main.send(fail)?;
@@ -256,7 +323,12 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
         }
         NetworkEvent::ECourier(ce) => handle_courier_event(state, ce)?,
         NetworkEvent::EMetric(em) => handle_metric_event(state, em)?,
-        NetworkEvent::OutboundUdpPacket(pkt) => {
+        NetworkEvent::InboundDatagram(pkt) => {
+            match pkt.packet{
+                Datagram::PMetric(hpkt) => handle_metric_packet(state, hpkt, pkt.addr)?
+            }
+        }
+        NetworkEvent::OutboundDatagram(pkt) => {
             if let Some(sock) = &os.udp_sock {
                 if let Err(e) = sock.try_send(pkt){
                     warn!("Error writing UDP outbound! {e}")
@@ -271,26 +343,10 @@ fn handle_packet(
     state: &mut NylonState,
     pkt: InPacket
 ) -> anyhow::Result<()> {
-    let NylonState{ps, os, mq, ..} = state;
-    let mq = mq.clone();
-
-    if let UnifiedAddr::Link(link) = &pkt.src {
-        debug!("Handling packet {} via {link}", json!(pkt));
-
-        let node = &os.node_config;
-        if node.get_link(&link).is_none(){
-            warn!("Dropped packet {}, {link} not found in config", json!(pkt));
-            trace!("Links in config: {}", json!(os.node_config.links));
-            return Ok(())
-        }
-    }
-
     match pkt.packet {
-        NetPacket::PMetric(mp) => handle_metric_packet(state, mp, pkt.src)?,
-        NetPacket::PCourier(cp) => handle_courier_packet(state, cp, pkt.src)?,
-        NetPacket::Routing(rt) => handle_routing_packet(state, rt, pkt.src)?
+        CtlPacket::PCourier(cp) => handle_courier_packet(state, cp, pkt.src)?,
+        CtlPacket::Routing(rt) => handle_routing_packet(state, rt, pkt.src)?
     }
-
     Ok(())
 }
 

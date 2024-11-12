@@ -1,9 +1,8 @@
-use crate::config::LinkConfig;
 use crate::core::control::modules::courier::CourierPacket::TraceRoute;
 use crate::core::control::modules::courier::{route_packet, RoutedPacket};
 use crate::core::control::network::{network_controller, start_networking};
 use crate::core::control::timing::{handle_timed_event, register_events};
-use crate::core::structure::network::NetPacket::PCourier;
+use crate::core::structure::network::CtlPacket::PCourier;
 use crate::core::structure::network::{ConnectRequest, InPacket, OutPacket};
 use crate::core::structure::state::NylonEvent::{NoEvent, Shutdown};
 use crate::core::structure::state::{LinkHealth, MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
