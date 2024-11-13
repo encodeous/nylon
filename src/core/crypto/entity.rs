@@ -1,8 +1,8 @@
-use std::fmt::{Display, Formatter, Pointer};
+use std::fmt::{Display, Formatter};
 use aws_lc_rs::error::KeyRejected;
 use aws_lc_rs::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
 use serde::{Deserialize, Serialize};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use aws_lc_rs::rand::SystemRandom;
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]

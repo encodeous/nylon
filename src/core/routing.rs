@@ -1,8 +1,6 @@
-use std::net::IpAddr;
 use uuid::Uuid;
 use root::framework::RoutingSystem;
 use root::router::NoMACSystem;
-use crate::config::NodeIdentity;
 use crate::core::crypto::entity::Entity;
 
 pub type LinkType = Uuid;

@@ -1,32 +1,15 @@
-use crate::core::control::modules::courier::CourierPacket::TraceRoute;
-use crate::core::control::modules::courier::{route_packet, RoutedPacket};
 use crate::core::control::network::{network_controller, start_networking};
 use crate::core::control::timing::{handle_timed_event, register_events};
-use crate::core::structure::network::CtlPacket::PCourier;
-use crate::core::structure::network::{InPacket, OutPacket};
-use crate::core::structure::state::NylonEvent::{NoEvent, Shutdown};
-use crate::core::structure::state::{LinkHealth, MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
-use anyhow::{anyhow, Context};
+use crate::core::structure::state::NylonEvent::Shutdown;
+use crate::core::structure::state::{MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
+use anyhow::Context;
 use crossbeam_channel::{unbounded, Receiver};
 use defguard_wireguard_rs::WireguardInterfaceApi;
 use log::{debug, error, info, trace, warn};
-use root::router::{DummyMAC, INF};
-use serde_json::{json, to_string};
-use std::cmp::max;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use serde_json::json;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::process::exit;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::io::{duplex, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, DuplexStream};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::time::error::Elapsed;
-use tokio::time::{sleep, timeout, Timeout};
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 #[cfg(target_os = "linux")]
 pub fn setup_iptables() -> bool{
@@ -44,7 +27,7 @@ pub fn cleanup_iptables(){
     ipt.delete("filter", "FORWARD", "-i nylon -o nylon -j ACCEPT").unwrap();
 }
 
-pub fn start_router(ps: PersistentState, mut os: OperatingState) -> anyhow::Result<MessageQueue>{
+pub fn start_router(ps: PersistentState, os: OperatingState) -> anyhow::Result<MessageQueue>{
     info!("Starting router");
     let (mtx, mrx) = unbounded();
     let ct = CancellationToken::new();

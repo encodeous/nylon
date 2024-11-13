@@ -1,21 +1,18 @@
 use std::net::{SocketAddr};
 use std::sync::Arc;
-use anyhow::bail;
-use bitcode::{Decode, Encode};
 use root::concepts::packet::Packet;
 use root::framework::RoutingSystem;
 use serde::{Deserialize, Serialize};
-use serde_with::EnumMap;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use uuid::Uuid;
-use crate::config::{LinkInfo, NodeIdentity};
+use crate::config::NodeIdentity;
 use crate::core::control::modules::courier::{CourierEvent, CourierPacket};
 use crate::core::control::modules::metric::{MetricEvent, MetricPacket};
 use crate::core::crypto::entity::Entity;
 use crate::core::crypto::sig::SignedClaim;
 use crate::core::routing::{LinkType, NodeAddrType, NylonSystem};
-use crate::core::structure::state::{ActiveLink, NylonEvent};
+use crate::core::structure::state::NylonEvent;
 use crate::util::channel::DuplexChannel;
 
 #[derive(Serialize, Deserialize)]

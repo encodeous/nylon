@@ -1,22 +1,14 @@
 use std::cmp::max;
 use std::net::SocketAddr;
-use crate::core::structure::state::{LinkHealth, PersistentState};
+use crate::core::structure::state::LinkHealth;
 use std::time::{Duration, Instant};
-use bitcode::{Decode, Encode};
 use log::debug;
-use root::concepts::packet::Packet;
 use root::framework::RoutingSystem;
 use root::router::INF;
 use serde::{Deserialize, Serialize};
-use crate::core::control::modules::courier::RoutedPacket;
-use crate::core::control::modules::metric::MetricEvent::{PingCheck, PingLink};
 use crate::core::control::modules::metric::MetricPacket::Pong;
-use crate::core::control::timing::delayed_event;
 use crate::core::routing::{LinkType, NylonSystem};
-use crate::core::structure::network::{NetworkEvent};
-use crate::core::structure::network::NetworkEvent::EMetric;
 use crate::core::structure::network::Datagram::PMetric;
-use crate::core::structure::state::NylonEvent::{Network, NoEvent};
 use crate::core::structure::state::NylonState;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -36,7 +28,7 @@ pub fn handle_metric_packet(
     pkt: MetricPacket,
     src: SocketAddr
 ) -> anyhow::Result<()> {
-    let NylonState{ps, os, mq, ..} = state;
+    let NylonState{ os,  ..} = state;
     let mq = state.mq.clone();
     
     match pkt {
@@ -67,7 +59,7 @@ pub fn handle_metric_packet(
 }
 
 fn ping_link(addr: SocketAddr, state: &mut NylonState, link: LinkType, is_return: bool) {
-    let NylonState { ps, os, mq, .. } = state;
+    let NylonState {  os, mq, .. } = state;
     let entry = os.health.entry(link.clone()).or_insert(
         LinkHealth {
             ping: Duration::MAX,

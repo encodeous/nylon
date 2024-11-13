@@ -1,12 +1,11 @@
 use std::any::Any;
-use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use aws_lc_rs::rand::{SecureRandom, SystemRandom};
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, EcdsaKeyPair, UnparsedPublicKey};
+use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use crate::core::crypto::entity::{Entity, EntitySecret};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

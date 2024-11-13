@@ -1,32 +1,26 @@
 use std::net::{SocketAddr};
-use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use anyhow::{anyhow, bail, Context};
 use chrono::Utc;
 use log::{debug, error, info, trace, warn};
-use root::framework::RoutingSystem;
-use root::router::DummyMAC;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::oneshot;
-use tokio::task::id;
-use tokio::time::timeout;
 use uuid::Uuid;
 use crate::config::LinkInfo;
 use crate::core::control::modules::courier::{handle_courier_event, handle_courier_packet};
-use crate::core::control::modules::metric::{handle_metric_event, handle_metric_packet, MetricPacket};
+use crate::core::control::modules::metric::{handle_metric_event, handle_metric_packet};
 use crate::core::control::modules::routing::handle_routing_packet;
 use crate::core::crypto::entity::EntitySecret;
 use crate::core::crypto::sig::Claim;
-use crate::core::routing::{LinkType, NylonSystem};
-use crate::core::structure::network::{InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram, ConnectResponse, Connect};
-use crate::core::structure::network::CtlPacket::PCourier;
-use crate::core::structure::state::{ActiveLink, MessageQueue, NylonEvent, NylonState, OperatingState, PersistentState};
+use crate::core::routing::LinkType;
+use crate::core::structure::network::{InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram, Connect};
+use crate::core::structure::state::{ActiveLink, MessageQueue, NylonState, OperatingState};
 use crate::core::structure::network::NetworkEvent::{InboundPacket, InboundDatagram, OutboundPacket, SetupLink, SpawnLink, ValidateConnect};
-use crate::core::structure::state::NylonEvent::{Network, NoEvent};
+use crate::core::structure::state::NylonEvent::Network;
 use crate::util::channel::{map_channel_xb, DuplexChannel};
 use crate::util::serialized_io::{read_data, read_data_timeout, write_data};
 
@@ -40,7 +34,7 @@ pub fn spawn_link(
     os: &mut OperatingState
 ) {
     let (mut sr, mut sw) = stream.into_split();
-    let (mut sink, mut send) = upstream.split();
+    let (mut sink, send) = upstream.split();
 
     let mq1 = mq.clone();
     os.join_set.spawn(async move {
@@ -95,7 +89,7 @@ pub fn spawn_link(
 async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySecret) -> anyhow::Result<()> {
     info!("Listening on {ctl}");
     let listener = TcpListener::bind(ctl).await?;
-    let mut bytes: Vec<u8> = Vec::new();
+    let bytes: Vec<u8> = Vec::new();
 
     let pubkey = priv_key.get_pubkey();
 

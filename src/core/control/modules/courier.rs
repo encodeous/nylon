@@ -1,17 +1,15 @@
 use std::time::Instant;
 use log::{info, trace, warn};
-use root::concepts::packet::Packet;
 use root::framework::RoutingSystem;
-use root::router::DummyMAC;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::core::control::modules::courier::CourierEvent::RoutePacket;
 use crate::core::control::modules::courier::CourierPacket::{Deliver, TraceRoute};
 use crate::core::routing::{LinkType, NodeAddrType, NylonSystem};
-use crate::core::structure::network::{CtlPacket, NetworkEvent};
+use crate::core::structure::network::NetworkEvent;
 use crate::core::structure::network::CtlPacket::PCourier;
 use crate::core::structure::state::NylonEvent::{NoEvent};
-use crate::core::structure::state::{NylonState, OperatingState, PersistentState};
+use crate::core::structure::state::NylonState;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum CourierPacket {
@@ -66,7 +64,7 @@ pub fn handle_courier_packet(
     packet: CourierPacket,
     link: LinkType
 ) -> anyhow::Result<()> {
-    let NylonState{ps, os, mq, ..} = state;
+    let NylonState{ps,  mq, ..} = state;
     let mq = mq.clone();
     match packet {
         Deliver { dst_id, sender_id, data } => {

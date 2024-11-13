@@ -1,7 +1,5 @@
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio_util::sync::{CancellationToken, PollSendError, PollSender};
-use std::pin::Pin;
-use std::task::{Poll, Context};
+use tokio_util::sync::CancellationToken;
 
 pub struct DuplexChannel<R: Send + 'static, S: Send + 'static> {
     pub sink: Receiver<R>,

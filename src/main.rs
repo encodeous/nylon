@@ -1,27 +1,4 @@
-use std::{env, fs};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{stdin, Read, Write};
-use std::net::{IpAddr, SocketAddr};
-use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
-use base64::prelude::*;
-use defguard_wireguard_rs::{
-    host::Peer, key::Key, net::IpAddrMask, InterfaceConfiguration, Kernel, Userspace, WGApi,
-    WireguardInterfaceApi,
-};
-use serde_json::json;
-use x25519_dalek::{EphemeralSecret, PublicKey};
-use log::{error, info, warn};
-use root::concepts::neighbour::Neighbour;
-use root::router::{Router, INF};
-use tokio::task::JoinSet;
-use tokio::time::sleep;
-use crate::config::{NodeConfig};
-use crate::core::mesh_router::start_router;
-use core::structure::state::{OperatingState, PersistentState};
-use core::structure::state::NylonEvent::DispatchCommand;
+use std::env;
 use crate::cli::cli_main;
 
 mod config;

@@ -1,8 +1,5 @@
-use log::info;
 use root::concepts::packet::Packet;
-use root::framework::RoutingSystem;
 use root::router::DummyMAC;
-use serde_json::json;
 use crate::core::routing::{LinkType, NylonSystem};
 use crate::core::structure::network::{CtlPacket};
 use crate::core::structure::state::NylonEvent::NoEvent;
@@ -21,7 +18,7 @@ pub fn handle_routing_packet(
 
 
 pub fn timed_routing_update(state: &mut NylonState) -> anyhow::Result<()> {
-    let NylonState{ps, os, mq, ..} = state;
+    let NylonState{ps,   ..} = state;
     ps.router.full_update();
     write_routing_packets(state)?;
     Ok(())

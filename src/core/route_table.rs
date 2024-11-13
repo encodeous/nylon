@@ -1,7 +1,5 @@
 use crate::core::structure::state::{NylonState};
-use defguard_wireguard_rs::net::IpAddrMask;
 use defguard_wireguard_rs::{WireguardInterfaceApi};
-use log::{trace, warn};
 use std::collections::{HashSet};
 
 pub fn timed_sys_route_update(state: &mut NylonState,) -> anyhow::Result<()>{

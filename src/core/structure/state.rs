@@ -1,34 +1,27 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::{anyhow, bail};
-use chrono::{DateTime, Utc};
+use anyhow::anyhow;
+use chrono::Utc;
 use crossbeam_channel::Sender;
 use defguard_wireguard_rs::{InterfaceConfiguration, Kernel, WGApi};
-use defguard_wireguard_rs::host::Peer;
-use root::concepts::packet::Packet;
 use serde::{Deserialize, Serialize};
 use root::router::Router;
 use root::framework::RoutingSystem;
-use serde_json::json;
 use crate::core::routing::{LinkType, NodeAddrType, NylonSystem};
 use serde_with::serde_as;
-use tokio::net::TcpStream;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-use crate::config::{CentralConfig, LinkInfo, NodeConfig, NodeIdentity, NodeInfo};
-use crate::core::control::modules::courier::CourierPacket;
-use crate::core::control::modules::metric::MetricEvent;
-use crate::core::structure::network::{InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
+use crate::config::{CentralConfig, NodeConfig, NodeIdentity, NodeInfo};
+use crate::core::structure::network::{CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
 use crate::core::structure::state::NetworkEvent::OutboundPacket;
 use crate::core::structure::state::NylonEvent::{DispatchCommand, Network};
 use crate::core::control::timing::TimedEvent;
 use crate::core::crypto::entity::Entity;
 use crate::core::crypto::sig::{Claim, SignedClaim};
 use crate::core::structure::network::NetworkEvent::{OutboundDatagram};
-use crate::util::channel::DuplexChannel;
 
 /// Represents a link that has passed validation and is active
 pub struct ActiveLink {
