@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::core::control::modules::courier::CourierEvent::RoutePacket;
 use crate::core::control::modules::courier::CourierPacket::{Deliver, TraceRoute};
-use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{UnifiedAddr, CtlPacket, NetworkEvent};
+use crate::core::routing::{LinkType, NodeAddrType, NylonSystem};
+use crate::core::structure::network::{CtlPacket, NetworkEvent};
 use crate::core::structure::network::CtlPacket::PCourier;
 use crate::core::structure::state::NylonEvent::{NoEvent};
 use crate::core::structure::state::{NylonState, OperatingState, PersistentState};
@@ -64,11 +64,10 @@ pub fn handle_courier_event(
 pub fn handle_courier_packet(
     state: &mut NylonState,
     packet: CourierPacket,
-    src: UnifiedAddr
+    link: LinkType
 ) -> anyhow::Result<()> {
     let NylonState{ps, os, mq, ..} = state;
     let mq = mq.clone();
-    let link = os.node_config.get_link(src.as_link()?).unwrap();
     match packet {
         Deliver { dst_id, sender_id, data } => {
             if dst_id == ps.router.address {
@@ -93,12 +92,9 @@ pub fn handle_courier_packet(
             } else {
                 // do core
                 if let Some(route) = ps.router.routes.get(&dst_id) {
-                    if os.log_routing {
-                        info!("TRT sender: {}, dst: {}, nh: {}", sender_id, dst_id, route.next_hop);
-                    }
                     // forward packet
                     mq.send_packet(
-                        link.id.clone(),
+                        link,
                         PCourier(
                             TraceRoute {
                                 dst_id,
@@ -118,7 +114,7 @@ pub fn handle_courier_packet(
 fn handle_routed_packet(
     state: &mut NylonState,
     pkt: RoutedPacket,
-    src: <NylonSystem as RoutingSystem>::NodeAddress
+    src: NodeAddrType
 ) -> anyhow::Result<()> {
     let NylonState{ps, os, mq, ..} = state;
     let mq = mq.clone();
@@ -158,17 +154,16 @@ pub fn route_packet(
     sender_id: <NylonSystem as RoutingSystem>::NodeAddress
 ) -> anyhow::Result<()> {
     let NylonState{ps, os, mq, ..} = state;
+    let mq = mq.clone();
     let peers = &os.node_config;
     if dst_id == ps.router.address {
         handle_routed_packet(state, data, sender_id)?;
     } else {
         // do core
         if let Some(route) = ps.router.routes.get(&dst_id) {
-            if os.log_routing {
-                info!("DP sender: {}, dst: {}, nh: {}", sender_id, dst_id, route.next_hop);
-            }
             // forward packet
-            if let Some(peer) = peers.get_link(&route.link) {
+            let link = route.link.clone();
+            if let Ok(peer) = state.get_link(&link) {
                 mq.send_packet(
                     peer.id.clone(),
                     PCourier(

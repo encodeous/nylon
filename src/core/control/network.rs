@@ -12,6 +12,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::sync::oneshot;
+use tokio::task::id;
 use tokio::time::timeout;
 use uuid::Uuid;
 use crate::config::LinkInfo;
@@ -95,11 +96,15 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
     info!("Listening on {ctl}");
     let listener = TcpListener::bind(ctl).await?;
     let mut bytes: Vec<u8> = Vec::new();
-    
+
     let pubkey = priv_key.get_pubkey();
-    
+
     while !mq.cancellation_token.is_cancelled(){
         let (mut stream, addr) = listener.accept().await?;
+
+        let tmq = mq.clone();
+        let priv_key = priv_key.clone();
+        let pubkey = pubkey.clone();
         
         tokio::spawn(async move {
             trace!("Inbound connection from {addr}");
@@ -108,14 +113,18 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
 
                 // validate response
                 let (compl, wait) = oneshot::channel();
-                mq.send_network(ValidateConnect {
+                tmq.send_network(ValidateConnect {
                     expected_node: None,
                     valid_link: None,
                     pkt: request.clone(),
                     result: compl
                 });
-                let identity = wait.await??;
+                let identity = wait.await?;
                 
+                if let Err(e) = identity {
+                    return Err(e);
+                }
+
                 let claim = Claim::from_now_until(request.link_id.claim.data, Utc::now() + Duration::from_secs(5));
                 let signed = claim.sign_claim(&priv_key)?;
 
@@ -124,13 +133,13 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
                     link_id: signed,
                 }).await.context("Failed to send handshake init")?;
 
-                mq.send_network(SetupLink {
-                    id: request.link_id.claim.data, 
+                tmq.send_network(SetupLink {
+                    id: request.link_id.claim.data,
                     addr_dg: None,
-                    dst: identity,
+                    dst: identity.unwrap(),
                     stream
                 });
-                
+
                 anyhow::Result::Ok(())
             };
             if let Err(x) = critical.await {
@@ -143,19 +152,25 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
 }
 
 fn connect_ctl(state: &mut NylonState, link: LinkInfo) -> anyhow::Result<()> {
-    let NylonState{os, mq, ..} = state;
-    let mq = mq.clone();
-    
-    let expected_pubkey = state.get_node_by_name(&link.friendly_name).ok_or(anyhow!("Specified friendly name not found in nodes"))?.id.pubkey.clone();
+    let mq = state.mq.clone();
 
-    os.join_set.spawn(async move {
+    let expected_pubkey = state.get_node_by_name(&link.friendly_name).ok_or(anyhow!("Specified friendly name not found in nodes"))?.id.pubkey.clone();
+    
+    let privkey = state.os.node_config.node_secret.node_privkey.clone();
+    let pubkey = state.node_info().id.pubkey.clone();
+
+    state.os.join_set.spawn(async move {
         let client = TcpStream::connect(link.addr_ctl).await;
         if let Ok(mut stream) = client {
             let critical = async {
                 let id = Uuid::new_v4();
+
+                let claim = Claim::from_now_until(id, Utc::now() + Duration::from_secs(5));
+                let signed = claim.sign_claim(&privkey)?;
+                
                 write_data(&mut stream, &mut vec![], &Connect {
-                    peer_addr: state.node_info().id.pubkey,
-                    link_id: state.sign_ephemeral(id)
+                    peer_addr: pubkey,
+                    link_id: signed
                 }).await.context("Failed to send handshake init")?;
 
                 let resp: Connect = read_data_timeout(&mut stream, &mut vec![], Duration::from_secs(5)).await.context("Failed to get response")?;
@@ -168,7 +183,12 @@ fn connect_ctl(state: &mut NylonState, link: LinkInfo) -> anyhow::Result<()> {
                     pkt: resp,
                     result: compl
                 });
-                let identity = wait.await??;
+                let identity = wait.await?;
+
+                if let Err(e) = identity {
+                    return Err(e);
+                }
+                let identity = identity.unwrap();
 
                 info!("Connected to peer {} via {}", identity.friendly_name, id);
 
@@ -284,9 +304,9 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
                     upstream: us,
                 }
             );
-            
+
             let name = dst.friendly_name.clone();
-            
+
             let active_link = ActiveLink{
                 id,
                 addr_dg,
@@ -295,7 +315,7 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
             };
 
             debug!("Connected to peer {} via {}", name, id);
-            
+
             os.links.insert(id, active_link);
             map_channel_xb(ds.sink, mq.main.clone(), |pkt| Network(InboundPacket(pkt)), mq.cancellation_token.clone());
         }

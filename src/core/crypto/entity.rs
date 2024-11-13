@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter, Pointer};
 use aws_lc_rs::error::KeyRejected;
 use aws_lc_rs::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,12 @@ use aws_lc_rs::rand::SystemRandom;
 pub struct Entity {
     #[serde(with = "hex::serde")]
     pub pub_key: Vec<u8>,
+}
+
+impl Display for Entity{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(hex::encode(&self.pub_key).as_str())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]

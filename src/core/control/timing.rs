@@ -42,8 +42,8 @@ pub fn register_events(state: &mut NylonState) {
 pub fn handle_timed_event(state: &mut NylonState, event: TimedEvent) -> anyhow::Result<()>{
     match event {
         TimedEvent::MetricUpdate => {
-            for peer in &state.os.node_config.links {
-                state.mq.send(NylonEvent::Network(EMetric(PingLink(peer.id.clone()))));
+            for (link, info) in &state.os.links {
+                state.mq.send(NylonEvent::Network(EMetric(PingLink(*link))));
             }
         }
         TimedEvent::RouteUpdate => timed_routing_update(state)?,

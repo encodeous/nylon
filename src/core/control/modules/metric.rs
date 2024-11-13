@@ -90,7 +90,9 @@ pub fn handle_metric_event(
     match event {
         MetricEvent::PingLink(link) => {
             if let Ok(peer) = state.get_link(&link){
-                ping_link(peer.info.addr_dg, state, link, false);
+                if let Some(dg) = peer.addr_dg {
+                    ping_link(dg, state, link, false);
+                }
             }
         }
         MetricEvent::PingCheck{link, seq} => {

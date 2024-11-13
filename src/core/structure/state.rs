@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::config::{CentralConfig, LinkInfo, NodeConfig, NodeIdentity, NodeInfo};
 use crate::core::control::modules::courier::CourierPacket;
 use crate::core::control::modules::metric::MetricEvent;
-use crate::core::structure::network::{ConnectRequest, InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
+use crate::core::structure::network::{InPacket, CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
 use crate::core::structure::state::NetworkEvent::OutboundPacket;
 use crate::core::structure::state::NylonEvent::{DispatchCommand, Network};
 use crate::core::control::timing::TimedEvent;

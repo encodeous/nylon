@@ -3,22 +3,18 @@ use root::concepts::packet::Packet;
 use root::framework::RoutingSystem;
 use root::router::DummyMAC;
 use serde_json::json;
-use crate::core::routing::NylonSystem;
-use crate::core::structure::network::{CtlPacket, UnifiedAddr};
+use crate::core::routing::{LinkType, NylonSystem};
+use crate::core::structure::network::{CtlPacket};
 use crate::core::structure::state::NylonEvent::NoEvent;
 use crate::core::structure::state::NylonState;
 
 pub fn handle_routing_packet(
     state: &mut NylonState,
     pkt: Packet<NylonSystem>,
-    src: UnifiedAddr
+    src: LinkType
 ) -> anyhow::Result<()> {
-    let link = state.get_link_uni(&src)?.clone();
-    let NylonState{ps, os, mq, ..} = state;
-    if os.log_routing {
-        info!("RP From: {}, {}, via {}", link.addr_vlan, json!(pkt), link.id);
-    }
-    ps.router.handle_packet(&DummyMAC::from(pkt), &link.id, &link.addr_vlan)?;
+    let pubkey = state.get_link(&src)?.dst.pubkey.clone();
+    state.ps.router.handle_packet(&DummyMAC::from(pkt), &src, &pubkey)?;
     write_routing_packets(state)?;
     Ok(())
 }
@@ -32,11 +28,9 @@ pub fn timed_routing_update(state: &mut NylonState) -> anyhow::Result<()> {
 }
 
 fn write_routing_packets(state: &mut NylonState) -> anyhow::Result<()> {
-    let NylonState{ps, os, mq, ..} = state;
-    let mq = mq.clone();
-    let node = &os.node_config;
-    for pkt in ps.router.outbound_packets.drain(..){
-        if let Some(peer) = node.get_link(&pkt.link){
+    let mq = state.mq.clone();
+    for pkt in &state.ps.router.outbound_packets{
+        if let Ok(peer) = state.get_link(&pkt.link){
             mq.send_packet(
                 peer.id.clone(),
                 CtlPacket::Routing(pkt.packet.data.clone()),
@@ -44,5 +38,6 @@ fn write_routing_packets(state: &mut NylonState) -> anyhow::Result<()> {
             );
         }
     }
+    state.ps.router.outbound_packets.clear();
     Ok(())
 }
