@@ -27,29 +27,6 @@ pub fn cleanup_iptables(){
     ipt.delete("filter", "FORWARD", "-i nylon -o nylon -j ACCEPT").unwrap();
 }
 
-pub fn start_router(ps: PersistentState, os: OperatingState) -> anyhow::Result<MessageQueue>{
-    info!("Starting router");
-    let (mtx, mrx) = unbounded();
-    let ct = CancellationToken::new();
-    let mq = MessageQueue{
-        main: mtx,
-        cancellation_token: ct
-    };
-    let tmq = mq.clone();
-    let mut state = NylonState{
-        ps, os, mq
-    };
-    register_events(&mut state);
-    start_networking(&mut state)?;
-
-    let tmq = state.mq.clone();
-    tokio::task::spawn_blocking(||{
-        main_loop(state, mrx).context("Main Thread Failed: ").unwrap();
-    });
-    info!("Router started");
-    Ok(tmq)
-}
-
 // MAIN THREAD
 
 fn main_loop(
