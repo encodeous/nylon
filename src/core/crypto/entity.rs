@@ -4,6 +4,7 @@ use aws_lc_rs::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use aws_lc_rs::rand::SystemRandom;
+use zeroize::Zeroize;
 
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
 #[serde(transparent)]
@@ -18,7 +19,7 @@ impl Display for Entity{
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug, Zeroize)]
 #[serde(transparent)]
 pub struct EntitySecret {
     #[serde(with = "hex::serde")]

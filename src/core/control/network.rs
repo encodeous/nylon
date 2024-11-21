@@ -321,7 +321,7 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
         }
         OutboundPacket(packet) => {
             let mut sent = false;
-            let link = packet.link.clone();
+            let link = packet.link;
             let failure = packet.failure_event.clone();
             if let Some(conn) = os.links.get(&packet.link){
                 sent = conn.ctl.try_send(packet).is_ok();

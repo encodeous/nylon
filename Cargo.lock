@@ -920,37 +920,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mini-nylon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-lc-rs",
- "base64",
- "bitcode",
- "chrono",
- "clap",
- "crossbeam-channel",
- "ctrlc",
- "curve25519-dalek",
- "defguard_wireguard_rs",
- "ed25519-dalek",
- "educe",
- "env_logger",
- "hex",
- "iptables",
- "log",
- "root",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror 2.0.0",
- "tokio",
- "tokio-util",
- "uuid",
- "x25519-dalek",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1094,6 +1063,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "ny"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64",
+ "bitcode",
+ "chrono",
+ "clap",
+ "crossbeam-channel",
+ "ctrlc",
+ "curve25519-dalek",
+ "defguard_wireguard_rs",
+ "ed25519-dalek",
+ "educe",
+ "env_logger",
+ "hex",
+ "iptables",
+ "log",
+ "root",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.0",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]

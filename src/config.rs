@@ -1,8 +1,9 @@
 use std::net::{SocketAddr};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 use crate::core::crypto::entity::{Entity, EntitySecret};
 // Node Specific States
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Zeroize)]
 pub struct NodeSecret {
     // used for wireguard
     pub wg_privkey: String,
@@ -14,7 +15,8 @@ pub struct NodeSecret {
 pub struct NodeConfig {
     pub node_secret: NodeSecret,
     pub node_sock: LinkInfo,
-    pub saved_links: Vec<LinkInfo>
+    pub saved_links: Vec<LinkInfo>,
+    pub interface_name: String
 }
 
 // Shared Config

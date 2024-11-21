@@ -94,7 +94,6 @@ pub struct OperatingState {
     
     // Network IO
     pub udp_sock: Option<tokio::sync::mpsc::Sender<UdpPacket>>,
-    pub itf_config: InterfaceConfiguration,
     #[cfg(not(target_os = "macos"))]
     pub wg_api: WGApi::<Kernel>,
     #[cfg(target_os = "macos")]

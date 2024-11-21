@@ -29,7 +29,7 @@ pub fn cleanup_iptables(){
 
 // MAIN THREAD
 
-fn main_loop(
+pub fn main_loop(
     mut state: NylonState,
     mqr: Receiver<NylonEvent>
 ) -> anyhow::Result<()>{
