@@ -29,6 +29,7 @@ hex = { version = "0.4.3", features = ["serde"] }
 educe = "0.6.0"
 clap = { version = "4.5.20", features = ["derive"] }
 zeroize = "1.8.1"
+base64-serde = "0.8.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iptables = "0.5.2"

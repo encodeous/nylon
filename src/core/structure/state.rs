@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::config::{CentralConfig, NodeConfig, NodeIdentity, NodeInfo};
 use crate::core::structure::network::{CtlPacket, NetworkEvent, OutPacket, UdpPacket, Datagram};
 use crate::core::structure::state::NetworkEvent::OutboundPacket;
-use crate::core::structure::state::NylonEvent::{DispatchCommand, Network};
+use crate::core::structure::state::NylonEvent::{DispatchCommand, Network, NoEvent};
 use crate::core::control::timing::TimedEvent;
 use crate::core::crypto::entity::Entity;
 use crate::core::crypto::sig::{Claim, SignedClaim};
@@ -47,17 +47,17 @@ impl NylonState {
     }
     pub fn get_node_by_name(&self, friendly_name: &String) -> Option<&NodeInfo> {
         self.os.central_config.nodes.iter().find(|x| {
-            x.id.friendly_name == *friendly_name
+            x.identity.id == *friendly_name
         })
     }
     pub fn get_node_by_pubkey(&self, pubkey: &NodeAddrType) -> Option<&NodeInfo> {
         self.os.central_config.nodes.iter().find(|x| {
-            x.id.pubkey == *pubkey
+            x.identity.pubkey == *pubkey
         })
     }
     pub fn node_info(&mut self) -> NodeInfo {
         let pubkey = self.pubkey().clone();
-        self.os.central_config.nodes.iter().find(|x| x.id.pubkey == pubkey).unwrap().clone()
+        self.os.central_config.nodes.iter().find(|x| x.identity.pubkey == pubkey).unwrap().clone()
     }
     pub fn pubkey(&mut self) -> &Entity {
         self.os.cached_state.pubkey.get_or_insert_with(|| {
@@ -146,7 +146,7 @@ impl MessageQueue{
     /// Shuts down nylon
     pub fn shutdown(&self) {
         self.cancellation_token.cancel();
-        self.main.send(DispatchCommand(String::new())).unwrap();
+        self.main.send(NoEvent).unwrap();
     }
 }
 

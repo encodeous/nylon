@@ -23,6 +23,7 @@ pub struct OutPacket {
     pub failure_event: Option<Arc<NylonEvent>>
 }
 
+
 #[derive(Serialize, Deserialize)]
 pub struct UdpPacket {
     pub addr: SocketAddr,
@@ -61,7 +62,7 @@ pub enum Datagram {
 
 #[derive(Serialize)]
 pub enum NetworkEvent {
-    ValidateConnect{
+    ValidateConnect {
         expected_node: Option<Entity>,
         valid_link: Option<LinkType>,
         pkt: Connect,
@@ -75,7 +76,7 @@ pub enum NetworkEvent {
         dst: NodeIdentity,
         stream: TcpStream
     },
-    SpawnLink{
+    SpawnLink {
         #[serde(skip_serializing, skip_deserializing)]
         stream: TcpStream,
         #[serde(skip_serializing, skip_deserializing)]
@@ -84,10 +85,10 @@ pub enum NetworkEvent {
     },
     InboundPacket(InPacket),
     OutboundPacket(OutPacket),
-    
+
     InboundDatagram(UdpPacket),
     OutboundDatagram(UdpPacket),
-    
+
     ECourier(CourierEvent),
     EMetric(MetricEvent),
 }

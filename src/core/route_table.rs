@@ -40,15 +40,15 @@ pub fn timed_sys_route_update(state: &mut NylonState,) -> anyhow::Result<()>{
     //     }
     // }
 
-    let n_cfg = serde_json::to_string(&os.itf_config)?;
-    
-    if n_cfg != os.prev_itf_config{
-        os.prev_itf_config = n_cfg;
-        #[cfg(not(windows))]
-        os.wg_api.configure_interface(&os.itf_config)?;
-        #[cfg(windows)]
-        os.wg_api.configure_interface(&os.itf_config, &[], &[])?;
-    }
+    // let n_cfg = serde_json::to_string(&os.itf_config)?;
+    // 
+    // if n_cfg != os.prev_itf_config{
+    //     os.prev_itf_config = n_cfg;
+    //     #[cfg(not(windows))]
+    //     os.wg_api.configure_interface(&os.itf_config)?;
+    //     #[cfg(windows)]
+    //     os.wg_api.configure_interface(&os.itf_config, &[], &[])?;
+    // }
     
     Ok(())
 }

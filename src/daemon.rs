@@ -1,3 +1,4 @@
+use std::path;
 use std::path::{Path, PathBuf};
 use anyhow::Context;
 use crossbeam_channel::unbounded;
@@ -9,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::config::{CentralConfig, NodeConfig};
 use crate::core::control::network::start_networking;
 use crate::core::control::timing::register_events;
+use crate::core::crypto::sig::SignedClaim;
 use crate::core::nylond;
 use crate::core::structure::state::{CachedState, MessageQueue, NylonState, OperatingState, PersistentState};
 
@@ -25,31 +27,32 @@ pub fn setup_wireguard(config: &NodeConfig) -> anyhow::Result<WGApi>{
     Ok(wgapi)
 }
 
-async fn create_template_config() {
-
-}
-
 pub async fn run(config_dir: PathBuf) -> anyhow::Result<()>{
-    let node_config_path  = config_dir.join("config.json");
-    let net_config_path  = config_dir.join("network.json");
+    info!("Loading node and network configuration from {:?}", path::absolute(config_dir.clone())?);
+    
+    let node_config_path  = config_dir.join("node.json");
+    let net_config_path  = config_dir.join("net.json");
+    info!("{node_config_path:?}");
     
     if !node_config_path.exists() {
-        info!("Template config.json created, please configure this node!");
+        info!("This node is not initialized, please run \"ny node init\" first.");
         return Ok(());
     }
 
     if !net_config_path.exists() {
-        info!("No network configuration found, please create or join a network first.");
+        info!("No network configuration found, please copy over a net.json or run \"ny net init\"");
         return Ok(());
     }
-    
-    info!("Loading node and network configuration from {:?}", fs::canonicalize(config_dir).await?);
 
     let config_str = fs::read_to_string(&node_config_path).await?;
     let config: NodeConfig = serde_json::from_str(&config_str)?;
 
     let config_str = fs::read_to_string(&net_config_path).await?;
-    let central: CentralConfig = serde_json::from_str(&config_str)?;
+    let central: SignedClaim<CentralConfig> = serde_json::from_str(&config_str)?;
+
+    info!("Verifying configuration integrity");
+
+    central.validate(&central.root_ca)?;
     
     info!("Configuring WireGuard");
     
@@ -70,7 +73,7 @@ pub async fn run(config_dir: PathBuf) -> anyhow::Result<()>{
     
     let mut state = NylonState{
         ps: PersistentState {
-            router: Router::new(central.nodes.iter().find(|x| x.id.pubkey == pubkey).unwrap().id.pubkey.clone())
+            router: Router::new(central.nodes.iter().find(|x| x.identity.pubkey == pubkey).unwrap().identity.pubkey.clone())
         },
         os: OperatingState {
             health: Default::default(),
@@ -81,13 +84,13 @@ pub async fn run(config_dir: PathBuf) -> anyhow::Result<()>{
             join_set: Default::default(),
             prev_itf_config: "".to_string(),
             node_config: config,
-            central_config: central,
+            central_config: central.claim.data,
             cached_state: CachedState { pubkey: None },
         },
         mq,
     };
     
-    info!("Starting Nylon daemon as node: {} with public key: {}", state.node_info().id.friendly_name, state.pubkey());
+    info!("Starting Nylon daemon as node: {} with public key: {}", state.node_info().identity.id, state.pubkey());
 
     info!("Registering events");
     register_events(&mut state);

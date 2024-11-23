@@ -38,7 +38,7 @@ pub fn main_loop(
     let iptable_setup = setup_iptables();
     #[cfg(target_os = "linux")]
     if !iptable_setup {
-        warn!("Failed to automatically set iptable rules");
+        warn!("Failed to automatically set iptables rules");
     }
     
     let mq = state.mq.clone();

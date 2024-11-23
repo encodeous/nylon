@@ -130,7 +130,7 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
                 tmq.send_network(SetupLink {
                     id: request.link_id.claim.data,
                     addr_dg: None,
-                    dst: identity.unwrap(),
+                    dst: identity?.clone(),
                     stream
                 });
 
@@ -145,13 +145,13 @@ async fn link_ctl_listener(mq: MessageQueue, ctl: SocketAddr, priv_key: EntitySe
     Ok(())
 }
 
-fn connect_ctl(state: &mut NylonState, link: LinkInfo) -> anyhow::Result<()> {
+fn connect_ctl(state: &mut NylonState, node: String, link: LinkInfo) -> anyhow::Result<()> {
     let mq = state.mq.clone();
 
-    let expected_pubkey = state.get_node_by_name(&link.friendly_name).ok_or(anyhow!("Specified friendly name not found in nodes"))?.id.pubkey.clone();
+    let expected_pubkey = state.get_node_by_name(&node).ok_or(anyhow!("Specified friendly name not found in nodes"))?.identity.pubkey.clone();
     
     let privkey = state.os.node_config.node_secret.node_privkey.clone();
-    let pubkey = state.node_info().id.pubkey.clone();
+    let pubkey = state.node_info().identity.pubkey.clone();
 
     state.os.join_set.spawn(async move {
         let client = TcpStream::connect(link.addr_ctl).await;
@@ -184,12 +184,12 @@ fn connect_ctl(state: &mut NylonState, link: LinkInfo) -> anyhow::Result<()> {
                 }
                 let identity = identity.unwrap();
 
-                info!("Connected to peer {} via {}", identity.friendly_name, id);
+                info!("Connected to peer {} via {}", identity.id, id);
 
                 mq.send_network(SetupLink {
                     id,
                     addr_dg: Some(link.addr_dg),
-                    dst: identity,
+                    dst: identity.clone(),
                     stream
                 });
                 anyhow::Result::Ok(())
@@ -285,7 +285,7 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
                 if state.get_link(&pkt.link_id.claim.data).is_ok() {
                     bail!("A link with the same ID is already active!");
                 }
-                Ok(res.unwrap().id.clone())
+                Ok(res.unwrap().identity.clone())
             };
             result.send(critical).unwrap();
         }
@@ -299,7 +299,7 @@ pub fn network_controller(state: &mut NylonState, event: NetworkEvent) -> anyhow
                 }
             );
 
-            let name = dst.friendly_name.clone();
+            let name = dst.id.clone();
 
             let active_link = ActiveLink{
                 id,

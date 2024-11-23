@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::ops::Deref;
 use chrono::{DateTime, Utc};
 use aws_lc_rs::rand::{SecureRandom, SystemRandom};
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
@@ -6,7 +7,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 use anyhow::Result;
+use base64::engine::general_purpose::STANDARD;
+use base64_serde::base64_serde_type;
 use crate::core::crypto::entity::{Entity, EntitySecret};
+
+base64_serde_type!(Base64Standard, STANDARD);
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Claim<T: Clone> {
@@ -19,8 +24,16 @@ pub struct Claim<T: Clone> {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SignedClaim<T: Clone> {
     pub claim: Claim<T>,
-    #[serde(with = "hex::serde")]
+    #[serde(with = "Base64Standard")]
     pub signature: Vec<u8>
+}
+
+impl<T: Clone> Deref for SignedClaim<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.claim.data
+    }
 }
 
 impl<T: Clone + Serialize + Any> Claim<T>{
@@ -48,10 +61,10 @@ impl<T: Clone + Serialize + Any> Claim<T>{
         Self::from(data, Utc::now(), end)
     }
 
-    pub fn sign_claim(&self, key_pair: &EntitySecret) -> Result<SignedClaim<T>> {
+    pub fn sign_claim(&self, secret: &EntitySecret) -> Result<SignedClaim<T>> {
         Ok(SignedClaim {
             claim: self.clone(),
-            signature: key_pair.sign(&self.to_serialized()?)?
+            signature: secret.sign(&self.to_serialized()?)?
         })
     }
 }
