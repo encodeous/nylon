@@ -1,0 +1,47 @@
+syntax = "proto3";
+package proto;
+
+option go_package = "core/network/";
+
+// nylon concepts
+
+message Source {
+  string Id = 1;
+  uint32 Seqno = 2;
+  bytes Sig = 3;
+}
+
+// handshake
+
+message HsMsg {
+  oneof type {
+    HsPingPong PingPong = 1;
+  }
+}
+
+message HsPingPong {
+  string Id = 1;
+  bool IsInitiator = 2;
+}
+
+// control messages
+
+message CtlMsg {
+  oneof type {
+    CtlRouteUpdate Route = 1;
+    CtlSeqnoRequest Seqno = 2;
+  }
+}
+
+message CtlRouteUpdate {
+  message Params {
+    Source Source = 1;
+    uint32 Metric = 2;
+  }
+  bool Urgent = 1;
+  repeated Params Updates = 2;
+}
+
+message CtlSeqnoRequest {
+  Source Current = 1;
+}
