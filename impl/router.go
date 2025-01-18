@@ -1,60 +1,40 @@
-package core
+package impl
 
 import (
 	"errors"
-	"github.com/encodeous/nylon/core/network"
+	state2 "github.com/encodeous/nylon/state"
 )
 
-type Node string
-
-type Neighbour struct {
-	Id      Node
-	Routes  map[Node]PubRoute
-	NodeSrc map[Node]Source
-	DpLinks []network.DpLink
-	CtlLink network.CtlLink
-	Metric  uint16
-}
-
-type Route struct {
-	PubRoute
-	Fd   uint16 // feasibility distance
-	Link network.DpLink
-	Nh   Node // next hop node
-}
-
-type Source struct {
-	Id    Node
-	Seqno uint16 // Sequence Number
-	Sig   []byte // signature
-}
-
-type PubRoute struct {
-	Src       Source
-	Metric    uint16
-	Retracted bool
-}
-
 type Router struct {
-	Neighbours []*Neighbour
-	Routes     map[Node]Route
-	Self       Node
+	// list of active neighbours
+	Neighbours []*state2.Neighbour
+	Routes     map[state2.Node]state2.Route
+	Self       state2.Node
 }
 
-func (r *Router) Update() error {
-	err := r.updateRoutes()
+func (r *Router) Init(s state2.State) error {
+	s.Log.Debug("init router")
+	r.Self = s.NCfg.Id
+	return nil
+}
+
+func (r *Router) Update(s state2.State) error {
+	err := r.updateRoutes(s)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *Router) updateRoutes() error {
-	var newRetractions []Node
+func (r *Router) updateRoutes(s state2.State) error {
+	var newRetractions []state2.Node
+
+	// basically bellman ford algorithm
 
 	for _, neigh := range r.Neighbours {
 		for _, link := range neigh.DpLinks {
 			if link.Metric() == 0 {
+				s.Log.Warn("link metric is zero")
 				return errors.New("metric cannot be zero")
 			}
 			for src, neighRoute := range neigh.Routes {
@@ -99,8 +79,8 @@ func (r *Router) updateRoutes() error {
 					r.Routes[src] = tRoute
 				} else if metric != INF {
 					// add new route, if it is not retracted
-					r.Routes[src] = Route{
-						PubRoute: PubRoute{
+					r.Routes[src] = state2.Route{
+						PubRoute: state2.PubRoute{
 							Src:       neigh.NodeSrc[src],
 							Metric:    metric,
 							Retracted: false,
@@ -116,37 +96,3 @@ func (r *Router) updateRoutes() error {
 
 	return nil
 }
-
-// region utils
-
-const (
-	INF = 65535
-)
-
-func AddSeqno(a, b uint16) uint16 {
-	if a == INF || b == INF {
-		return INF
-	} else {
-		return min(INF-1, a+b)
-	}
-}
-
-func SeqnoLt(a, b uint16) bool {
-	x := (b - a) % 63336
-	return 0 < x && x < 32768
-}
-
-func IsFeasible(curRoute Route, newRoute PubRoute, metric uint16) bool {
-	if SeqnoLt(newRoute.Src.Seqno, curRoute.Src.Seqno) {
-		return false
-	}
-
-	if metric < curRoute.Fd ||
-		SeqnoLt(curRoute.Src.Seqno, newRoute.Src.Seqno) ||
-		(metric == curRoute.Fd && curRoute.Metric == INF) {
-		return true
-	}
-	return false
-}
-
-// endregion

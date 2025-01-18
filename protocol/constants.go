@@ -1,4 +1,4 @@
-package network
+package protocol
 
 const (
 	MaxPacketSize = 65535

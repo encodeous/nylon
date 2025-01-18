@@ -1,4 +1,4 @@
-package network
+package state
 
 import (
 	"github.com/google/uuid"
@@ -8,7 +8,7 @@ import (
 type CtlLink interface {
 	NetLink
 	SendPacket(m proto.Message) error
-	ReceivePacket() (proto.Message, error)
+	ReceivePacket(proto.Message) error
 }
 
 type DpLink interface {

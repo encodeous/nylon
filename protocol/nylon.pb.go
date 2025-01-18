@@ -4,7 +4,7 @@
 // 	protoc        v5.29.3
 // source: core/proto/nylon.proto
 
-package network
+package protocol
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

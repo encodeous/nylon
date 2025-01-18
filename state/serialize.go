@@ -1,4 +1,4 @@
-package core
+package state
 
 import (
 	"crypto/ecdh"
