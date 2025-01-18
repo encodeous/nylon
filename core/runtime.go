@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 	"crypto/ed25519"
-	impl2 "github.com/encodeous/nylon/impl"
-	state2 "github.com/encodeous/nylon/state"
+	"github.com/encodeous/nylon/impl"
+	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	"log/slog"
 	"os"
@@ -12,10 +12,10 @@ import (
 	"time"
 )
 
-func Start(ccfg state2.CentralCfg, ncfg state2.NodeCfg, logLevel slog.Level) error {
+func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
-	dispatch := make(chan func(env state2.State) error)
+	dispatch := make(chan func(env state.State) error)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
 		Level:        logLevel,
@@ -23,10 +23,10 @@ func Start(ccfg state2.CentralCfg, ncfg state2.NodeCfg, logLevel slog.Level) err
 		CustomPrefix: string(ncfg.Id),
 	}))
 
-	s := state2.State{
-		TrustedNodes: make(map[state2.Node]ed25519.PublicKey),
-		Modules:      make(map[string]state2.NyModule),
-		Env: state2.Env{
+	s := state.State{
+		TrustedNodes: make(map[state.Node]ed25519.PublicKey),
+		Modules:      make(map[string]state.NyModule),
+		Env: state.Env{
 			Context:         ctx,
 			Cancel:          cancel,
 			DispatchChannel: dispatch,
@@ -50,10 +50,10 @@ func Start(ccfg state2.CentralCfg, ncfg state2.NodeCfg, logLevel slog.Level) err
 	return MainLoop(s, dispatch)
 }
 
-func initModules(s state2.State) error {
-	modules := []state2.NyModule{
-		&impl2.Router{},
-		&impl2.Nylon{},
+func initModules(s state.State) error {
+	modules := []state.NyModule{
+		&impl.Router{},
+		&impl.Nylon{},
 	}
 
 	for _, module := range modules {
@@ -65,7 +65,7 @@ func initModules(s state2.State) error {
 	return nil
 }
 
-func MainLoop(s state2.State, dispatch <-chan func(state2.State) error) error {
+func MainLoop(s state.State, dispatch <-chan func(state.State) error) error {
 	s.Log.Debug("started main loop")
 	for {
 		select {
@@ -88,7 +88,7 @@ endLoop:
 	return nil
 }
 
-func cleanup(s state2.State) {
+func cleanup(s state.State) {
 	close(s.LinkChannel)
 	close(s.DispatchChannel)
 	s.Cancel(context.Canceled)

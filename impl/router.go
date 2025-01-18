@@ -2,23 +2,23 @@ package impl
 
 import (
 	"errors"
-	state2 "github.com/encodeous/nylon/state"
+	"github.com/encodeous/nylon/state"
 )
 
 type Router struct {
 	// list of active neighbours
-	Neighbours []*state2.Neighbour
-	Routes     map[state2.Node]state2.Route
-	Self       state2.Node
+	Neighbours []*state.Neighbour
+	Routes     map[state.Node]state.Route
+	Self       state.Node
 }
 
-func (r *Router) Init(s state2.State) error {
+func (r *Router) Init(s state.State) error {
 	s.Log.Debug("init router")
 	r.Self = s.NCfg.Id
 	return nil
 }
 
-func (r *Router) Update(s state2.State) error {
+func (r *Router) Update(s state.State) error {
 	err := r.updateRoutes(s)
 	if err != nil {
 		return err
@@ -26,8 +26,8 @@ func (r *Router) Update(s state2.State) error {
 	return nil
 }
 
-func (r *Router) updateRoutes(s state2.State) error {
-	var newRetractions []state2.Node
+func (r *Router) updateRoutes(s state.State) error {
+	var newRetractions []state.Node
 
 	// basically bellman ford algorithm
 
@@ -79,8 +79,8 @@ func (r *Router) updateRoutes(s state2.State) error {
 					r.Routes[src] = tRoute
 				} else if metric != INF {
 					// add new route, if it is not retracted
-					r.Routes[src] = state2.Route{
-						PubRoute: state2.PubRoute{
+					r.Routes[src] = state.Route{
+						PubRoute: state.PubRoute{
 							Src:       neigh.NodeSrc[src],
 							Metric:    metric,
 							Retracted: false,

@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"github.com/encodeous/nylon/protocol"
-	state2 "github.com/encodeous/nylon/state"
+	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/proto"
 	"io"
 	"net"
@@ -24,7 +24,7 @@ func SeqnoLt(a, b uint16) bool {
 	return 0 < x && x < 32768
 }
 
-func IsFeasible(curRoute state2.Route, newRoute state2.PubRoute, metric uint16) bool {
+func IsFeasible(curRoute state.Route, newRoute state.PubRoute, metric uint16) bool {
 	if SeqnoLt(newRoute.Src.Seqno, curRoute.Src.Seqno) {
 		return false
 	}
@@ -80,7 +80,7 @@ func SendPacket(c net.Conn, m proto.Message) error {
 	return err
 }
 
-func Get[T state2.NyModule](s state2.State) T {
+func Get[T state.NyModule](s state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)
 }
