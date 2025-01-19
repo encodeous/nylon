@@ -33,11 +33,11 @@ func handshake(e *state.Env, link state.CtlLink) (state.PubNodeCfg, error) {
 	hello := protocol.HsHello{
 		Id: string(e.Id),
 	}
-	err := link.SendPacket(&hello)
+	err := link.WriteMsg(&hello)
 	if err != nil {
 		return state.PubNodeCfg{}, err
 	}
-	err = link.ReceivePacket(&hello)
+	err = link.ReadMsg(&hello)
 	if err != nil {
 		return state.PubNodeCfg{}, err
 	}

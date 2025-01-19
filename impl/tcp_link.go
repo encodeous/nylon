@@ -5,12 +5,14 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 	"net"
+	"sync"
 )
 
 type TCPCtlLink struct {
 	id     uuid.UUID
 	Conn   net.Conn
 	remote bool
+	mutex  sync.Mutex
 }
 
 func (T *TCPCtlLink) Close() {
@@ -41,7 +43,7 @@ func ListenCtlTCP(e *state.Env, addr string) {
 			e.Log.Warn("Failed to accept connection", "err", err)
 			continue
 		}
-		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn, true}
+		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn, true, sync.Mutex{}}
 	}
 }
 
@@ -50,11 +52,11 @@ func ConnectCtlTCP(addr string) (TCPCtlLink, error) {
 	if err != nil {
 		return TCPCtlLink{}, err
 	}
-	return TCPCtlLink{uuid.New(), conn, false}, nil
+	return TCPCtlLink{uuid.New(), conn, false, sync.Mutex{}}, nil
 }
 
-func (T *TCPCtlLink) ReceivePacket(m proto.Message) error {
-	return ReceivePacket(T.Conn, m)
+func (T *TCPCtlLink) ReadMsg(m proto.Message) error {
+	return receive(T.Conn, m)
 }
 
 func (T *TCPCtlLink) Id() uuid.UUID {
@@ -66,6 +68,8 @@ func (T *TCPCtlLink) Metric() uint16 {
 	panic("implement me")
 }
 
-func (T *TCPCtlLink) SendPacket(m proto.Message) error {
-	return SendPacket(T.Conn, m)
+func (T *TCPCtlLink) WriteMsg(m proto.Message) error {
+	T.mutex.Lock()
+	defer T.mutex.Unlock()
+	return send(T.Conn, m)
 }

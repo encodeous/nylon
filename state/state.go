@@ -12,6 +12,11 @@ type Pair[Ty1, Ty2 any] struct {
 	V1 Ty1
 	V2 Ty2
 }
+type Triple[Ty1, Ty2, Ty3 any] struct {
+	V1 Ty1
+	V2 Ty2
+	V3 Ty3
+}
 
 type NyModule interface {
 	Init(s *State) error
@@ -70,10 +75,11 @@ type PubNodeCfg struct {
 
 type CentralCfg struct {
 	// the public key of the root CA
-	RootCa  Cert
-	Nodes   []PubNodeCfg
-	Edges   []Pair[Node, Node]
-	Version uint64
+	RootCa      Cert
+	Nodes       []PubNodeCfg
+	Edges       []Pair[Node, Node]
+	MockWeights []Triple[Node, Node, uint16]
+	Version     uint64
 }
 
 // Dispatch Dispatches the function to run on the main thread without waiting for it to complete

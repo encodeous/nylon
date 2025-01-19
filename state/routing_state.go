@@ -5,7 +5,6 @@ type Node string
 type Neighbour struct {
 	Id       Node
 	Routes   map[Node]PubRoute
-	NodeSrc  map[Node]Source
 	DpLinks  []DpLink
 	CtlLinks []CtlLink
 	Metric   uint16

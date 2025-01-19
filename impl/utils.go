@@ -37,10 +37,10 @@ func IsFeasible(curRoute state.Route, newRoute state.PubRoute, metric uint16) bo
 	return false
 }
 
-func ReceivePacket(c net.Conn, m proto.Message) error {
+func receive(c net.Conn, m proto.Message) error {
 	var length uint32
 
-	err := binary.Read(c, binary.LittleEndian, &(length))
+	err := binary.Read(c, binary.BigEndian, &(length))
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func ReceivePacket(c net.Conn, m proto.Message) error {
 	return proto.Unmarshal(data, m)
 }
 
-func SendPacket(c net.Conn, m proto.Message) error {
+func send(c net.Conn, m proto.Message) error {
 	out, err := proto.Marshal(m)
 	if err != nil {
 		return err
@@ -71,7 +71,7 @@ func SendPacket(c net.Conn, m proto.Message) error {
 
 	var length = uint32(len(out))
 
-	err = binary.Write(c, binary.LittleEndian, length)
+	err = binary.Write(c, binary.BigEndian, length)
 	if err != nil {
 		return err
 	}

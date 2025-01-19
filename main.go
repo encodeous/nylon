@@ -2,9 +2,8 @@
 package main
 
 import (
-	"fmt"
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/nylon/mock"
 	"log/slog"
 	"sync"
 )
@@ -53,43 +52,8 @@ import (
 //	return &mockCentralCfg, &mockNode, nil
 //}
 
-func mock() (state.CentralCfg, []state.NodeCfg, error) {
-	mockCentralCfg := state.CentralCfg{
-		RootCa:  nil,
-		Nodes:   make([]state.PubNodeCfg, 0),
-		Version: 0,
-	}
-	basePort := 23000
-	names := []string{
-		"bob",
-		"jeb",
-		"kat",
-		"eve",
-		"eli",
-		"ada",
-	}
-	nodes := make([]state.NodeCfg, 0)
-	for i, node := range names {
-		mockNode := state.NodeCfg{
-			Id:      state.Node(node),
-			CtlAddr: fmt.Sprintf("127.0.0.1:%d", basePort+i),
-		}
-		nodes = append(nodes, mockNode)
-		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg())
-	}
-	mockCentralCfg.Edges = []state.Pair[state.Node, state.Node]{
-		{"bob", "jeb"},
-		{"bob", "kat"},
-		{"jeb", "eve"},
-		{"jeb", "kat"},
-		{"jeb", "eli"},
-		{"jeb", "ada"},
-	}
-	return mockCentralCfg, nodes, nil
-}
-
 func main() {
-	ccfg, ncfg, err := mock()
+	ccfg, ncfg, err := mock.MockCfg()
 	if err != nil {
 		panic(err)
 	}
