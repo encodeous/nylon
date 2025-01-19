@@ -8,29 +8,40 @@ import (
 )
 
 type TCPCtlLink struct {
-	id   uuid.UUID
-	Conn net.Conn
+	id     uuid.UUID
+	Conn   net.Conn
+	remote bool
 }
 
-func ListenCtlTCP(e state.Env, addr string) {
-	listener, err := net.Listen("tcp", addr)
+func (T *TCPCtlLink) Close() {
+	T.Conn.Close()
+}
+
+func (T *TCPCtlLink) IsRemote() bool {
+	return T.remote
+}
+
+func ListenCtlTCP(e *state.Env, addr string) {
+	config := net.ListenConfig{}
+	listener, err := config.Listen(e.Context, "tcp", addr)
 	if err != nil {
 		e.Log.Error("Failed to listen on addr", "addr", addr, "err", err)
-		e.Dispatch(func(env state.State) error {
+		e.Dispatch(func(env *state.State) error {
 			e.Cancel(err)
 			return nil
 		})
 		return
 	}
+
 	e.Log.Info("Listening on", "addr", addr)
-	for {
+	for e.Context.Err() == nil {
 		conn, err := listener.Accept()
 		if err != nil {
 			conn.Close()
 			e.Log.Warn("Failed to accept connection", "err", err)
 			continue
 		}
-		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn}
+		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn, true}
 	}
 }
 
@@ -39,7 +50,7 @@ func ConnectCtlTCP(addr string) (TCPCtlLink, error) {
 	if err != nil {
 		return TCPCtlLink{}, err
 	}
-	return TCPCtlLink{uuid.New(), conn}, nil
+	return TCPCtlLink{uuid.New(), conn, false}, nil
 }
 
 func (T *TCPCtlLink) ReceivePacket(m proto.Message) error {

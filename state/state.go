@@ -14,23 +14,23 @@ type Pair[Ty1, Ty2 any] struct {
 }
 
 type NyModule interface {
-	Init(s State) error
+	Init(s *State) error
 }
 
 type State struct {
-	Env
+	*Env
 	TrustedNodes map[Node]ed25519.PublicKey
 	Modules      map[string]NyModule
 }
 
 type Env struct {
-	DispatchChannel chan<- func(s State) error
+	DispatchChannel chan<- func(s *State) error
 	LinkChannel     chan<- CtlLink
-	CCfg            CentralCfg
-	NCfg            NodeCfg
-	Context         context.Context
-	Cancel          context.CancelCauseFunc
-	Log             *slog.Logger
+	CentralCfg
+	NodeCfg
+	Context context.Context
+	Cancel  context.CancelCauseFunc
+	Log     *slog.Logger
 }
 
 // NodeCfg represents local node-level configuration
@@ -46,7 +46,7 @@ type NodeCfg struct {
 	CtlAddr string
 }
 
-func (n NodeCfg) GetPubNodeCfg() PubNodeCfg {
+func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
 	cfg := PubNodeCfg{
 		Id:      n.Id,
 		CtlAddr: n.CtlAddr,
@@ -77,14 +77,14 @@ type CentralCfg struct {
 }
 
 // Dispatch Dispatches the function to run on the main thread without waiting for it to complete
-func (env Env) Dispatch(fun func(State) error) {
-	env.DispatchChannel <- fun
+func (e Env) Dispatch(fun func(*State) error) {
+	e.DispatchChannel <- fun
 }
 
 // DispatchWait Dispatches the function to run on the main thread and wait for it to complete
-func (env Env) DispatchWait(fun func(State) (any, error)) (any, error) {
+func (e Env) DispatchWait(fun func(*State) (any, error)) (any, error) {
 	ret := make(chan Pair[any, error])
-	env.DispatchChannel <- func(s State) error {
+	e.DispatchChannel <- func(s *State) error {
 		res, err := fun(s)
 		ret <- Pair[any, error]{res, err}
 		return err
@@ -92,27 +92,27 @@ func (env Env) DispatchWait(fun func(State) (any, error)) (any, error) {
 	select {
 	case res := <-ret:
 		return res.V1, res.V2
-	case <-env.Context.Done():
-		return nil, env.Context.Err()
+	case <-e.Context.Done():
+		return nil, e.Context.Err()
 	}
 }
 
-func (env Env) scheduledTask(fun func(State) error, delay time.Duration) {
+func (e Env) scheduledTask(fun func(*State) error, delay time.Duration) {
 	time.Sleep(delay)
-	env.Dispatch(fun)
+	e.Dispatch(fun)
 }
 
-func (env Env) ScheduleTask(fun func(State) error, delay time.Duration) {
-	go env.scheduledTask(fun, delay)
+func (e Env) ScheduleTask(fun func(*State) error, delay time.Duration) {
+	go e.scheduledTask(fun, delay)
 }
 
-func (env Env) repeatedTask(fun func(State) error, delay time.Duration) {
-	for env.Context.Err() == nil {
-		env.Dispatch(fun)
+func (e Env) repeatedTask(fun func(*State) error, delay time.Duration) {
+	for e.Context.Err() == nil {
+		e.Dispatch(fun)
 		time.Sleep(delay)
 	}
 }
 
-func (env Env) RepeatTask(fun func(State) error, delay time.Duration) {
-	go env.repeatedTask(fun, delay)
+func (e Env) RepeatTask(fun func(*State) error, delay time.Duration) {
+	go e.repeatedTask(fun, delay)
 }

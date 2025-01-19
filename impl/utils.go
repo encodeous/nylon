@@ -80,7 +80,7 @@ func SendPacket(c net.Conn, m proto.Message) error {
 	return err
 }
 
-func Get[T state.NyModule](s state.State) T {
+func Get[T state.NyModule](s *state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)
 }

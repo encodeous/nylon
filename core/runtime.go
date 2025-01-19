@@ -9,13 +9,12 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
-	"time"
 )
 
 func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
-	dispatch := make(chan func(env state.State) error)
+	dispatch := make(chan func(env *state.State) error)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
 		Level:        logLevel,
@@ -26,12 +25,12 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	s := state.State{
 		TrustedNodes: make(map[state.Node]ed25519.PublicKey),
 		Modules:      make(map[string]state.NyModule),
-		Env: state.Env{
+		Env: &state.Env{
 			Context:         ctx,
 			Cancel:          cancel,
 			DispatchChannel: dispatch,
-			CCfg:            ccfg,
-			NCfg:            ncfg,
+			CentralCfg:      ccfg,
+			NodeCfg:         ncfg,
 			Log:             logger,
 		},
 	}
@@ -41,19 +40,20 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}
 
 	s.Log.Info("init modules")
-	err := initModules(s)
+	err := initModules(&s)
 	if err != nil {
 		return err
 	}
 	s.Log.Info("init modules complete")
 
-	return MainLoop(s, dispatch)
+	return MainLoop(&s, dispatch)
 }
 
-func initModules(s state.State) error {
+func initModules(s *state.State) error {
 	modules := []state.NyModule{
 		&impl.Router{},
 		&impl.Nylon{},
+		&impl.LinkMgr{},
 	}
 
 	for _, module := range modules {
@@ -65,31 +65,36 @@ func initModules(s state.State) error {
 	return nil
 }
 
-func MainLoop(s state.State, dispatch <-chan func(state.State) error) error {
+func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 	s.Log.Debug("started main loop")
 	for {
 		select {
 		case fun := <-dispatch:
-			s.Log.Debug("start")
-			start := time.Now()
+			//s.Log.Debug("start")
+			//start := time.Now()
 			err := fun(s)
 			if err != nil {
-				return err
+				s.Log.Error("error occurred during dispatch: ", "error", err)
+				s.Cancel(err)
 			}
-			elapsed := time.Since(start)
-			s.Log.Debug("done", "elapsed", elapsed)
+			//elapsed := time.Since(start)
+			//s.Log.Debug("done", "elapsed", elapsed)
 		case <-s.Context.Done():
 			goto endLoop
 		}
 	}
 endLoop:
-	s.Log.Info("stopped main loop")
+	s.Log.Info("stopped main loop", "reason", context.Cause(s.Context).Error())
 	cleanup(s)
 	return nil
 }
 
-func cleanup(s state.State) {
-	close(s.LinkChannel)
-	close(s.DispatchChannel)
+func cleanup(s *state.State) {
+	if s.LinkChannel != nil {
+		close(s.LinkChannel)
+	}
+	if s.DispatchChannel != nil {
+		close(s.DispatchChannel)
+	}
 	s.Cancel(context.Canceled)
 }

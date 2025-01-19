@@ -1,4 +1,4 @@
-//go:generate protoc -I . --go_out=. ./core/protocol/nylon.proto
+//go:generate protoc -I . --go_out=. ./protocol/nylon.proto
 package main
 
 import (
@@ -40,7 +40,7 @@ import (
 //		Cert:  state.Cert(ss),
 //	}
 //
-//	mockPubNode := mockNode.GetPubNodeCfg()
+//	mockPubNode := mockNode.GeneratePubCfg()
 //
 //	mockCentralCfg := state.CentralCfg{
 //		RootCa: ss,
@@ -75,7 +75,7 @@ func mock() (state.CentralCfg, []state.NodeCfg, error) {
 			CtlAddr: fmt.Sprintf("127.0.0.1:%d", basePort+i),
 		}
 		nodes = append(nodes, mockNode)
-		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GetPubNodeCfg())
+		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg())
 	}
 	mockCentralCfg.Edges = []state.Pair[state.Node, state.Node]{
 		{"bob", "jeb"},

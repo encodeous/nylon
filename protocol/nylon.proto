@@ -1,7 +1,7 @@
 syntax = "proto3";
 package proto;
 
-option go_package = "core/protocol/";
+option go_package = "protocol/";
 
 // nylon concepts
 
@@ -15,13 +15,12 @@ message Source {
 
 message HsMsg {
   oneof type {
-    HsPingPong PingPong = 1;
+    HsHello Hello = 1;
   }
 }
 
-message HsPingPong {
+message HsHello {
   string Id = 1;
-  bool IsInitiator = 2;
 }
 
 // control messages

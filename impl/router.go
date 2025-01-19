@@ -3,22 +3,43 @@ package impl
 import (
 	"errors"
 	"github.com/encodeous/nylon/state"
+	"slices"
 )
 
 type Router struct {
 	// list of active neighbours
 	Neighbours []*state.Neighbour
 	Routes     map[state.Node]state.Route
-	Self       state.Node
 }
 
-func (r *Router) Init(s state.State) error {
+func (r *Router) Init(s *state.State) error {
 	s.Log.Debug("init router")
-	r.Self = s.NCfg.Id
 	return nil
 }
 
-func (r *Router) Update(s state.State) error {
+func (r *Router) AddNeighbour(s *state.State, cfg state.PubNodeCfg, link state.CtlLink) error {
+	idx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
+		return neighbour.Id == cfg.Id
+	})
+	if idx == -1 {
+		s.Log.Debug("discovered neighbour", "node", cfg.Id)
+		r.Neighbours = append(r.Neighbours, &state.Neighbour{
+			Id:       cfg.Id,
+			Routes:   make(map[state.Node]state.PubRoute),
+			NodeSrc:  nil,
+			DpLinks:  nil,
+			CtlLinks: []state.CtlLink{link},
+			Metric:   1,
+		})
+	} else {
+		s.Log.Debug("added new link to existing neighbour", "node", cfg.Id)
+		neigh := r.Neighbours[idx]
+		neigh.CtlLinks = append(neigh.CtlLinks, link)
+	}
+	return nil
+}
+
+func (r *Router) Update(s *state.State) error {
 	err := r.updateRoutes(s)
 	if err != nil {
 		return err
@@ -26,7 +47,7 @@ func (r *Router) Update(s state.State) error {
 	return nil
 }
 
-func (r *Router) updateRoutes(s state.State) error {
+func (r *Router) updateRoutes(s *state.State) error {
 	var newRetractions []state.Node
 
 	// basically bellman ford algorithm
@@ -38,7 +59,7 @@ func (r *Router) updateRoutes(s state.State) error {
 				return errors.New("metric cannot be zero")
 			}
 			for src, neighRoute := range neigh.Routes {
-				if src == r.Self {
+				if src == s.Id {
 					continue
 				}
 

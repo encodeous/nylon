@@ -3,12 +3,12 @@ package state
 type Node string
 
 type Neighbour struct {
-	Id      Node
-	Routes  map[Node]PubRoute
-	NodeSrc map[Node]Source
-	DpLinks []DpLink
-	CtlLink CtlLink
-	Metric  uint16
+	Id       Node
+	Routes   map[Node]PubRoute
+	NodeSrc  map[Node]Source
+	DpLinks  []DpLink
+	CtlLinks []CtlLink
+	Metric   uint16
 }
 
 type Route struct {

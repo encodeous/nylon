@@ -9,6 +9,10 @@ type CtlLink interface {
 	NetLink
 	SendPacket(m proto.Message) error
 	ReceivePacket(proto.Message) error
+	// IsRemote is true if the link is remotely initiated
+	IsRemote() bool
+	// Close the link
+	Close()
 }
 
 type DpLink interface {
