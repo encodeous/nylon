@@ -1,8 +1,12 @@
 package mock
 
 import (
+	"crypto/ecdh"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"github.com/encodeous/nylon/state"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func GetMockWeight(a, b state.Node, cfg state.CentralCfg) []uint16 {
@@ -22,6 +26,7 @@ func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
 		Version: 0,
 	}
 	basePort := 23000
+	wgBasePort := 24000
 	names := []string{
 		"bob",
 		"jeb",
@@ -31,9 +36,25 @@ func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
 	}
 	nodes := make([]state.NodeCfg, 0)
 	for i, node := range names {
+		dpKey, err := wgtypes.GeneratePrivateKey()
+		if err != nil {
+			return state.CentralCfg{}, nil, err
+		}
+		ecKey, err := ecdh.X25519().NewPrivateKey(dpKey[:])
+		if err != nil {
+			return state.CentralCfg{}, nil, err
+		}
+		_, ctlKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return state.CentralCfg{}, nil, err
+		}
 		mockNode := state.NodeCfg{
 			Id:      state.Node(node),
 			CtlAddr: fmt.Sprintf("127.0.0.1:%d", basePort+i),
+			DpAddr:  "127.0.0.1",
+			Key:     state.EdPrivateKey(ctlKey),
+			WgKey:   (*state.EcPrivateKey)(ecKey),
+			WgPort:  wgBasePort + i,
 		}
 		nodes = append(nodes, mockNode)
 		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg())

@@ -7,30 +7,28 @@ import (
 	"slices"
 )
 
-type LinkMgr struct {
+type CtlLinkMgr struct {
 	activeLinks []state.CtlLink
 }
 
+func (n *CtlLinkMgr) Cleanup(s *state.State) error {
+	for _, link := range n.activeLinks {
+		link.Close()
+	}
+	return nil
+}
+
 func ProbeLinks(s *state.State) error {
-	//ny := Get[*LinkMgr](s)
+	//ny := Get[*CtlLinkMgr](s)
 	rt := Get[*Router](s)
 	//s.Log.Debug("Probing links", "ny", ny)
 
-	for _, edge := range s.Edges {
-		var neighNode state.Node
-		if edge.V1 == s.Id {
-			neighNode = edge.V2
-		}
-		if edge.V2 == s.Id {
-			neighNode = edge.V1
-		}
-		if neighNode != s.Id && neighNode != "" {
-			// make sure we are not already connected to the neighbour
-			if !slices.ContainsFunc(rt.Neighbours, func(neighbour *state.Neighbour) bool {
-				return neighbour.Id == neighNode && len(neighbour.CtlLinks) != 0
-			}) {
-				ConnectCtl(s, neighNode)
-			}
+	for _, peer := range s.GetPeers() {
+		// make sure we are not already connected to the neighbour
+		if !slices.ContainsFunc(rt.Neighbours, func(neighbour *state.Neighbour) bool {
+			return neighbour.Id == peer && len(neighbour.CtlLinks) != 0
+		}) {
+			ConnectCtl(s, peer)
 		}
 	}
 
@@ -92,7 +90,7 @@ func packetHandler(e *state.Env, pkt *protocol.CtlMsg, node state.Node) {
 	})
 }
 
-func (n *LinkMgr) Init(s *state.State) error {
+func (n *CtlLinkMgr) Init(s *state.State) error {
 	s.Log.Debug("init link manager")
 
 	links := make(chan state.CtlLink)

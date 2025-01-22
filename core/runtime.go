@@ -53,7 +53,8 @@ func initModules(s *state.State) error {
 	modules := []state.NyModule{
 		&impl.Router{},
 		&impl.Nylon{},
-		&impl.LinkMgr{},
+		&impl.CtlLinkMgr{},
+		&impl.DpLinkMgr{},
 	}
 
 	for _, module := range modules {

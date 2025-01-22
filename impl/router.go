@@ -17,6 +17,11 @@ type Router struct {
 	Self       *state.Source
 }
 
+func (r *Router) Cleanup(s *state.State) error {
+	// do nothing
+	return nil
+}
+
 func (r *Router) Init(s *state.State) error {
 	s.Log.Debug("init router")
 	s.Env.RepeatTask(fullRouteUpdate, RouteUpdateDelay)

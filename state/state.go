@@ -8,18 +8,9 @@ import (
 	"time"
 )
 
-type Pair[Ty1, Ty2 any] struct {
-	V1 Ty1
-	V2 Ty2
-}
-type Triple[Ty1, Ty2, Ty3 any] struct {
-	V1 Ty1
-	V2 Ty2
-	V3 Ty3
-}
-
 type NyModule interface {
 	Init(s *State) error
+	Cleanup(s *State) error
 }
 
 type State struct {
@@ -43,24 +34,45 @@ type NodeCfg struct {
 	// Node Private Key
 	Key EdPrivateKey
 	// Data plane (WireGuard) Private key
-	DpKey *EcPrivateKey
+	WgKey  *EcPrivateKey
+	WgPort int
 	// x509 certificate signed by the root CA
 	Cert Cert
 	Id   Node
 	// Address and port that the control plane listens on
 	CtlAddr string
+	// Address that the data plane can be accessed by
+	DpAddr string
+}
+
+func (k *EcPublicKey) Bytes() []byte {
+	return (*ecdh.PublicKey)(k).Bytes()
+}
+
+func (k *EcPrivateKey) Bytes() []byte {
+	return (*ecdh.PrivateKey)(k).Bytes()
+}
+
+func (k *EcPrivateKey) Pubkey() *EcPublicKey {
+	return (*EcPublicKey)(((*ecdh.PrivateKey)(k).Public()).(*ecdh.PublicKey))
+}
+
+func (k EdPrivateKey) Pubkey() EdPublicKey {
+	return EdPublicKey(((ed25519.PrivateKey)(k).Public()).(ed25519.PublicKey))
 }
 
 func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
 	cfg := PubNodeCfg{
 		Id:      n.Id,
 		CtlAddr: n.CtlAddr,
+		DpAddr:  n.DpAddr, // TODO: Get Public IP
+		DpPort:  n.WgPort,
 	}
-	if n.DpKey != nil {
-		cfg.DpPubKey = (*EcPublicKey)(((*ecdh.PrivateKey)(n.DpKey).Public()).(*ecdh.PublicKey))
+	if n.WgKey != nil {
+		cfg.DpPubKey = n.WgKey.Pubkey()
 	}
 	if n.Key != nil {
-		cfg.PubKey = EdPublicKey(((ed25519.PrivateKey)(n.Key).Public()).(ed25519.PublicKey))
+		cfg.PubKey = n.Key.Pubkey()
 	}
 	return cfg
 }
@@ -71,6 +83,8 @@ type PubNodeCfg struct {
 	PubKey   EdPublicKey
 	DpPubKey *EcPublicKey
 	CtlAddr  string
+	DpAddr   string
+	DpPort   int
 }
 
 type CentralCfg struct {
@@ -80,6 +94,23 @@ type CentralCfg struct {
 	Edges       []Pair[Node, Node]
 	MockWeights []Triple[Node, Node, uint16]
 	Version     uint64
+}
+
+func (e Env) GetPeers() []Node {
+	nodes := make([]Node, 0)
+	for _, edge := range e.Edges {
+		var neighNode Node
+		if edge.V1 == e.Id {
+			neighNode = edge.V2
+		}
+		if edge.V2 == e.Id {
+			neighNode = edge.V1
+		}
+		if neighNode != e.Id && neighNode != "" {
+			nodes = append(nodes, neighNode)
+		}
+	}
+	return nodes
 }
 
 // Dispatch Dispatches the function to run on the main thread without waiting for it to complete

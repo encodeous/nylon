@@ -35,7 +35,7 @@ import (
 //	mockNode := state.NodeCfg{
 //		Id:    "currentNode",
 //		Key:   state.EdPrivateKey(nodeKey),
-//		DpKey: (*state.EcPrivateKey)(dpKey),
+//		WgKey: (*state.EcPrivateKey)(dpKey),
 //		Cert:  state.Cert(ss),
 //	}
 //
