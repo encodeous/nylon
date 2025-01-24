@@ -1,11 +1,9 @@
-package udp_link
+package impl
 
 import (
 	"errors"
-	"github.com/encodeous/nylon/mock"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
-	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"google.golang.org/protobuf/proto"
 	"slices"
@@ -14,10 +12,11 @@ import (
 
 type Router struct {
 	// list of active neighbours
-	Neighbours []*state.Neighbour
-	Routes     map[state.Node]*state.Route
-	SeqnoDedup *ttlcache.Cache[state.Node, state.Source]
-	Self       *state.Source
+	Neighbours            []*state.Neighbour
+	Routes                map[state.Node]*state.Route
+	SeqnoDedup            *ttlcache.Cache[state.Node, state.Source]
+	Self                  *state.Source
+	LastStarvationRequest time.Time
 }
 
 func (r *Router) Cleanup(s *state.State) error {
@@ -48,7 +47,7 @@ func IncrementSeqno(s *state.State) {
 	// TODO: Signature
 }
 
-func RemoveLink(s *state.State, cfg state.PubNodeCfg, removeLink state.CtlLink) {
+func RemoveNeighbour(s *state.State, cfg state.PubNodeCfg, removeLink state.CtlLink) {
 	r := Get[*Router](s)
 	nidx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
 		return neighbour.Id == cfg.Id
@@ -65,6 +64,8 @@ func RemoveLink(s *state.State, cfg state.PubNodeCfg, removeLink state.CtlLink) 
 }
 
 func AddNeighbour(s *state.State, cfg state.PubNodeCfg, link state.CtlLink) error {
+	// TODO: allow dynamic peer discovery
+	// TODO: do not assume neighbours are directly reachable
 	r := Get[*Router](s)
 	idx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
 		return neighbour.Id == cfg.Id
@@ -72,18 +73,10 @@ func AddNeighbour(s *state.State, cfg state.PubNodeCfg, link state.CtlLink) erro
 	if idx == -1 {
 		s.Log.Debug("discovered neighbour", "node", cfg.Id)
 
-		var dplinks []state.DpLink
-		for _, w := range mock.GetMockWeight(s.Id, cfg.Id, s.CentralCfg) {
-			dplinks = append(dplinks, mock.MockLink{
-				VId:     uuid.UUID{},
-				VMetric: w,
-			})
-		}
-
 		r.Neighbours = append(r.Neighbours, &state.Neighbour{
 			Id:       cfg.Id,
 			Routes:   make(map[state.Node]state.PubRoute),
-			DpLinks:  dplinks,
+			DpLinks:  make([]state.DpLink, 0),
 			CtlLinks: []state.CtlLink{link},
 			Metric:   1,
 		})
@@ -209,6 +202,8 @@ func updateRoutes(s *state.State) error {
 		Updates:   make([]*protocol.CtlRouteUpdate_Params, 0),
 	}
 
+	//dbgPrintRouteTable(s)
+
 	improvedSeqno := make([]state.Node, 0)
 
 	// basically bellman ford algorithm
@@ -266,7 +261,7 @@ func updateRoutes(s *state.State) error {
 							if retract {
 								retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
 									Source: mapToPktSource(&tRoute.Src),
-									Metric: INF,
+									Metric: uint32(INF),
 								})
 							}
 						}
@@ -300,23 +295,30 @@ func updateRoutes(s *state.State) error {
 		broadcast(s, &protocol.CtlMsg{Type: &protocol.CtlMsg_Route{Route: &retractions}})
 	}
 
+	starved := false
 	// check for starvation
-	for node, route := range r.Routes {
-		if route.Metric == INF {
-			// we dont have a valid route to this node
+	if time.Now().Sub(r.LastStarvationRequest) > StarvationDelay {
+		for node, route := range r.Routes {
+			if route.Metric == INF {
+				// we dont have a valid route to this node
+				starved = true
 
-			prev := r.SeqnoDedup.Get(node)
-			if prev != nil && SeqnoGe(prev.Value().Seqno, route.Src.Seqno) {
-				continue // we have already sent such a request before
+				prev := r.SeqnoDedup.Get(node)
+				if prev != nil && SeqnoGe(prev.Value().Seqno, route.Src.Seqno) {
+					continue // we have already sent such a request before
+				}
+				r.SeqnoDedup.Set(node, route.Src, ttlcache.DefaultTTL)
+
+				broadcast(s, &protocol.CtlMsg{
+					Type: &protocol.CtlMsg_SeqnoRequest{
+						SeqnoRequest: mapToPktSource(&route.Src),
+					},
+				})
 			}
-			r.SeqnoDedup.Set(node, route.Src, ttlcache.DefaultTTL)
-
-			broadcast(s, &protocol.CtlMsg{
-				Type: &protocol.CtlMsg_SeqnoRequest{
-					SeqnoRequest: mapToPktSource(&route.Src),
-				},
-			})
 		}
+	}
+	if starved {
+		r.LastStarvationRequest = time.Now()
 	}
 
 	return nil
@@ -335,12 +337,12 @@ func routerHandleRouteUpdate(s *state.State, node state.Node, pkt *protocol.CtlR
 	for _, update := range pkt.Updates {
 		cur, ok := neigh.Routes[state.Node(update.Source.Id)]
 		if ok {
-			hasRetractions = hasRetractions || !cur.Retracted && update.Metric == INF
+			hasRetractions = hasRetractions || !cur.Retracted && update.Metric == uint32(INF)
 		}
 		neigh.Routes[state.Node(update.Source.Id)] = state.PubRoute{
 			Src:       mapFromPktSource(update.Source),
 			Metric:    uint16(update.Metric),
-			Retracted: update.Metric == INF,
+			Retracted: update.Metric == uint32(INF),
 		}
 	}
 	if hasRetractions || pkt.SeqnoPush {

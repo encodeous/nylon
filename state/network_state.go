@@ -5,25 +5,29 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 	"net"
+	"time"
 )
 
 type CtlLink interface {
 	NetLink
 	WriteMsg(m proto.Message) error
 	ReadMsg(proto.Message) error
-	// IsRemote is true if the link is remotely initiated
-	IsRemote() bool
 	// Close the link
 	Close()
 }
 
 type DpLink interface {
 	NetLink
+	Endpoint() DpEndpoint
+	// UpdatePing remote means that the ping update is from the finalizer
+	UpdatePing(ping time.Duration)
 }
 
 type NetLink interface {
 	Id() uuid.UUID
 	Metric() uint16
+	// IsRemote is true if the link is remotely initiated
+	IsRemote() bool
 }
 
 func (k EdPublicKey) DeriveNylonAddr() net.IP {
@@ -32,4 +36,9 @@ func (k EdPublicKey) DeriveNylonAddr() net.IP {
 	hash[0] = 0xfc
 	hash[0] |= 0b0000_0001
 	return hash[:16]
+}
+
+type LinkPing struct {
+	LinkId uuid.UUID
+	Time   time.Time
 }

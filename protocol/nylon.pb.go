@@ -324,6 +324,74 @@ func (x *CtlRouteUpdate) GetUpdates() []*CtlRouteUpdate_Params {
 	return nil
 }
 
+type Probe struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         uint64                 `protobuf:"varint,1,opt,name=Token,proto3" json:"Token,omitempty"`
+	ResponseToken *uint64                `protobuf:"varint,2,opt,name=ResponseToken,proto3,oneof" json:"ResponseToken,omitempty"`
+	NodeId        []byte                 `protobuf:"bytes,3,opt,name=NodeId,proto3" json:"NodeId,omitempty"`
+	LinkId        []byte                 `protobuf:"bytes,4,opt,name=LinkId,proto3" json:"LinkId,omitempty"` // TODO: Add signature
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Probe) Reset() {
+	*x = Probe{}
+	mi := &file_protocol_nylon_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Probe) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Probe) ProtoMessage() {}
+
+func (x *Probe) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_nylon_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Probe.ProtoReflect.Descriptor instead.
+func (*Probe) Descriptor() ([]byte, []int) {
+	return file_protocol_nylon_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Probe) GetToken() uint64 {
+	if x != nil {
+		return x.Token
+	}
+	return 0
+}
+
+func (x *Probe) GetResponseToken() uint64 {
+	if x != nil && x.ResponseToken != nil {
+		return *x.ResponseToken
+	}
+	return 0
+}
+
+func (x *Probe) GetNodeId() []byte {
+	if x != nil {
+		return x.NodeId
+	}
+	return nil
+}
+
+func (x *Probe) GetLinkId() []byte {
+	if x != nil {
+		return x.LinkId
+	}
+	return nil
+}
+
 type CtlRouteUpdate_Params struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *Source                `protobuf:"bytes,1,opt,name=Source,proto3" json:"Source,omitempty"`
@@ -334,7 +402,7 @@ type CtlRouteUpdate_Params struct {
 
 func (x *CtlRouteUpdate_Params) Reset() {
 	*x = CtlRouteUpdate_Params{}
-	mi := &file_protocol_nylon_proto_msgTypes[5]
+	mi := &file_protocol_nylon_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +414,7 @@ func (x *CtlRouteUpdate_Params) String() string {
 func (*CtlRouteUpdate_Params) ProtoMessage() {}
 
 func (x *CtlRouteUpdate_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_proto_msgTypes[5]
+	mi := &file_protocol_nylon_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -408,8 +476,17 @@ var file_protocol_nylon_proto_rawDesc = []byte{
 	0x53, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0d, 0x2e, 0x70,
 	0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x53, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x52, 0x06, 0x53, 0x6f, 0x75,
 	0x72, 0x63, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0d, 0x52, 0x06, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x42, 0x0b, 0x5a, 0x09, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x2f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x01, 0x28, 0x0d, 0x52, 0x06, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x22, 0x8a, 0x01, 0x0a, 0x05,
+	0x50, 0x72, 0x6f, 0x62, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x04, 0x52, 0x05, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x12, 0x29, 0x0a, 0x0d, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x04, 0x48, 0x00, 0x52, 0x0d, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x54, 0x6f,
+	0x6b, 0x65, 0x6e, 0x88, 0x01, 0x01, 0x12, 0x16, 0x0a, 0x06, 0x4e, 0x6f, 0x64, 0x65, 0x49, 0x64,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x06, 0x4e, 0x6f, 0x64, 0x65, 0x49, 0x64, 0x12, 0x16,
+	0x0a, 0x06, 0x4c, 0x69, 0x6e, 0x6b, 0x49, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x06,
+	0x4c, 0x69, 0x6e, 0x6b, 0x49, 0x64, 0x42, 0x10, 0x0a, 0x0e, 0x5f, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x42, 0x0b, 0x5a, 0x09, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x63, 0x6f, 0x6c, 0x2f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -424,20 +501,21 @@ func file_protocol_nylon_proto_rawDescGZIP() []byte {
 	return file_protocol_nylon_proto_rawDescData
 }
 
-var file_protocol_nylon_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_protocol_nylon_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_protocol_nylon_proto_goTypes = []any{
 	(*Source)(nil),                // 0: proto.Source
 	(*HsMsg)(nil),                 // 1: proto.HsMsg
 	(*HsHello)(nil),               // 2: proto.HsHello
 	(*CtlMsg)(nil),                // 3: proto.CtlMsg
 	(*CtlRouteUpdate)(nil),        // 4: proto.CtlRouteUpdate
-	(*CtlRouteUpdate_Params)(nil), // 5: proto.CtlRouteUpdate.Params
+	(*Probe)(nil),                 // 5: proto.Probe
+	(*CtlRouteUpdate_Params)(nil), // 6: proto.CtlRouteUpdate.Params
 }
 var file_protocol_nylon_proto_depIdxs = []int32{
 	2, // 0: proto.HsMsg.Hello:type_name -> proto.HsHello
 	4, // 1: proto.CtlMsg.Route:type_name -> proto.CtlRouteUpdate
 	0, // 2: proto.CtlMsg.SeqnoRequest:type_name -> proto.Source
-	5, // 3: proto.CtlRouteUpdate.Updates:type_name -> proto.CtlRouteUpdate.Params
+	6, // 3: proto.CtlRouteUpdate.Updates:type_name -> proto.CtlRouteUpdate.Params
 	0, // 4: proto.CtlRouteUpdate.Params.Source:type_name -> proto.Source
 	5, // [5:5] is the sub-list for method output_type
 	5, // [5:5] is the sub-list for method input_type
@@ -458,13 +536,14 @@ func file_protocol_nylon_proto_init() {
 		(*CtlMsg_Route)(nil),
 		(*CtlMsg_SeqnoRequest)(nil),
 	}
+	file_protocol_nylon_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_protocol_nylon_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

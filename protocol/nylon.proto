@@ -40,3 +40,11 @@ message CtlRouteUpdate {
   bool SeqnoPush = 1;
   repeated Params Updates = 2;
 }
+
+message Probe {
+  uint64 Token = 1;
+  optional uint64 ResponseToken = 2;
+  bytes NodeId = 3;
+  bytes LinkId = 4;
+  // TODO: Add signature
+}

@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/ed25519"
+	"fmt"
+	"github.com/jellydator/ttlcache/v3"
 	"log/slog"
+	"net/netip"
 	"time"
 )
 
@@ -26,7 +29,14 @@ type Env struct {
 	NodeCfg
 	Context context.Context
 	Cancel  context.CancelCauseFunc
+	PingBuf *ttlcache.Cache[uint64, LinkPing]
 	Log     *slog.Logger
+}
+
+type DpEndpoint struct {
+	Name      string
+	DpAddr    *netip.AddrPort
+	ProbeAddr *netip.AddrPort
 }
 
 // NodeCfg represents local node-level configuration
@@ -34,15 +44,15 @@ type NodeCfg struct {
 	// Node Private Key
 	Key EdPrivateKey
 	// Data plane (WireGuard) Private key
-	WgKey  *EcPrivateKey
-	WgPort int
+	WgKey *EcPrivateKey
 	// x509 certificate signed by the root CA
 	Cert Cert
 	Id   Node
 	// Address and port that the control plane listens on
-	CtlAddr string
+	CtlBind string
 	// Address that the data plane can be accessed by
-	DpAddr string
+	DpBind    netip.AddrPort
+	ProbeBind netip.AddrPort
 }
 
 func (k *EcPublicKey) Bytes() []byte {
@@ -64,9 +74,10 @@ func (k EdPrivateKey) Pubkey() EdPublicKey {
 func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
 	cfg := PubNodeCfg{
 		Id:      n.Id,
-		CtlAddr: n.CtlAddr,
-		DpAddr:  n.DpAddr, // TODO: Get Public IP
-		DpPort:  n.WgPort,
+		CtlAddr: []string{n.CtlBind},
+		DpAddr: []DpEndpoint{
+			{fmt.Sprintf("%s-local", n.Id), &n.DpBind, &n.ProbeBind},
+		},
 	}
 	if n.WgKey != nil {
 		cfg.DpPubKey = n.WgKey.Pubkey()
@@ -82,9 +93,8 @@ type PubNodeCfg struct {
 	Id       Node
 	PubKey   EdPublicKey
 	DpPubKey *EcPublicKey
-	CtlAddr  string
-	DpAddr   string
-	DpPort   int
+	CtlAddr  []string
+	DpAddr   []DpEndpoint
 }
 
 type CentralCfg struct {
@@ -92,7 +102,7 @@ type CentralCfg struct {
 	RootCa      Cert
 	Nodes       []PubNodeCfg
 	Edges       []Pair[Node, Node]
-	MockWeights []Triple[Node, Node, *uint16]
+	MockWeights []Triple[Node, Node, *time.Duration]
 	Version     uint64
 }
 

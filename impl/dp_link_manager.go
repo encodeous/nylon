@@ -1,4 +1,4 @@
-package udp_link
+package impl
 
 import (
 	"crypto/sha256"
@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"math/rand/v2"
 	"net"
+	"net/netip"
 	"slices"
 	"time"
 )
@@ -22,16 +23,13 @@ import (
 type DpLinkMgr struct {
 	client     *wgctrl.Client
 	deviceName string
-}
-
-type linkPing struct {
-	LinkId uuid.UUID
-	Node   state.Node
-	Time   time.Time
+	udpSock    *net.UDPConn
 }
 
 func (w *DpLinkMgr) Cleanup(s *state.State) error {
 	s.Log.Info("cleaning up wireguard")
+	s.PingBuf.Stop()
+	w.udpSock.Close()
 	return dp_wireguard.CleanupWireGuard(s)
 }
 
@@ -53,17 +51,102 @@ func (w *DpLinkMgr) getWgDevice(s *state.State) (*wgtypes.Device, error) {
 	return dpDevice, nil
 }
 
-func handleProbeComplete(s *state.State, link uuid.UUID, node state.Node, elapsed time.Duration) error {
-	// check if link exists, otherwise create a dplink
+func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint state.DpEndpoint) {
+	if node == s.Id {
+		return
+	}
+	// check if link exists
+	r := Get[*Router](s)
+	for _, neigh := range r.Neighbours {
+		for _, dpLink := range neigh.DpLinks {
+			if dpLink.Id() == link && neigh.Id == node {
+				// we have a link
+				return
+			}
+		}
+	}
+	// create a new link if we dont have a link
+	for _, neigh := range r.Neighbours {
+		if neigh.Id == node {
+			neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(link, INF, endpoint))
+			return
+		}
+	}
+	return
 }
 
-func probeDataPlane(e *state.Env) {
-	for e.Context.Err() == nil {
-		for _, neigh := range e.GetPeers() {
-
+func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint64) {
+	// check if link exists
+	r := Get[*Router](s)
+	for _, neigh := range r.Neighbours {
+		for _, dpLink := range neigh.DpLinks {
+			if dpLink.Id() == link && neigh.Id == node {
+				linkHealth, ok := s.PingBuf.GetAndDelete(token)
+				if ok {
+					health := linkHealth.Value()
+					// we have a link
+					//s.Log.Debug("ping update", "peer", node, "ping", time.Since(health.Time))
+					err := updateRoutes(s)
+					if err != nil {
+						s.Log.Error("Error updating routes: ", err)
+					}
+					dpLink.UpdatePing(time.Since(health.Time))
+				}
+				return
+			}
 		}
-		time.Sleep(ProbeDpDelay)
 	}
+	s.Log.Warn("probe came back and couldn't find link", "id", link, "node", node)
+	return
+}
+
+func probeDataPlane(s *state.State) error {
+	r := Get[*Router](s)
+	d := Get[*DpLinkMgr](s)
+
+	// probe existing links
+	for _, neigh := range r.Neighbours {
+		for _, dpLink := range neigh.DpLinks {
+			go func() {
+				err := probe(s.Env, d.udpSock, *dpLink.Endpoint().ProbeAddr, dpLink.Id())
+				if err != nil {
+					s.Log.Debug("probe failed", "err", err.Error())
+				}
+			}()
+		}
+	}
+
+	// probe for new dp links
+	for _, peer := range s.GetPeers() {
+		cfg, err := s.GetPubNodeCfg(peer)
+		if err != nil {
+			continue
+		}
+		nIdx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
+			return neighbour.Id == peer
+		})
+		if nIdx == -1 {
+			continue
+		}
+		neigh := r.Neighbours[nIdx]
+		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
+		for _, ep := range cfg.DpAddr {
+			if slices.IndexFunc(neigh.DpLinks, func(link state.DpLink) bool {
+				return !link.IsRemote() && link.Endpoint().Name == ep.Name
+			}) == -1 {
+				// add the link to the neighbour
+				id := uuid.New()
+				neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(id, INF, ep))
+				go func() {
+					err := probe(s.Env, d.udpSock, *ep.ProbeAddr, id)
+					if err != nil {
+						//s.Log.Debug("discovery probe failed", "err", err.Error())
+					}
+				}()
+			}
+		}
+	}
+	return nil
 }
 
 func (w *DpLinkMgr) Init(s *state.State) error {
@@ -101,16 +184,14 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 			Remove:       false,
 			UpdateOnly:   false,
 			PresharedKey: nil,
-			Endpoint: &net.UDPAddr{
-				IP:   net.ParseIP(pcfg.DpAddr),
-				Port: pcfg.DpPort,
-			},
-			AllowedIPs: nil,
+			Endpoint:     nil,
+			AllowedIPs:   nil,
 		})
 	}
 
+	portAddr := int(s.DpBind.Port())
 	cfg := wgtypes.Config{
-		ListenPort:   &s.WgPort,
+		ListenPort:   &portAddr,
 		ReplacePeers: true,
 		Peers:        peers,
 	}
@@ -120,8 +201,20 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 		return err
 	}
 
-	go probeListener(s.Env)
-	go probeDataPlane(s.Env)
+	s.PingBuf = ttlcache.New[uint64, state.LinkPing](
+		ttlcache.WithTTL[uint64, state.LinkPing](5*time.Second),
+		ttlcache.WithDisableTouchOnHit[uint64, state.LinkPing](),
+	)
+	go s.PingBuf.Start()
+
+	w.udpSock, err = net.ListenUDP("udp", &net.UDPAddr{IP: nil, Port: int(s.ProbeBind.Port())})
+	s.Log.Info("started probe sock")
+	if err != nil {
+		return err
+	}
+
+	go probeListener(s.Env, w.udpSock)
+	s.RepeatTask(probeDataPlane, ProbeDpDelay)
 	return nil
 }
 
@@ -131,70 +224,71 @@ func generateAnonHash(token uint64, pubKey state.EdPublicKey) []byte {
 	return hash[:]
 }
 
-func probeListener(e *state.Env) {
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: nil, Port: int(e.ProbeAddr.Port())})
-
-	e.Log.Info("started probe listener")
-
-	if err != nil {
-		e.Cancel(err)
-	}
-	defer listener.Close()
-	latencyMap := ttlcache.New[uint64, linkPing](
-		ttlcache.WithTTL[uint64, linkPing](5*time.Second),
-		ttlcache.WithDisableTouchOnHit[uint64, linkPing](),
-	)
-	go latencyMap.Start()
-	defer latencyMap.Stop()
+func probeListener(e *state.Env, sock *net.UDPConn) {
 	for e.Context.Err() == nil {
-		buf := make([]byte, 1024)
-		n, addrport, err := listener.ReadFromUDPAddrPort(buf)
+		buf := make([]byte, 256)
+		n, addrport, err := sock.ReadFromUDPAddrPort(buf)
 		if err != nil {
 			continue
 		}
+
 		go func() {
-			req := &protocol.ProbePing{}
-			err := proto.Unmarshal(buf[:n], req)
+			pkt := &protocol.Probe{}
+			err := proto.Unmarshal(buf[:n], pkt)
 			if err != nil {
 				return
 			}
-			if req.Finalize {
-				// special code to handle case where one end doesn't have a public port
-				if latencyMap.Has(req.Token) {
-					item := latencyMap.Get(req.Token).Value()
-					elapsed := time.Since(item.Time)
-					e.Dispatch(func(s *state.State) error {
-						return handleProbeComplete(s, item.LinkId, item.Node, elapsed)
-					})
-				}
-			} else {
-				for _, node := range e.Nodes {
-					if node.Id != e.Id && slices.Equal(generateAnonHash(req.Token, node.PubKey), req.NodeId) {
-						token := rand.Uint64()
-						uid, err := uuid.Parse(req.LinkId)
-						if err != nil {
+			tok := pkt.Token
+			if pkt.ResponseToken != nil {
+				tok = *pkt.ResponseToken
+			}
+			for _, node := range e.Nodes {
+				if node.Id != e.Id && slices.Equal(generateAnonHash(tok, node.PubKey), pkt.NodeId) {
+					lid, err := uuid.FromBytes(pkt.LinkId)
+					if err != nil {
+						return
+					}
+					if pkt.ResponseToken == nil {
+						// ping
+						// TODO: Remove after debugging
+						weight := mock.GetMinMockWeight(e.Id, node.Id, e.CentralCfg)
+						if weight == 0 {
 							return
 						}
-						res := &protocol.ProbePong{
-							Token:         req.Token,
-							ResponseToken: token,
-							NodeId:        generateAnonHash(token, e.Key.Pubkey()),
-							LinkId:        req.LinkId,
-						}
+						time.Sleep(weight)
+
+						// build pong response
+						res := pkt
+						token := rand.Uint64()
+						res.ResponseToken = &token
+						res.NodeId = generateAnonHash(token, e.Key.Pubkey())
+
 						pktBytes, err := proto.Marshal(res)
 						if err != nil {
 							return
 						}
-						// TODO: Remove after debugging
-						time.Sleep(time.Duration((int64)(time.Millisecond) * 10 * (int64)(mock.GetMinMockWeight(e.Id, node.Id, e.CentralCfg))))
+						_, err = sock.WriteToUDPAddrPort(pktBytes, addrport)
+						if err != nil {
+							return
+						}
 
-						listener.WriteToUDPAddrPort(pktBytes, addrport)
-						latencyMap.Set(token, linkPing{
-							LinkId: uid,
-							Node:   state.Node(req.NodeId),
-							Time:   time.Now(),
-						}, ttlcache.DefaultTTL)
-						return
+						if err != nil {
+							return
+						}
+						e.Dispatch(func(s *state.State) error {
+							handleProbePing(s, lid, node.Id, state.DpEndpoint{
+								Name:      fmt.Sprintf("remote-%s-%s", node.Id, lid.String()),
+								DpAddr:    nil,
+								ProbeAddr: &addrport,
+							})
+							return nil
+						})
+					} else {
+						// pong
+						e.Dispatch(func(s *state.State) error {
+							handleProbePong(s, lid, node.Id, pkt.Token)
+							return nil
+						})
 					}
 				}
 			}
@@ -202,66 +296,30 @@ func probeListener(e *state.Env) {
 	}
 }
 
-func probe(e *state.Env, addr *net.UDPAddr, peer state.PubNodeCfg, linkId uuid.UUID) error {
-	udp, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		return err
-	}
-	err = udp.SetReadDeadline(time.Now().Add(time.Second * 1))
-	if err != nil {
-		return err
-	}
-	defer udp.Close()
+func probe(e *state.Env, sock *net.UDPConn, addr netip.AddrPort, linkId uuid.UUID) error {
 	token := rand.Uint64()
-
-	// send out ping
-	ping := &protocol.ProbePing{
-		Token:  token,
-		NodeId: generateAnonHash(token, e.Key.Pubkey()),
-		LinkId: linkId.String(),
+	uid, err := linkId.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	ping := &protocol.Probe{
+		Token:         token,
+		ResponseToken: nil,
+		NodeId:        generateAnonHash(token, e.Key.Pubkey()),
+		LinkId:        uid,
 	}
 	marshal, err := proto.Marshal(ping)
 	if err != nil {
 		return err
 	}
-	start := time.Now()
-	_, err = udp.Write(marshal)
+	_, err = sock.WriteToUDPAddrPort(marshal, addr)
 	if err != nil {
 		return err
 	}
-
-	// get pong
-	response := &protocol.ProbePong{}
-	buf := make([]byte, 128)
-	n, err := udp.Read(buf)
-	if err != nil {
-		return err
-	}
-	elapsed := time.Since(start)
-	err = proto.Unmarshal(buf[:n], response)
-	if err != nil {
-		return err
-	}
-	if response.Token != token || !slices.Equal(generateAnonHash(response.ResponseToken, peer.PubKey), response.NodeId) {
-		return nil
-	}
-
-	// send finalizer
-	ping = &protocol.ProbePing{
-		Token:    response.ResponseToken,
-		Finalize: true,
-	}
-	marshal, err = proto.Marshal(ping)
-	if err != nil {
-		return err
-	}
-	_, err = udp.Write(marshal)
-	if err != nil {
-		return err
-	}
-	e.Dispatch(func(s *state.State) error {
-		return handleProbeComplete(s, linkId, peer.Id, elapsed)
-	})
+	e.PingBuf.Set(token, state.LinkPing{
+		LinkId: linkId,
+		Time:   time.Now(),
+	}, ttlcache.DefaultTTL)
 	return nil
 }
 

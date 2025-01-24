@@ -1,4 +1,4 @@
-package udp_link
+package impl
 
 import (
 	"github.com/encodeous/nylon/protocol"
@@ -68,10 +68,9 @@ func linkHandler(e *state.Env, links <-chan state.CtlLink) {
 		end:
 			link.Close()
 			e.Dispatch(func(s *state.State) error {
-				RemoveLink(s, cfg, link)
+				RemoveNeighbour(s, cfg, link)
 				return nil
 			})
-
 		}()
 	}
 }
@@ -97,7 +96,7 @@ func (n *CtlLinkMgr) Init(s *state.State) error {
 	n.activeLinks = make([]state.CtlLink, 0)
 
 	go linkHandler(s.Env, links)
-	go ListenCtlTCP(s.Env, s.CtlAddr)
+	go ListenCtlTCP(s.Env, s.CtlBind)
 
 	// schedule timed tasks
 	s.Env.RepeatTask(probeCtl, ProbeCtlDelay)

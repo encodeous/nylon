@@ -1,4 +1,4 @@
-package udp_link
+package impl
 
 import (
 	"github.com/encodeous/nylon/protocol"
@@ -11,15 +11,18 @@ func ConnectCtl(s *state.State, node state.Node) {
 		panic(err)
 	}
 	go func() {
-		err := connect(s.Env, cfg)
-		if err != nil {
-			s.Env.Cancel(err)
+		for _, addr := range cfg.CtlAddr {
+			err := connect(s.Env, cfg, addr)
+			if err != nil {
+				// ignored, we just cant connect :(
+				s.Log.Debug("failed to connect to ctl", "addr", addr, "err", err)
+			}
 		}
 	}()
 }
 
-func connect(e *state.Env, cfg state.PubNodeCfg) error {
-	tcp, err := ConnectCtlTCP(cfg.CtlAddr)
+func connect(e *state.Env, cfg state.PubNodeCfg, addr string) error {
+	tcp, err := ConnectCtlTCP(addr)
 	if err != nil {
 		// ignore connection errors, it is expected if we cannot connect to some nodes :)
 	} else {

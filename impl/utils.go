@@ -1,4 +1,4 @@
-package udp_link
+package impl
 
 import (
 	"encoding/binary"
@@ -15,7 +15,7 @@ func AddSeqno(a, b uint16) uint16 {
 	if a == INF || b == INF {
 		return INF
 	} else {
-		return uint16(min(INF-1, int64(a)+int64(b)))
+		return uint16(min(int64(INF-1), int64(a)+int64(b)))
 	}
 }
 

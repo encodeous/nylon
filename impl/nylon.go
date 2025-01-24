@@ -1,4 +1,4 @@
-package udp_link
+package impl
 
 import (
 	"github.com/encodeous/nylon/state"
