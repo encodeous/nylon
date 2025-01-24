@@ -3,7 +3,6 @@ package impl
 import (
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
-	"log/slog"
 	"slices"
 )
 
@@ -22,6 +21,7 @@ func ProbeLinks(s *state.State) error {
 	//ny := Get[*CtlLinkMgr](s)
 	rt := Get[*Router](s)
 	//s.Log.Debug("Probing links", "ny", ny)
+	dbgPrintRouteTable(s)
 
 	for _, peer := range s.GetPeers() {
 		// make sure we are not already connected to the neighbour
@@ -79,9 +79,8 @@ func linkHandler(e *state.Env, links <-chan state.CtlLink) {
 func packetHandler(e *state.Env, pkt *protocol.CtlMsg, node state.Node) {
 	e.Dispatch(func(s *state.State) error {
 		switch pkt.Type.(type) {
-		case *protocol.CtlMsg_Seqno:
-			slog.Info("seqno request", "pkt", pkt.GetSeqno())
-			break
+		case *protocol.CtlMsg_SeqnoRequest:
+			return routerHandleSeqnoRequest(s, node, pkt.GetSeqnoRequest())
 		case *protocol.CtlMsg_Route:
 			return routerHandleRouteUpdate(s, node, pkt.GetRoute())
 

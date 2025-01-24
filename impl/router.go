@@ -6,19 +6,22 @@ import (
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"google.golang.org/protobuf/proto"
 	"slices"
+	"time"
 )
 
 type Router struct {
 	// list of active neighbours
 	Neighbours []*state.Neighbour
-	Routes     map[state.Node]state.Route
+	Routes     map[state.Node]*state.Route
+	SeqnoDedup *ttlcache.Cache[state.Node, state.Source]
 	Self       *state.Source
 }
 
 func (r *Router) Cleanup(s *state.State) error {
-	// do nothing
+	r.SeqnoDedup.Stop()
 	return nil
 }
 
@@ -30,8 +33,16 @@ func (r *Router) Init(s *state.State) error {
 		Seqno: 0,
 		Sig:   nil,
 	}
-	r.Routes = make(map[state.Node]state.Route)
+	r.Routes = make(map[state.Node]*state.Route)
+	r.SeqnoDedup = ttlcache.New[state.Node, state.Source](ttlcache.WithTTL[state.Node, state.Source](30 * time.Second))
+	go r.SeqnoDedup.Start()
 	return nil
+}
+
+func IncrementSeqno(s *state.State) {
+	r := Get[*Router](s)
+	r.Self.Seqno++
+	// TODO: Signature
 }
 
 func RemoveLink(s *state.State, cfg state.PubNodeCfg, removeLink state.CtlLink) {
@@ -120,8 +131,8 @@ func fullRouteUpdate(s *state.State) error {
 	// broadcast routes
 
 	pkt := protocol.CtlRouteUpdate{
-		Urgent:  false,
-		Updates: make([]*protocol.CtlRouteUpdate_Params, 0),
+		SeqnoPush: false,
+		Updates:   make([]*protocol.CtlRouteUpdate_Params, 0),
 	}
 
 	// make self update
@@ -143,6 +154,41 @@ func fullRouteUpdate(s *state.State) error {
 	return nil
 }
 
+func pushSeqnoUpdate(s *state.State, sources []state.Node) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	r := Get[*Router](s)
+
+	// broadcast routes
+	pkt := protocol.CtlRouteUpdate{
+		SeqnoPush: true,
+		Updates:   make([]*protocol.CtlRouteUpdate_Params, 0),
+	}
+
+	for _, source := range sources {
+		if source == r.Self.Id {
+			// make self update
+			pkt.Updates = append(pkt.Updates, &protocol.CtlRouteUpdate_Params{
+				Source: mapToPktSource(r.Self),
+				Metric: 0,
+			})
+		} else {
+			route, ok := r.Routes[source]
+			if ok {
+				pkt.Updates = append(pkt.Updates, &protocol.CtlRouteUpdate_Params{
+					Source: mapToPktSource(&route.Src),
+					Metric: uint32(route.Metric),
+				})
+			}
+		}
+	}
+
+	wrapped := protocol.CtlMsg{Type: &protocol.CtlMsg_Route{Route: &pkt}}
+	broadcast(s, &wrapped)
+	return nil
+}
+
 func dbgPrintRouteTable(s *state.State) {
 	r := Get[*Router](s)
 	if len(r.Routes) != 0 {
@@ -155,9 +201,12 @@ func dbgPrintRouteTable(s *state.State) {
 
 func updateRoutes(s *state.State) error {
 	r := Get[*Router](s)
-	var newRetractions []state.Node
+	retractions := protocol.CtlRouteUpdate{
+		SeqnoPush: false,
+		Updates:   make([]*protocol.CtlRouteUpdate_Params, 0),
+	}
 
-	dbgPrintRouteTable(s)
+	improvedSeqno := make([]state.Node, 0)
 
 	// basically bellman ford algorithm
 
@@ -181,6 +230,9 @@ func updateRoutes(s *state.State) error {
 					if IsFeasible(tRoute, neighRoute, metric) {
 						// feasible, update existing route
 						tRoute.Metric = metric
+						if SeqnoLt(tRoute.Src.Seqno, neighRoute.Src.Seqno) {
+							improvedSeqno = append(improvedSeqno, neighRoute.Src.Id)
+						}
 						tRoute.Src = neighRoute.Src
 						tRoute.Fd = metric
 						tRoute.Link = link
@@ -190,11 +242,12 @@ func updateRoutes(s *state.State) error {
 						// not feasible :(
 						nh := tRoute.Nh
 						if nh == neigh.Id {
-							// route is currently preferred
+							retract := false
+							// route is currently selected
 							if metric > tRoute.Fd {
 								// retract our route!
 								if !tRoute.Retracted {
-									newRetractions = append(newRetractions, tRoute.Src.Id)
+									retract = true
 								}
 								tRoute.Metric = INF
 								tRoute.Retracted = true
@@ -202,14 +255,23 @@ func updateRoutes(s *state.State) error {
 								// update metric unconditionally, as it is <= Fd
 								tRoute.Metric = metric
 								tRoute.Fd = metric
-								tRoute.Retracted = false
+								if metric == INF && !tRoute.Retracted {
+									retract = true
+								}
+								tRoute.Retracted = retract
+							}
+							if retract {
+								retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
+									Source: mapToPktSource(&tRoute.Src),
+									Metric: INF,
+								})
 							}
 						}
 					}
 					r.Routes[src] = tRoute
 				} else if metric != INF {
 					// add new route, if it is not retracted
-					r.Routes[src] = state.Route{
+					r.Routes[src] = &state.Route{
 						PubRoute: state.PubRoute{
 							Src:       neighRoute.Src,
 							Metric:    metric,
@@ -223,35 +285,97 @@ func updateRoutes(s *state.State) error {
 			}
 		}
 	}
+	improvedSeqno = slices.Compact(improvedSeqno)
+	if len(improvedSeqno) > 0 {
+		err := pushSeqnoUpdate(s, improvedSeqno)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(retractions.Updates) > 0 {
+		broadcast(s, &protocol.CtlMsg{Type: &protocol.CtlMsg_Route{Route: &retractions}})
+	}
+
+	// check for starvation
+	for node, route := range r.Routes {
+		if route.Metric == INF {
+			// we dont have a valid route to this node
+
+			prev := r.SeqnoDedup.Get(node)
+			if prev != nil && SeqnoGe(prev.Value().Seqno, route.Src.Seqno) {
+				continue // we have already sent such a request before
+			}
+			r.SeqnoDedup.Set(node, route.Src, ttlcache.DefaultTTL)
+
+			broadcast(s, &protocol.CtlMsg{
+				Type: &protocol.CtlMsg_SeqnoRequest{
+					SeqnoRequest: mapToPktSource(&route.Src),
+				},
+			})
+		}
+	}
 
 	return nil
 }
 
 // packet handlers
-
 func routerHandleRouteUpdate(s *state.State, node state.Node, pkt *protocol.CtlRouteUpdate) error {
 	r := Get[*Router](s)
 
-	if pkt.Urgent {
-		// TODO
-		// only for retractions and seqno updates
-	} else {
-		nidx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
-			return neighbour.Id == node
-		})
-		neigh := r.Neighbours[nidx]
-		neigh.Routes = make(map[state.Node]state.PubRoute)
-		for _, update := range pkt.Updates {
-			if update.Metric == INF {
-				s.Log.Warn("peer provided impossible metric", "metric", update.Metric, "node", node)
-			}
-			neigh.Routes[state.Node(update.Source.Id)] = state.PubRoute{
-				Src:       mapFromPktSource(update.Source),
-				Metric:    uint16(update.Metric),
-				Retracted: false,
-			}
+	nidx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
+		return neighbour.Id == node
+	})
+	neigh := r.Neighbours[nidx]
+	neigh.Routes = make(map[state.Node]state.PubRoute)
+	hasRetractions := false
+	for _, update := range pkt.Updates {
+		cur, ok := neigh.Routes[state.Node(update.Source.Id)]
+		if ok {
+			hasRetractions = hasRetractions || !cur.Retracted && update.Metric == INF
+		}
+		neigh.Routes[state.Node(update.Source.Id)] = state.PubRoute{
+			Src:       mapFromPktSource(update.Source),
+			Metric:    uint16(update.Metric),
+			Retracted: update.Metric == INF,
 		}
 	}
+	if hasRetractions || pkt.SeqnoPush {
+		return updateRoutes(s)
+	}
+	return nil
+}
 
+func routerHandleSeqnoRequest(s *state.State, node state.Node, pkt *protocol.Source) error {
+	r := Get[*Router](s)
+	src := mapFromPktSource(pkt)
+
+	// TODO: Verify src sig
+
+	var fSrc *state.Source
+
+	froute, ok := r.Routes[src.Id]
+
+	if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
+		fSrc = &froute.Src
+	} else if s.Id == src.Id {
+		if r.Self.Seqno <= src.Seqno {
+			r.Self.Seqno = src.Seqno
+			IncrementSeqno(s)
+		}
+		fSrc = r.Self
+	}
+
+	if fSrc != nil {
+		// we have a better one cached, no need to forward
+		return pushSeqnoUpdate(s, []state.Node{fSrc.Id})
+	} else {
+		prev := r.SeqnoDedup.Get(src.Id)
+		if prev != nil && SeqnoGe(prev.Value().Seqno, src.Seqno) {
+			return nil // we have already sent such a request before
+		}
+		r.SeqnoDedup.Set(src.Id, src, ttlcache.DefaultTTL)
+		broadcast(s, &protocol.CtlMsg{Type: &protocol.CtlMsg_SeqnoRequest{SeqnoRequest: pkt}})
+	}
 	return nil
 }

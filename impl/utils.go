@@ -15,16 +15,25 @@ func AddSeqno(a, b uint16) uint16 {
 	if a == INF || b == INF {
 		return INF
 	} else {
-		return min(INF-1, a+b)
+		return uint16(min(INF-1, int64(a)+int64(b)))
 	}
 }
 
 func SeqnoLt(a, b uint16) bool {
-	x := (b - a) % 63336
+	x := (b - a + 63336) % 63336
 	return 0 < x && x < 32768
 }
+func SeqnoLe(a, b uint16) bool {
+	return a == b || SeqnoLt(a, b)
+}
+func SeqnoGt(a, b uint16) bool {
+	return !SeqnoLe(a, b)
+}
+func SeqnoGe(a, b uint16) bool {
+	return !SeqnoLt(a, b)
+}
 
-func IsFeasible(curRoute state.Route, newRoute state.PubRoute, metric uint16) bool {
+func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) bool {
 	if SeqnoLt(newRoute.Src.Seqno, curRoute.Src.Seqno) {
 		return false
 	}

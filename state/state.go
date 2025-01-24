@@ -92,7 +92,7 @@ type CentralCfg struct {
 	RootCa      Cert
 	Nodes       []PubNodeCfg
 	Edges       []Pair[Node, Node]
-	MockWeights []Triple[Node, Node, uint16]
+	MockWeights []Triple[Node, Node, *uint16]
 	Version     uint64
 }
 

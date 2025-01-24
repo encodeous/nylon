@@ -28,7 +28,7 @@ message HsHello {
 message CtlMsg {
   oneof type {
     CtlRouteUpdate Route = 1;
-    CtlSeqnoRequest Seqno = 2;
+    Source SeqnoRequest = 2;
   }
 }
 
@@ -37,10 +37,6 @@ message CtlRouteUpdate {
     Source Source = 1;
     uint32 Metric = 2;
   }
-  bool Urgent = 1;
+  bool SeqnoPush = 1;
   repeated Params Updates = 2;
-}
-
-message CtlSeqnoRequest {
-  Source Current = 1;
 }

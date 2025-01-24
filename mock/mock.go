@@ -9,14 +9,20 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func GetMockWeight(a, b state.Node, cfg state.CentralCfg) []uint16 {
-	var weights []uint16
+func GetMockWeight(a, b state.Node, cfg state.CentralCfg) []*uint16 {
+	var weights []*uint16
 	for _, edge := range cfg.MockWeights {
 		if edge.V1 == a && edge.V2 == b || edge.V2 == a && edge.V2 == b {
 			weights = append(weights, edge.V3)
 		}
 	}
 	return weights
+}
+
+func Box(v uint16) *uint16 {
+	pt := new(uint16)
+	*pt = v
+	return pt
 }
 
 func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
@@ -68,14 +74,14 @@ func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
 		{"kat", "eve"},
 		{"eve", "ada"},
 	}
-	mockCentralCfg.MockWeights = []state.Triple[state.Node, state.Node, uint16]{
-		{"bob", "jeb", 1},
-		{"bob", "kat", 1},
-		{"bob", "eve", 10},
-		{"jeb", "kat", 1},
-		{"kat", "ada", 1},
-		{"kat", "eve", 1},
-		{"eve", "ada", 2},
+	mockCentralCfg.MockWeights = []state.Triple[state.Node, state.Node, *uint16]{
+		{"bob", "jeb", Box(1)},
+		{"bob", "kat", Box(1)},
+		{"bob", "eve", Box(10)},
+		{"jeb", "kat", Box(1)},
+		{"kat", "ada", Box(1)},
+		{"kat", "eve", Box(1)},
+		{"eve", "ada", Box(2)},
 	}
 	return mockCentralCfg, nodes, nil
 }
