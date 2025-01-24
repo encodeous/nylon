@@ -1,4 +1,4 @@
-package impl
+package udp_link
 
 import (
 	"errors"
@@ -34,7 +34,10 @@ func (r *Router) Init(s *state.State) error {
 		Sig:   nil,
 	}
 	r.Routes = make(map[state.Node]*state.Route)
-	r.SeqnoDedup = ttlcache.New[state.Node, state.Source](ttlcache.WithTTL[state.Node, state.Source](30 * time.Second))
+	r.SeqnoDedup = ttlcache.New[state.Node, state.Source](
+		ttlcache.WithTTL[state.Node, state.Source](30*time.Second),
+		ttlcache.WithDisableTouchOnHit[state.Node, state.Source](),
+	)
 	go r.SeqnoDedup.Start()
 	return nil
 }

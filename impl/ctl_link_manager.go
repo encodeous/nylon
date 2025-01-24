@@ -1,4 +1,4 @@
-package impl
+package udp_link
 
 import (
 	"github.com/encodeous/nylon/protocol"
@@ -17,7 +17,7 @@ func (n *CtlLinkMgr) Cleanup(s *state.State) error {
 	return nil
 }
 
-func ProbeLinks(s *state.State) error {
+func probeCtl(s *state.State) error {
 	//ny := Get[*CtlLinkMgr](s)
 	rt := Get[*Router](s)
 	//s.Log.Debug("Probing links", "ny", ny)
@@ -100,7 +100,7 @@ func (n *CtlLinkMgr) Init(s *state.State) error {
 	go ListenCtlTCP(s.Env, s.CtlAddr)
 
 	// schedule timed tasks
-	s.Env.RepeatTask(ProbeLinks, ProbeLinkDelay)
+	s.Env.RepeatTask(probeCtl, ProbeCtlDelay)
 
 	return nil
 }

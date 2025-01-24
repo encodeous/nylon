@@ -1,4 +1,4 @@
-package impl
+package udp_link
 
 import (
 	"encoding/binary"
@@ -92,4 +92,12 @@ func send(c net.Conn, m proto.Message) error {
 func Get[T state.NyModule](s *state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)
+}
+
+func Xor(a, b []byte) []byte {
+	buf := make([]byte, len(a))
+	for i := 0; i < len(a); i++ {
+		buf[i] = a[i] ^ b[i]
+	}
+	return buf
 }

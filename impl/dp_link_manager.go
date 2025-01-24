@@ -1,18 +1,33 @@
-package impl
+package udp_link
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"github.com/encodeous/nylon/dp_wireguard"
+	"github.com/encodeous/nylon/mock"
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
+	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"google.golang.org/protobuf/proto"
+	"math/rand/v2"
 	"net"
 	"slices"
+	"time"
 )
 
 type DpLinkMgr struct {
 	client     *wgctrl.Client
 	deviceName string
+}
+
+type linkPing struct {
+	LinkId uuid.UUID
+	Node   state.Node
+	Time   time.Time
 }
 
 func (w *DpLinkMgr) Cleanup(s *state.State) error {
@@ -38,8 +53,21 @@ func (w *DpLinkMgr) getWgDevice(s *state.State) (*wgtypes.Device, error) {
 	return dpDevice, nil
 }
 
+func handleProbeComplete(s *state.State, link uuid.UUID, node state.Node, elapsed time.Duration) error {
+	// check if link exists, otherwise create a dplink
+}
+
+func probeDataPlane(e *state.Env) {
+	for e.Context.Err() == nil {
+		for _, neigh := range e.GetPeers() {
+
+		}
+		time.Sleep(ProbeDpDelay)
+	}
+}
+
 func (w *DpLinkMgr) Init(s *state.State) error {
-	s.Log.Info("initializing wireguard")
+	s.Log.Info("initializing WireGuard")
 
 	client, err := wgctrl.New()
 	if err != nil {
@@ -92,85 +120,149 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 		return err
 	}
 
-	//	name := "nylon-" + string(s.Id)
-	//	if runtime.GOOS == "darwin" {
-	//		name = "utun" + strconv.Itoa(int(hash(string(s.Id)))%1000)
-	//	}
-	//	tdev, err := tun.CreateTUN(name, device.DefaultMTU)
-	//
-	//	//nAddr := s.Key.Pubkey().DeriveNylonAddr()
-	//	//tdev, _, err := netstack.CreateNetTUN([]netip.Addr{
-	//	//	netip.AddrFrom16([16]byte(nAddr)),
-	//	//}, make([]netip.Addr, 0), device.DefaultMTU)
-	//
-	//	if err != nil {
-	//		return err
-	//	}
-	//	itfName, err := tdev.Name()
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	log := &device.Logger{
-	//		Verbosef: func(format string, args ...any) {
-	//			s.Log.Debug(fmt.Sprintf(format, args...))
-	//		},
-	//		Errorf: func(format string, args ...any) {
-	//			s.Log.Error(fmt.Sprintf(format, args...))
-	//		},
-	//	}
-	//
-	//	s.Log.Info("created tun device", "interface", itfName)
-	//	w.device = device.NewDevice(tdev, conn.NewDefaultBind(), log)
-	//	w.tdev = &tdev
-	//
-	//	privkey := hex.EncodeToString(((*ecdh.PrivateKey)(s.WgKey)).Bytes())
-	//
-	//	err = w.device.IpcSet(fmt.Sprintf("private_key=%s", privkey))
-	//	if err != nil {
-	//		return err
-	//	}
-	//	err = w.device.IpcSet(fmt.Sprintf("listen_port=%d", s.WgPort))
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	s.Log.Info("nylon address is ", "addr", s.Key.Pubkey().DeriveNylonAddr().String())
-	//
-	//	fileUAPI, err := ipc.UAPIOpen(itfName)
-	//	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
-	//
-	//	go func() {
-	//		for {
-	//			conn, err := uapi.Accept()
-	//			if err != nil {
-	//				s.Log.Error(err.Error())
-	//				return
-	//			}
-	//			go w.device.IpcHandle(conn)
-	//		}
-	//	}()
-	//
-	//	// configure peers
-	//	for _, peer := range s.GetPeers() {
-	//		pcfg, err := s.GetPubNodeCfg(peer)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		err = w.device.IpcSet(fmt.Sprintf(`public_key=%s
-	//endpoint=%s:%d
-	//allowed_ip=%s/128
-	//`,
-	//			hex.EncodeToString((*ecdh.PublicKey)(pcfg.DpPubKey).Bytes()),
-	//			pcfg.DpAddr,
-	//			pcfg.DpPort,
-	//			pcfg.PubKey.DeriveNylonAddr().String(),
-	//		))
-	//		if err != nil {
-	//			return err
-	//		}
-	//	}
-
-	// https://github.com/libp2p/go-netroute?tab=readme-ov-file
+	go probeListener(s.Env)
+	go probeDataPlane(s.Env)
 	return nil
 }
+
+// region probe io
+func generateAnonHash(token uint64, pubKey state.EdPublicKey) []byte {
+	hash := sha256.Sum256(binary.LittleEndian.AppendUint64(pubKey, token))
+	return hash[:]
+}
+
+func probeListener(e *state.Env) {
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: nil, Port: int(e.ProbeAddr.Port())})
+
+	e.Log.Info("started probe listener")
+
+	if err != nil {
+		e.Cancel(err)
+	}
+	defer listener.Close()
+	latencyMap := ttlcache.New[uint64, linkPing](
+		ttlcache.WithTTL[uint64, linkPing](5*time.Second),
+		ttlcache.WithDisableTouchOnHit[uint64, linkPing](),
+	)
+	go latencyMap.Start()
+	defer latencyMap.Stop()
+	for e.Context.Err() == nil {
+		buf := make([]byte, 1024)
+		n, addrport, err := listener.ReadFromUDPAddrPort(buf)
+		if err != nil {
+			continue
+		}
+		go func() {
+			req := &protocol.ProbePing{}
+			err := proto.Unmarshal(buf[:n], req)
+			if err != nil {
+				return
+			}
+			if req.Finalize {
+				// special code to handle case where one end doesn't have a public port
+				if latencyMap.Has(req.Token) {
+					item := latencyMap.Get(req.Token).Value()
+					elapsed := time.Since(item.Time)
+					e.Dispatch(func(s *state.State) error {
+						return handleProbeComplete(s, item.LinkId, item.Node, elapsed)
+					})
+				}
+			} else {
+				for _, node := range e.Nodes {
+					if node.Id != e.Id && slices.Equal(generateAnonHash(req.Token, node.PubKey), req.NodeId) {
+						token := rand.Uint64()
+						uid, err := uuid.Parse(req.LinkId)
+						if err != nil {
+							return
+						}
+						res := &protocol.ProbePong{
+							Token:         req.Token,
+							ResponseToken: token,
+							NodeId:        generateAnonHash(token, e.Key.Pubkey()),
+							LinkId:        req.LinkId,
+						}
+						pktBytes, err := proto.Marshal(res)
+						if err != nil {
+							return
+						}
+						// TODO: Remove after debugging
+						time.Sleep(time.Duration((int64)(time.Millisecond) * 10 * (int64)(mock.GetMinMockWeight(e.Id, node.Id, e.CentralCfg))))
+
+						listener.WriteToUDPAddrPort(pktBytes, addrport)
+						latencyMap.Set(token, linkPing{
+							LinkId: uid,
+							Node:   state.Node(req.NodeId),
+							Time:   time.Now(),
+						}, ttlcache.DefaultTTL)
+						return
+					}
+				}
+			}
+		}()
+	}
+}
+
+func probe(e *state.Env, addr *net.UDPAddr, peer state.PubNodeCfg, linkId uuid.UUID) error {
+	udp, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return err
+	}
+	err = udp.SetReadDeadline(time.Now().Add(time.Second * 1))
+	if err != nil {
+		return err
+	}
+	defer udp.Close()
+	token := rand.Uint64()
+
+	// send out ping
+	ping := &protocol.ProbePing{
+		Token:  token,
+		NodeId: generateAnonHash(token, e.Key.Pubkey()),
+		LinkId: linkId.String(),
+	}
+	marshal, err := proto.Marshal(ping)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	_, err = udp.Write(marshal)
+	if err != nil {
+		return err
+	}
+
+	// get pong
+	response := &protocol.ProbePong{}
+	buf := make([]byte, 128)
+	n, err := udp.Read(buf)
+	if err != nil {
+		return err
+	}
+	elapsed := time.Since(start)
+	err = proto.Unmarshal(buf[:n], response)
+	if err != nil {
+		return err
+	}
+	if response.Token != token || !slices.Equal(generateAnonHash(response.ResponseToken, peer.PubKey), response.NodeId) {
+		return nil
+	}
+
+	// send finalizer
+	ping = &protocol.ProbePing{
+		Token:    response.ResponseToken,
+		Finalize: true,
+	}
+	marshal, err = proto.Marshal(ping)
+	if err != nil {
+		return err
+	}
+	_, err = udp.Write(marshal)
+	if err != nil {
+		return err
+	}
+	e.Dispatch(func(s *state.State) error {
+		return handleProbeComplete(s, linkId, peer.Id, elapsed)
+	})
+	return nil
+}
+
+// endregion probe io
