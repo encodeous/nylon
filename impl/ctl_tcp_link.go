@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 	"net"
+	"net/netip"
 	"sync"
 )
 
@@ -23,9 +24,9 @@ func (T *TCPCtlLink) IsRemote() bool {
 	return T.remote
 }
 
-func ListenCtlTCP(e *state.Env, addr string) {
+func ListenCtlTCP(e *state.Env, addr netip.AddrPort) {
 	config := net.ListenConfig{}
-	listener, err := config.Listen(e.Context, "tcp", addr)
+	listener, err := config.Listen(e.Context, "tcp", addr.String())
 	if err != nil {
 		e.Log.Error("Failed to listen on addr", "addr", addr, "err", err)
 		e.Dispatch(func(env *state.State) error {
@@ -35,7 +36,7 @@ func ListenCtlTCP(e *state.Env, addr string) {
 		return
 	}
 
-	e.Log.Info("Listening on", "addr", addr)
+	e.Log.Info("listening on", "addr", addr)
 	for e.Context.Err() == nil {
 		conn, err := listener.Accept()
 		if err != nil {

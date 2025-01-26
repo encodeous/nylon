@@ -2,8 +2,9 @@
 package main
 
 import (
+	"github.com/encodeous/nylon/cmd"
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/mock"
+	"github.com/encodeous/nylon/state"
 	"log/slog"
 	"sync"
 	"time"
@@ -43,7 +44,7 @@ import (
 //	mockPubNode := mockNode.GeneratePubCfg()
 //
 //	mockCentralCfg := state.CentralCfg{
-//		RootCa: ss,
+//		RootPubKey: ss,
 //		Nodes: []state.PubNodeCfg{
 //			mockPubNode,
 //		},
@@ -54,7 +55,10 @@ import (
 //}
 
 func main() {
-	ccfg, ncfg, err := mock.MockCfg()
+	cmd.Execute()
+	return
+
+	ccfg, ncfg, err := state.MockCfg()
 
 	if err != nil {
 		panic(err)
@@ -80,7 +84,7 @@ func main() {
 		// weight changer
 		for {
 			//slog.Info("Changing Weights...")
-			//for _, edge := range ccfg.MockWeights {
+			//for _, edge := range ccfg.mockWeights {
 			//	met := edge.V3
 			//	res := rand.Int()%4 == 0
 			//	if res && *met > 1 {

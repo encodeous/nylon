@@ -3,12 +3,15 @@ package core
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"github.com/encodeous/nylon/impl"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	"log/slog"
 	"os"
+	"os/signal"
 	"reflect"
+	"time"
 )
 
 func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error {
@@ -46,6 +49,15 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}
 	s.Log.Info("init modules complete")
 
+	s.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			s.Cancel(errors.New("received shutdown signal"))
+		}
+	}()
+
 	return MainLoop(&s, dispatch)
 }
 
@@ -72,13 +84,16 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 		select {
 		case fun := <-dispatch:
 			//s.Log.Debug("start")
-			//start := time.Now()
+			start := time.Now()
 			err := fun(s)
 			if err != nil {
 				s.Log.Error("error occurred during dispatch: ", "error", err)
 				s.Cancel(err)
 			}
-			//elapsed := time.Since(start)
+			elapsed := time.Since(start)
+			if elapsed > time.Millisecond*50 {
+				s.Log.Warn("dispatch took a long time!", "fun", fun, "elapsed", elapsed)
+			}
 			//s.Log.Debug("done", "elapsed", elapsed)
 		case <-s.Context.Done():
 			goto endLoop
@@ -96,6 +111,13 @@ func cleanup(s *state.State) {
 	}
 	if s.DispatchChannel != nil {
 		close(s.DispatchChannel)
+	}
+	s.Log.Info("cleaning up modules")
+	for moduleName, module := range s.Modules {
+		err := module.Cleanup(s)
+		if err != nil {
+			s.Log.Error("error occurred during cleanup: ", "module", moduleName, "error", err)
+		}
 	}
 	s.Cancel(context.Canceled)
 }

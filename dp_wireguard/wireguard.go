@@ -9,8 +9,12 @@ import (
 	"runtime"
 )
 
+func getTmpConfigPath(s *state.State) string {
+	return path.Join(os.TempDir(), "nylon_wireguard", string(s.Id)+".conf")
+}
+
 func writeTmpConfig(s *state.State) (string, error) {
-	tmp := path.Join(os.TempDir(), "nylon_wireguard", string(s.Id)+".conf")
+	tmp := getTmpConfigPath(s)
 	err := os.MkdirAll(path.Join(os.TempDir(), "nylon_wireguard"), 0700)
 	if err != nil {
 		return "", err
@@ -23,6 +27,7 @@ Address = %s
 		base64.StdEncoding.EncodeToString(s.WgKey.Bytes()),
 		s.Key.Pubkey().DeriveNylonAddr().String())
 	err = os.WriteFile(tmp, []byte(cfg), 0700)
+	s.Log.Debug("written wg config file", "path", tmp)
 	if err != nil {
 		return "", err
 	}
@@ -37,7 +42,7 @@ func InitWireGuard(s *state.State) error {
 	if runtime.GOOS == "windows" {
 		err = InitWindows(tmp)
 	} else {
-		err = InitWgQuick(tmp)
+		err = InitWgQuick(tmp, s.Env)
 	}
 	if err != nil {
 		s.Log.Error("Failed to initialize WireGuard tunnel, has Nylon gracefully shutdown?")
@@ -46,14 +51,12 @@ func InitWireGuard(s *state.State) error {
 }
 
 func CleanupWireGuard(s *state.State) error {
-	tmp, err := writeTmpConfig(s)
-	if err != nil {
-		return err
-	}
+	tmp := getTmpConfigPath(s)
+	var err error
 	if runtime.GOOS == "windows" {
 		err = CleanupWindows(tmp)
 	} else {
-		err = CleanupWgQuick(tmp)
+		err = CleanupWgQuick(tmp, s.Env)
 	}
 	if err != nil {
 		return err

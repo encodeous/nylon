@@ -45,11 +45,9 @@ type NodeCfg struct {
 	Key EdPrivateKey
 	// Data plane (WireGuard) Private key
 	WgKey *EcPrivateKey
-	// x509 certificate signed by the root CA
-	Cert Cert
-	Id   Node
+	Id    Node
 	// Address and port that the control plane listens on
-	CtlBind string
+	CtlBind netip.AddrPort
 	// Address that the data plane can be accessed by
 	DpBind    netip.AddrPort
 	ProbeBind netip.AddrPort
@@ -74,7 +72,7 @@ func (k EdPrivateKey) Pubkey() EdPublicKey {
 func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
 	cfg := PubNodeCfg{
 		Id:      n.Id,
-		CtlAddr: []string{n.CtlBind},
+		CtlAddr: []string{n.CtlBind.String()},
 		DpAddr: []DpEndpoint{
 			{fmt.Sprintf("%s-local", n.Id), &n.DpBind, &n.ProbeBind},
 		},
@@ -99,10 +97,10 @@ type PubNodeCfg struct {
 
 type CentralCfg struct {
 	// the public key of the root CA
-	RootCa      Cert
+	RootPubKey  EdPrivateKey
 	Nodes       []PubNodeCfg
 	Edges       []Pair[Node, Node]
-	MockWeights []Triple[Node, Node, *time.Duration]
+	mockWeights []Triple[Node, Node, *time.Duration]
 	Version     uint64
 }
 

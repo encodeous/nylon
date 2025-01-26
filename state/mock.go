@@ -1,19 +1,18 @@
-package mock
+package state
 
 import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
-	"github.com/encodeous/nylon/state"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net/netip"
 	"time"
 )
 
-func GetMockWeight(a, b state.Node, cfg state.CentralCfg) []*time.Duration {
+func GetMockWeight(a, b Node, cfg CentralCfg) []*time.Duration {
 	var weights []*time.Duration
-	for _, edge := range cfg.MockWeights {
+	for _, edge := range cfg.mockWeights {
 		if edge.V1 == a && edge.V2 == b || edge.V2 == a && edge.V2 == b {
 			weights = append(weights, edge.V3)
 		}
@@ -21,9 +20,9 @@ func GetMockWeight(a, b state.Node, cfg state.CentralCfg) []*time.Duration {
 	return weights
 }
 
-func GetMinMockWeight(a, b state.Node, cfg state.CentralCfg) time.Duration {
+func GetMinMockWeight(a, b Node, cfg CentralCfg) time.Duration {
 	weight := time.Second * 0
-	for _, edge := range cfg.MockWeights {
+	for _, edge := range cfg.mockWeights {
 		if edge.V1 == a && edge.V2 == b || edge.V2 == a && edge.V1 == b {
 			weight = max(weight, *edge.V3)
 		}
@@ -37,11 +36,11 @@ func Box(v int) *time.Duration {
 	return pt
 }
 
-func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
-	mockCentralCfg := state.CentralCfg{
-		RootCa:  nil,
-		Nodes:   make([]state.PubNodeCfg, 0),
-		Version: 0,
+func MockCfg() (CentralCfg, []NodeCfg, error) {
+	mockCentralCfg := CentralCfg{
+		RootPubKey: nil,
+		Nodes:      make([]PubNodeCfg, 0),
+		Version:    0,
 	}
 	basePort := 23000
 	wgBasePort := 24000
@@ -53,37 +52,38 @@ func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
 		"eve",
 		"ada",
 	}
-	nodes := make([]state.NodeCfg, 0)
+	nodes := make([]NodeCfg, 0)
 	for i, node := range names {
 		dpKey, err := wgtypes.GeneratePrivateKey()
 		if err != nil {
-			return state.CentralCfg{}, nil, err
+			return CentralCfg{}, nil, err
 		}
 		ecKey, err := ecdh.X25519().NewPrivateKey(dpKey[:])
 		if err != nil {
-			return state.CentralCfg{}, nil, err
+			return CentralCfg{}, nil, err
 		}
 		_, ctlKey, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			return state.CentralCfg{}, nil, err
+			return CentralCfg{}, nil, err
 		}
 		dpAddr, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", wgBasePort+i))
 		probeAddr, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", probeBasePort+i))
+		ctlBind, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
-			return state.CentralCfg{}, nil, err
+			return CentralCfg{}, nil, err
 		}
-		mockNode := state.NodeCfg{
-			Id:        state.Node(node),
-			CtlBind:   fmt.Sprintf("127.0.0.1:%d", basePort+i),
+		mockNode := NodeCfg{
+			Id:        Node(node),
+			CtlBind:   ctlBind,
 			DpBind:    dpAddr,
 			ProbeBind: probeAddr,
-			Key:       state.EdPrivateKey(ctlKey),
-			WgKey:     (*state.EcPrivateKey)(ecKey),
+			Key:       EdPrivateKey(ctlKey),
+			WgKey:     (*EcPrivateKey)(ecKey),
 		}
 		nodes = append(nodes, mockNode)
 		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg())
 	}
-	mockCentralCfg.Edges = []state.Pair[state.Node, state.Node]{
+	mockCentralCfg.Edges = []Pair[Node, Node]{
 		{"bob", "jeb"},
 		{"bob", "kat"},
 		{"bob", "eve"},
@@ -92,7 +92,7 @@ func MockCfg() (state.CentralCfg, []state.NodeCfg, error) {
 		{"kat", "eve"},
 		{"eve", "ada"},
 	}
-	mockCentralCfg.MockWeights = []state.Triple[state.Node, state.Node, *time.Duration]{
+	mockCentralCfg.mockWeights = []Triple[Node, Node, *time.Duration]{
 		{"bob", "jeb", Box(7)},
 		{"bob", "kat", Box(9)},
 		{"bob", "eve", Box(100)},
