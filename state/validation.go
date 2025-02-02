@@ -36,6 +36,11 @@ func BindValidator(s string) error {
 	return err
 }
 
+func AddrValidator(s string) error {
+	_, err := netip.ParseAddr(s)
+	return err
+}
+
 func NodeConfigValidator(node *NodeCfg) error {
 	err := NameValidator(string(node.Id))
 	if err != nil {

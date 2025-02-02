@@ -39,6 +39,8 @@ type DpEndpoint struct {
 	ProbeAddr *netip.AddrPort
 }
 
+// TODO: Allow node to be configured to NOT be a router
+
 // NodeCfg represents local node-level configuration
 type NodeCfg struct {
 	// Node Private Key
@@ -69,13 +71,16 @@ func (k EdPrivateKey) Pubkey() EdPublicKey {
 	return EdPublicKey(((ed25519.PrivateKey)(k).Public()).(ed25519.PublicKey))
 }
 
-func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
+func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
+	extDp := RepAddr(n.DpBind, extIp)
+	extPb := RepAddr(n.ProbeBind, extIp)
 	cfg := PubNodeCfg{
 		Id:      n.Id,
-		CtlAddr: []string{n.CtlBind.String()},
+		CtlAddr: []string{RepAddr(n.CtlBind, extIp).String()},
 		DpAddr: []DpEndpoint{
-			{fmt.Sprintf("%s-local", n.Id), &n.DpBind, &n.ProbeBind},
+			{fmt.Sprintf("%s-pub", n.Id), &extDp, &extPb},
 		},
+		NylonAddr: nylonIp,
 	}
 	if n.WgKey != nil {
 		cfg.DpPubKey = n.WgKey.Pubkey()
@@ -88,11 +93,12 @@ func (n NodeCfg) GeneratePubCfg() PubNodeCfg {
 
 // PubNodeCfg represents a central representation of a node
 type PubNodeCfg struct {
-	Id       Node
-	PubKey   EdPublicKey
-	DpPubKey *EcPublicKey
-	CtlAddr  []string
-	DpAddr   []DpEndpoint
+	Id        Node
+	NylonAddr netip.Addr
+	PubKey    EdPublicKey
+	DpPubKey  *EcPublicKey
+	CtlAddr   []string
+	DpAddr    []DpEndpoint
 }
 
 type CentralCfg struct {
@@ -123,6 +129,11 @@ func (e Env) GetPeers() []Node {
 
 // Dispatch Dispatches the function to run on the main thread without waiting for it to complete
 func (e Env) Dispatch(fun func(*State) error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e.Cancel(fmt.Errorf("panic: %v", r))
+		}
+	}()
 	e.DispatchChannel <- fun
 }
 

@@ -2,6 +2,7 @@ package state
 
 import (
 	"errors"
+	"net/netip"
 	"slices"
 )
 
@@ -28,4 +29,8 @@ type Triple[Ty1, Ty2, Ty3 any] struct {
 	V1 Ty1
 	V2 Ty2
 	V3 Ty3
+}
+
+func RepAddr(bind netip.AddrPort, addr netip.Addr) netip.AddrPort {
+	return netip.AddrPortFrom(addr, bind.Port())
 }

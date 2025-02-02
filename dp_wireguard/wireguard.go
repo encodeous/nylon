@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/encodeous/nylon/state"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"os"
 	"path"
 	"runtime"
@@ -19,13 +20,33 @@ func writeTmpConfig(s *state.State) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	peerCfg := ""
+	for _, peer := range s.Nodes {
+		if peer.Id == s.Id {
+			continue
+		}
+		peerCfg = peerCfg + fmt.Sprintf(`[Peer]
+PublicKey = %s
+AllowedIPs = %s/%d
+`, wgtypes.Key(peer.DpPubKey.Bytes()).String(), peer.NylonAddr, peer.NylonAddr.BitLen())
+	}
+
+	selfPub, err := s.GetPubNodeCfg(s.Id)
+	if err != nil {
+		return "", err
+	}
+
 	cfg := fmt.Sprintf(`
 [Interface]
 PrivateKey = %s
 Address = %s
+
+%s
 `,
 		base64.StdEncoding.EncodeToString(s.WgKey.Bytes()),
-		s.Key.Pubkey().DeriveNylonAddr().String())
+		selfPub.NylonAddr,
+		peerCfg)
 	err = os.WriteFile(tmp, []byte(cfg), 0700)
 	s.Log.Debug("written wg config file", "path", tmp)
 	if err != nil {

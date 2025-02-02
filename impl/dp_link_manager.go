@@ -69,7 +69,7 @@ func UpdateWireGuard(s *state.State) error {
 				if err != nil {
 					continue
 				}
-				_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/128", cfg.PubKey.DeriveNylonAddr()))
+				_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.NylonAddr, cfg.NylonAddr.BitLen()))
 				if err != nil {
 					continue
 				}
@@ -88,13 +88,15 @@ func UpdateWireGuard(s *state.State) error {
 			} else {
 				ep = nil
 			}
+			dur := time.Second * 25
 			peers = append(peers, wgtypes.PeerConfig{
-				PublicKey:    wgtypes.Key(pcfg.DpPubKey.Bytes()),
-				Remove:       false,
-				UpdateOnly:   false,
-				PresharedKey: nil,
-				Endpoint:     ep,
-				AllowedIPs:   allowedIps,
+				PublicKey:                   wgtypes.Key(pcfg.DpPubKey.Bytes()),
+				Remove:                      false,
+				UpdateOnly:                  true,
+				PresharedKey:                nil,
+				PersistentKeepaliveInterval: &dur,
+				Endpoint:                    ep,
+				AllowedIPs:                  allowedIps,
 			})
 		}
 	}
@@ -102,7 +104,7 @@ func UpdateWireGuard(s *state.State) error {
 		return slices.Compare(peers[i].PublicKey[:], peers[j].PublicKey[:]) < 0
 	})
 	cfg := wgtypes.Config{
-		ReplacePeers: true,
+		ReplacePeers: false,
 		Peers:        peers,
 	}
 
@@ -136,6 +138,7 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 	}
 
 	portAddr := int(s.DpBind.Port())
+
 	cfg := wgtypes.Config{
 		ListenPort: &portAddr,
 	}

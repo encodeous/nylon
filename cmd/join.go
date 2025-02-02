@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/state"
+	"gopkg.in/yaml.v3"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -9,15 +12,41 @@ import (
 // joinCmd represents the node command
 var joinCmd = &cobra.Command{
 	Use:   "join",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Add the current node to an existing Nylon network",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("node called")
+		nodeCfg := promptCreateNode()
+
+		ncfg, err := yaml.Marshal(&nodeCfg)
+		if err != nil {
+			panic(err)
+		}
+		err = os.WriteFile(nodeConfigPath, ncfg, 0700)
+		if err != nil {
+			panic(err)
+		}
+
+		var centralCfg state.CentralCfg
+		file, err := os.ReadFile(centralConfigPath)
+		if err != nil {
+			panic(err)
+		}
+		err = yaml.Unmarshal(file, &centralCfg)
+		if err != nil {
+			panic(err)
+		}
+
+		centralCfg.Nodes = append(centralCfg.Nodes, promptGenPubCfg(nodeCfg))
+
+		ccfg, err := yaml.Marshal(&centralCfg)
+		if err != nil {
+			panic(err)
+		}
+		err = os.WriteFile(centralConfigPath, ccfg, 0700)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Central Config has been written to disk, please sync this with the rest of the network.")
 	},
 	GroupID: "init",
 }

@@ -125,7 +125,7 @@ func (p *Pair[N, M]) UnmarshalText(text []byte) error {
 	if err := NameValidator(v1); err != nil {
 		return err
 	}
-	v2 := strings.TrimSpace(pairv[0])
+	v2 := strings.TrimSpace(pairv[1])
 	if err := NameValidator(v2); err != nil {
 		return err
 	}
