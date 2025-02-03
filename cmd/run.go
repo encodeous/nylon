@@ -71,4 +71,7 @@ func init() {
 	// runCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	runCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
+	runCmd.Flags().BoolVarP(&state.DBG_write_metric_history, "lmetric", "m", false, "Write metric history as csv")
+	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "lprobe", "p", false, "Write probes to console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_router, "lroute", "r", false, "Write router updates to console")
 }

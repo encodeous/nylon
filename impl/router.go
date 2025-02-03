@@ -208,77 +208,134 @@ func updateRoutes(s *state.State) error {
 
 	// basically bellman ford algorithm
 
+	if state.DBG_log_router {
+		s.Log.Debug("--- computing routing table ---")
+	}
+
 	for _, neigh := range r.Neighbours {
+		if state.DBG_log_router {
+			s.Log.Debug(" -- neighbour --", "id", neigh.Id)
+		}
+		var bestLink state.DpLink
+
 		for _, link := range neigh.DpLinks {
-			if link.Metric() == 0 {
-				s.Log.Warn("link metric is zero")
-				return errors.New("metric cannot be zero")
+			if state.DBG_log_router {
+				s.Log.Debug(" link", "name", link.Endpoint().Name, "met", link.Metric())
 			}
-			for src, neighRoute := range neigh.Routes {
-				if src == s.Id {
-					continue
+			if link.Metric() == 0 {
+				s.Log.Warn(" link metric is zero")
+				return errors.New(" metric cannot be zero")
+			}
+			if bestLink == nil || link.Metric() < bestLink.Metric() {
+				bestLink = link
+			}
+		}
+
+		if state.DBG_log_router {
+			if bestLink != nil {
+				s.Log.Debug(" selected", "name", bestLink.Endpoint().Name, "met", bestLink.Metric())
+			} else {
+				s.Log.Debug(" no link to neighbour")
+			}
+		}
+
+		for src, neighRoute := range neigh.Routes {
+			if src == s.Id {
+				continue
+			}
+
+			metric := INF
+
+			if bestLink != nil {
+				metric = AddMetric(bestLink.Metric(), neighRoute.Metric)
+			}
+
+			if state.DBG_log_router {
+				s.Log.Debug("  - eval neigh route -", "src", src, "met", metric, "nh", neigh.Id)
+			}
+
+			tRoute, ok := r.Routes[src]
+
+			if ok {
+				if SeqnoLt(neighRoute.Src.Seqno, tRoute.Src.Seqno) {
+					if state.DBG_log_router {
+						s.Log.Debug("  dropped, new seqno < old seqno")
+						continue
+					}
 				}
-
-				metric := AddSeqno(link.Metric(), neighRoute.Metric)
-
-				tRoute, ok := r.Routes[src]
-
-				if ok {
-					// route exists
-					if IsFeasible(tRoute, neighRoute, metric) {
-						// feasible, update existing route
-						tRoute.Metric = metric
-						if SeqnoLt(tRoute.Src.Seqno, neighRoute.Src.Seqno) {
-							improvedSeqno = append(improvedSeqno, neighRoute.Src.Id)
+				if state.DBG_log_router {
+					s.Log.Debug("  existing route", "src", src, "met", metric, "nh", tRoute.Nh)
+				}
+				// route exists
+				if IsFeasible(tRoute, neighRoute, metric) {
+					if state.DBG_log_router {
+						s.Log.Debug("  feasible, selected")
+					}
+					// feasible, update existing route, if matching switch heuristic
+					if tRoute.Nh != neigh.Id && !SwitchHeuristic(tRoute, neighRoute, metric) && !tRoute.Retracted {
+						// dont update this route, as it might cause oscillations
+						continue
+					}
+					tRoute.Metric = metric
+					if SeqnoLt(tRoute.Src.Seqno, neighRoute.Src.Seqno) {
+						improvedSeqno = append(improvedSeqno, neighRoute.Src.Id)
+					}
+					tRoute.Src = neighRoute.Src
+					tRoute.Fd = metric
+					tRoute.Link = bestLink
+					tRoute.Nh = neigh.Id
+					tRoute.Retracted = false
+				} else {
+					// not feasible :(
+					nh := tRoute.Nh
+					if nh == neigh.Id {
+						retract := false
+						// route is currently selected
+						if metric > tRoute.Fd {
+							if state.DBG_log_router {
+								s.Log.Debug("  not feasible, retract (new-met > fd)")
+							}
+							// retract our route!
+							if !tRoute.Retracted {
+								retract = true
+							}
+							tRoute.Metric = INF
+							tRoute.Retracted = true
+						} else {
+							if state.DBG_log_router {
+								s.Log.Debug("  not feasible, but (new-met <= fd)")
+							}
+							// update metric unconditionally, as it is <= Fd
+							tRoute.Metric = metric
+							tRoute.Fd = metric
+							if metric == INF && !tRoute.Retracted {
+								retract = true
+							}
+							tRoute.Retracted = retract
 						}
-						tRoute.Src = neighRoute.Src
-						tRoute.Fd = metric
-						tRoute.Link = link
-						tRoute.Nh = neigh.Id
-						tRoute.Retracted = false
-					} else {
-						// not feasible :(
-						nh := tRoute.Nh
-						if nh == neigh.Id {
-							retract := false
-							// route is currently selected
-							if metric > tRoute.Fd {
-								// retract our route!
-								if !tRoute.Retracted {
-									retract = true
-								}
-								tRoute.Metric = INF
-								tRoute.Retracted = true
-							} else {
-								// update metric unconditionally, as it is <= Fd
-								tRoute.Metric = metric
-								tRoute.Fd = metric
-								if metric == INF && !tRoute.Retracted {
-									retract = true
-								}
-								tRoute.Retracted = retract
-							}
-							if retract {
-								retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
-									Source: mapToPktSource(&tRoute.Src),
-									Metric: uint32(INF),
-								})
-							}
+						if retract {
+							retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
+								Source: mapToPktSource(&tRoute.Src),
+								Metric: uint32(INF),
+							})
 						}
 					}
-					r.Routes[src] = tRoute
-				} else if metric != INF {
-					// add new route, if it is not retracted
-					r.Routes[src] = &state.Route{
-						PubRoute: state.PubRoute{
-							Src:       neighRoute.Src,
-							Metric:    metric,
-							Retracted: false,
-						},
-						Fd:   metric,
-						Nh:   neigh.Id,
-						Link: link,
-					}
+				}
+				r.Routes[src] = tRoute
+			} else if metric != INF {
+				if state.DBG_log_router {
+					s.Log.Debug("  new route! added to table")
+				}
+				// add new route, if it is not retracted
+				r.Routes[src] = &state.Route{
+					PubRoute: state.PubRoute{
+						Src:       neighRoute.Src,
+						Metric:    metric,
+						Retracted: false,
+					},
+					Fd:   metric,
+					Nh:   neigh.Id,
+					Link: bestLink,
 				}
 			}
 		}

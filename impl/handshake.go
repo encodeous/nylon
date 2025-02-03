@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"errors"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 )
@@ -44,6 +45,11 @@ func handshake(e *state.Env, link state.CtlLink) (state.PubNodeCfg, error) {
 	if err != nil {
 		return state.PubNodeCfg{}, err
 	}
+	if hello.Id == string(e.Id) {
+		// don't connect to ourself!
+		return state.PubNodeCfg{}, errors.New("skip connecting to self")
+	}
+	e.Log.Debug("handshake", "lid", link.Id().String(), "nid", hello.Id)
 	return e.GetPubNodeCfg(state.Node(hello.Id))
 }
 

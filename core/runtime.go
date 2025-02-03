@@ -20,8 +20,12 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	dispatch := make(chan func(env *state.State) error)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level:        logLevel,
-		AddSource:    true,
+		Level: logLevel,
+		//AddSource:    true,
+
+		AddSource:  false,
+		TimeFormat: "15:04:05",
+
 		CustomPrefix: string(ncfg.Id),
 	}))
 

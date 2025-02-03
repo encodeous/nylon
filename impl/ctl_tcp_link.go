@@ -14,9 +14,15 @@ type TCPCtlLink struct {
 	Conn   net.Conn
 	remote bool
 	mutex  sync.Mutex
+	dead   bool
+}
+
+func (T *TCPCtlLink) IsDead() bool {
+	return T.dead
 }
 
 func (T *TCPCtlLink) Close() {
+	T.dead = true
 	T.Conn.Close()
 }
 
@@ -44,7 +50,7 @@ func ListenCtlTCP(e *state.Env, addr netip.AddrPort) {
 			e.Log.Warn("Failed to accept connection", "err", err)
 			continue
 		}
-		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn, true, sync.Mutex{}}
+		e.LinkChannel <- &TCPCtlLink{uuid.New(), conn, true, sync.Mutex{}, false}
 	}
 }
 
@@ -53,7 +59,7 @@ func ConnectCtlTCP(addr string) (TCPCtlLink, error) {
 	if err != nil {
 		return TCPCtlLink{}, err
 	}
-	return TCPCtlLink{uuid.New(), conn, false, sync.Mutex{}}, nil
+	return TCPCtlLink{uuid.New(), conn, false, sync.Mutex{}, false}, nil
 }
 
 func (T *TCPCtlLink) ReadMsg(m proto.Message) error {

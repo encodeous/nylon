@@ -30,3 +30,6 @@ nylon-central.yaml
 nylon-node.yaml
 
 distribute.sh
+log
+
+log.csv

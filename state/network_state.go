@@ -26,6 +26,7 @@ type NetLink interface {
 	Metric() uint16
 	// IsRemote is true if the link is remotely initiated
 	IsRemote() bool
+	IsDead() bool
 }
 
 //func (k EdPublicKey) DeriveNylonAddr() net.IP {

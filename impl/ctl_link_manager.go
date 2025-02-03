@@ -38,7 +38,6 @@ func probeCtl(s *state.State) error {
 func linkHandler(e *state.Env, links <-chan state.CtlLink) {
 	e.Log.Debug("link processor start")
 	for link := range links {
-		e.Log.Debug("link", "id", link.Id().String())
 		go func() {
 			cfg, err := handshake(e, link)
 			if err != nil {

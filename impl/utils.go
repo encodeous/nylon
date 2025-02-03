@@ -11,7 +11,7 @@ import (
 	"reflect"
 )
 
-func AddSeqno(a, b uint16) uint16 {
+func AddMetric(a, b uint16) uint16 {
 	if a == INF || b == INF {
 		return INF
 	} else {
@@ -44,6 +44,16 @@ func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) b
 		return true
 	}
 	return false
+}
+
+func SwitchHeuristic(curRoute *state.Route, newRoute state.PubRoute, metric uint16) bool {
+	// prevent oscillation
+	curMetric := float64(curRoute.Metric)
+	newMetric := float64(metric)
+	if (newMetric+float64(LinkSwitchMetricCostBase))*LinkSwitchMetricCostMultiplier > curMetric {
+		return false
+	}
+	return true
 }
 
 func receive(c net.Conn, m proto.Message) error {

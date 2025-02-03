@@ -3,6 +3,8 @@ package impl
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
@@ -11,10 +13,14 @@ import (
 	"github.com/rosshemsley/kalman"
 	"github.com/rosshemsley/kalman/models"
 	"google.golang.org/protobuf/proto"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"net/netip"
+	"os"
 	"slices"
+	"sort"
+	"strconv"
 	"time"
 )
 
@@ -24,17 +30,24 @@ type UdpDpLink struct {
 	id               uuid.UUID
 	metric           uint16
 	realLatency      time.Duration
+	history          []time.Duration
+	boxMedian        time.Duration
 	lastMetricUpdate time.Time
 	endpoint         state.DpEndpoint
 	filter           *kalman.KalmanFilter
 	model            *models.SimpleModel
 }
 
+func (u *UdpDpLink) IsDead() bool {
+	return time.Now().Sub(u.lastMetricUpdate) > LinkDeadThreshold
+}
+
 func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDpLink {
+	// TODO: These parameters are sort of arbitrary... Probably tune them better?
 	model := models.NewSimpleModel(time.Now(), float64(time.Millisecond*50), models.SimpleModelConfig{
 		InitialVariance:     0,
 		ProcessVariance:     float64(time.Millisecond * 10),
-		ObservationVariance: float64(time.Millisecond * 5),
+		ObservationVariance: float64(time.Millisecond * 10),
 	})
 	return &UdpDpLink{
 		id:               id,
@@ -43,11 +56,24 @@ func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDp
 		filter:           kalman.NewKalmanFilter(model),
 		model:            model,
 		lastMetricUpdate: time.Now(),
+		boxMedian:        time.Millisecond * 500, // start with a relatively high latency so we don't disrupt existing connections before we are sure
 	}
 }
 
 func (u *UdpDpLink) Endpoint() state.DpEndpoint {
 	return u.endpoint
+}
+
+func (u *UdpDpLink) computeIQR() time.Duration {
+	tmp := make([]time.Duration, len(u.history))
+	copy(tmp, u.history)
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i] < tmp[j]
+	})
+	//median := tmp[len(tmp)/2]
+	Q1 := tmp[int(float64(len(tmp))*0.25)]
+	Q3 := tmp[int(float64(len(tmp))*0.75)]
+	return Q3 - Q1
 }
 
 func (u *UdpDpLink) UpdatePing(ping time.Duration) {
@@ -56,11 +82,65 @@ func (u *UdpDpLink) UpdatePing(ping time.Duration) {
 		return
 	}
 
-	u.realLatency = ping
-	filtered := u.model.Value(u.filter.State())
+	// TODO: We don't have numbers of actual packets being lost.
 
-	// latency in steps of 5 milliseconds
-	latencyContrib := time.Duration(filtered).Milliseconds() * 10
+	u.realLatency = ping
+	filtered := time.Duration(u.model.Value(u.filter.State()))
+
+	// not sure if this is a great algorithm, but it is one...
+	// We determine a window based on IQR
+	// outliers will be dealt separately
+	// When the latency gets updated, the box will be moved up or down so that it fits the new datapoint.
+	// We will use the median of the box as the latency
+
+	// tldr; if the ping fluctuates within +/- 1.5*IQR, we don't change it. note, if the ping is very stable, IQR will decrease too!
+
+	u.history = append(u.history, u.realLatency)
+	if len(u.history) > WindowSamples {
+		u.history = u.history[1:] // discard
+	}
+	iqr := time.Millisecond * 5000 // default
+	if len(u.history) > 20 {
+		iqr = u.computeIQR()
+	}
+	// check if ping is within box
+	bLen := time.Duration(float64(iqr) * 1.5)
+	if u.boxMedian+bLen < filtered {
+		// box is too low
+		u.boxMedian = filtered - bLen
+	} else if u.boxMedian-bLen > filtered {
+		// box is too high
+		u.boxMedian = filtered + bLen
+	}
+
+	if state.DBG_write_metric_history {
+		writeHeader := false
+		fname := fmt.Sprintf("log/latlog-%s.csv", u.Endpoint().Name)
+		if _, err := os.Stat(fname); errors.Is(err, os.ErrNotExist) {
+			writeHeader = true
+		}
+		of, err := os.OpenFile(fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0777)
+		if err != nil {
+			slog.Error("error opening file", "err", err)
+		}
+		w := csv.NewWriter(of)
+		if writeHeader {
+			w.Write([]string{"time", "real", "filtered", "windowed"})
+		}
+		err = w.Write([]string{
+			fmt.Sprintf("%s", time.Now().String()),
+			strconv.FormatInt(ping.Microseconds(), 10),
+			strconv.FormatInt(filtered.Microseconds(), 10),
+			strconv.FormatInt(u.boxMedian.Microseconds(), 10),
+		})
+		if err != nil {
+			slog.Error("error writing file", "err", err)
+		}
+		w.Flush()
+	}
+
+	// latency in increments of 100 microseconds
+	latencyContrib := u.boxMedian.Microseconds() / 100
 
 	u.metric = uint16(min(max(latencyContrib, 1), int64(INF)))
 	u.metric = uint16(min(max(int64(u.metric), 1), int64(INF)))
@@ -227,7 +307,9 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 				if ok {
 					health := linkHealth.Value()
 					// we have a link
-					//s.Log.Debug("ping update", "peer", node, "ping", time.Since(health.Time))
+					if state.DBG_log_probe {
+						s.Log.Debug("ping update", "peer", node, "ping", time.Since(health.Time))
+					}
 					err := updateRoutes(s)
 					if err != nil {
 						s.Log.Error("Error updating routes: ", err)
