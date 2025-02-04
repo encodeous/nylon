@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/encodeous/polyamide/conn"
 	"io"
 	"net"
 	"net/netip"
@@ -18,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.zx2c4.com/wireguard/ipc"
+	"github.com/encodeous/polyamide/ipc"
 )
 
 type IPCError struct {
@@ -104,11 +105,11 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			keyf("preshared_key", (*[32]byte)(&peer.handshake.presharedKey))
 			peer.handshake.mutex.RUnlock()
 			sendf("protocol_version=1")
-			peer.endpoint.Lock()
-			if peer.endpoint.val != nil {
-				sendf("endpoint=%s", peer.endpoint.val.DstToString())
+			peer.endpoints.Lock()
+			if len(peer.endpoints.val) != 0 {
+				sendf("endpoint=%s", peer.endpoints.val[0].DstToString())
 			}
-			peer.endpoint.Unlock()
+			peer.endpoints.Unlock()
 
 			nano := peer.lastHandshakeNano.Load()
 			secs := nano / time.Second.Nanoseconds()
@@ -120,7 +121,7 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			sendf("rx_bytes=%d", peer.rxBytes.Load())
 			sendf("persistent_keepalive_interval=%d", peer.persistentKeepaliveInterval.Load())
 
-			device.allowedips.EntriesForPeer(peer, func(prefix netip.Prefix) bool {
+			device.Allowedips.EntriesForPeer(peer, func(prefix netip.Prefix) bool {
 				sendf("allowed_ip=%s", prefix.String())
 				return true
 			})
@@ -239,7 +240,6 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		}
 		device.log.Verbosef("UAPI: Removing all peers")
 		device.RemoveAllPeers()
-
 	default:
 		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
 	}
@@ -260,7 +260,7 @@ func (peer *ipcSetPeer) handlePostConfig() {
 		return
 	}
 	if peer.created {
-		peer.endpoint.disableRoaming = peer.device.net.brokenRoaming && peer.endpoint.val != nil
+		peer.endpoints.disableRoaming = peer.device.net.brokenRoaming && len(peer.endpoints.val) != 0
 	}
 	if peer.device.isUp() {
 		peer.Start()
@@ -343,9 +343,9 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set endpoint %v: %w", value, err)
 		}
-		peer.endpoint.Lock()
-		defer peer.endpoint.Unlock()
-		peer.endpoint.val = endpoint
+		peer.endpoints.Lock()
+		defer peer.endpoints.Unlock()
+		peer.endpoints.val = []conn.Endpoint{endpoint}
 
 	case "persistent_keepalive_interval":
 		device.log.Verbosef("%v - UAPI: Updating persistent keepalive interval", peer.Peer)
@@ -368,7 +368,7 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 		if peer.dummy {
 			return nil
 		}
-		device.allowedips.RemoveByPeer(peer.Peer)
+		device.Allowedips.RemoveByPeer(peer.Peer)
 
 	case "allowed_ip":
 		device.log.Verbosef("%v - UAPI: Adding allowedip", peer.Peer)
@@ -379,7 +379,7 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 		if peer.dummy {
 			return nil
 		}
-		device.allowedips.Insert(prefix, peer.Peer)
+		device.Allowedips.Insert(prefix, peer.Peer)
 
 	case "protocol_version":
 		if value != "1" {

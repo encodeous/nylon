@@ -47,3 +47,7 @@ func (e *DummyEndpoint) DstIP() netip.Addr {
 func (e *DummyEndpoint) SrcIP() netip.Addr {
 	return e.src
 }
+
+func (e *DummyEndpoint) DstIPPort() netip.AddrPort {
+	return netip.AddrPortFrom(e.DstIP(), 1000)
+}

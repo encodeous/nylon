@@ -119,6 +119,10 @@ func (e *StdNetEndpoint) DstToString() string {
 	return e.AddrPort.String()
 }
 
+func (e *StdNetEndpoint) DstIPPort() netip.AddrPort {
+	return e.AddrPort
+}
+
 func listenNet(network string, port int) (*net.UDPConn, int, error) {
 	conn, err := listenConfig().ListenPacket(context.Background(), network, ":"+strconv.Itoa(port))
 	if err != nil {

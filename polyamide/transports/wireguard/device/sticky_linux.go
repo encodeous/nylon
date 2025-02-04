@@ -20,8 +20,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/rwcancel"
+	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/rwcancel"
 )
 
 func (device *Device) startRouteListener(bind conn.Bind) (*rwcancel.RWCancel, error) {
@@ -110,17 +110,17 @@ func (device *Device) routineRouteListener(bind conn.Bind, netlinkSock int, netl
 								if !ok {
 									break
 								}
-								pePtr.peer.endpoint.Lock()
-								if &pePtr.peer.endpoint.val != pePtr.endpoint {
-									pePtr.peer.endpoint.Unlock()
+								pePtr.peer.endpoints.Lock()
+								if &pePtr.peer.endpoints.val[0] != pePtr.endpoint {
+									pePtr.peer.endpoints.Unlock()
 									break
 								}
-								if uint32(pePtr.peer.endpoint.val.(*conn.StdNetEndpoint).SrcIfidx()) == ifidx {
-									pePtr.peer.endpoint.Unlock()
+								if uint32(pePtr.peer.endpoints.val[0].(*conn.StdNetEndpoint).SrcIfidx()) == ifidx {
+									pePtr.peer.endpoints.Unlock()
 									break
 								}
-								pePtr.peer.endpoint.clearSrcOnTx = true
-								pePtr.peer.endpoint.Unlock()
+								pePtr.peer.endpoints.clearSrcOnTx = true
+								pePtr.peer.endpoints.Unlock()
 							}
 							attr = attr[attrhdr.Len:]
 						}
@@ -134,18 +134,18 @@ func (device *Device) routineRouteListener(bind conn.Bind, netlinkSock int, netl
 					device.peers.RLock()
 					i := uint32(1)
 					for _, peer := range device.peers.keyMap {
-						peer.endpoint.Lock()
-						if peer.endpoint.val == nil {
-							peer.endpoint.Unlock()
+						peer.endpoints.Lock()
+						if len(peer.endpoints.val) == 0 {
+							peer.endpoints.Unlock()
 							continue
 						}
-						nativeEP, _ := peer.endpoint.val.(*conn.StdNetEndpoint)
+						nativeEP, _ := peer.endpoints.val[0].(*conn.StdNetEndpoint)
 						if nativeEP == nil {
-							peer.endpoint.Unlock()
+							peer.endpoints.Unlock()
 							continue
 						}
 						if nativeEP.DstIP().Is6() || nativeEP.SrcIfidx() == 0 {
-							peer.endpoint.Unlock()
+							peer.endpoints.Unlock()
 							break
 						}
 						nlmsg := struct {
@@ -188,10 +188,10 @@ func (device *Device) routineRouteListener(bind conn.Bind, netlinkSock int, netl
 						reqPeerLock.Lock()
 						reqPeer[i] = peerEndpointPtr{
 							peer:     peer,
-							endpoint: &peer.endpoint.val,
+							endpoint: &peer.endpoints.val[0],
 						}
 						reqPeerLock.Unlock()
-						peer.endpoint.Unlock()
+						peer.endpoints.Unlock()
 						i++
 						_, err := netlinkCancel.Write((*[unsafe.Sizeof(nlmsg)]byte)(unsafe.Pointer(&nlmsg))[:])
 						if err != nil {

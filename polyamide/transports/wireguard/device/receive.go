@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/encodeous/polyamide/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"golang.zx2c4.com/wireguard/conn"
 )
 
 type QueueHandshakeElement struct {
@@ -370,7 +370,7 @@ func (device *Device) RoutineHandshake(id int) {
 
 			// update timers
 
-			peer.timersAnyAuthenticatedPacketTraversal()
+			peer.timersAnyAuthenticatedPacketTraversal(true)
 			peer.timersAnyAuthenticatedPacketReceived()
 
 			// update endpoint
@@ -379,7 +379,7 @@ func (device *Device) RoutineHandshake(id int) {
 			device.log.Verbosef("%v - Received handshake initiation", peer)
 			peer.rxBytes.Add(uint64(len(elem.packet)))
 
-			peer.SendHandshakeResponse()
+			peer.SendHandshakeResponse(elem.endpoint)
 
 		case MessageResponseType:
 
@@ -409,7 +409,7 @@ func (device *Device) RoutineHandshake(id int) {
 
 			// update timers
 
-			peer.timersAnyAuthenticatedPacketTraversal()
+			peer.timersAnyAuthenticatedPacketTraversal(true)
 			peer.timersAnyAuthenticatedPacketReceived()
 
 			// derive keypair
@@ -440,101 +440,177 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 
 	bufs := make([][]byte, 0, maxBatchSize)
 
-	for elemsContainer := range peer.queue.inbound.c {
-		if elemsContainer == nil {
+	elemsByPeer := make(map[*Peer]*QueueOutboundElementsContainer, maxBatchSize)
+	conts := make([]*QueueInboundElementsContainer, 1)
+
+	for {
+		conts = conts[:1]
+		conts[0] = <-peer.queue.inbound.c
+		if conts[0] == nil {
 			return
 		}
-		elemsContainer.Lock()
-		validTailPacket := -1
-		dataPacketReceived := false
-		rxBytesLen := uint64(0)
-		for i, elem := range elemsContainer.elems {
-			if elem.packet == nil {
-				// decryption failed
-				continue
-			}
-
-			if !elem.keypair.replayFilter.ValidateCounter(elem.counter, RejectAfterMessages) {
-				continue
-			}
-
-			validTailPacket = i
-			if peer.ReceivedWithKeypair(elem.keypair) {
-				peer.SetEndpointFromPacket(elem.endpoint)
-				peer.timersHandshakeComplete()
-				peer.SendStagedPackets()
-			}
-			rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
-
-			if len(elem.packet) == 0 {
-				device.log.Verbosef("%v - Receiving keepalive packet", peer)
-				continue
-			}
-			dataPacketReceived = true
-
-			switch elem.packet[0] >> 4 {
-			case 4:
-				if len(elem.packet) < ipv4.HeaderLen {
-					continue
-				}
-				field := elem.packet[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
-				length := binary.BigEndian.Uint16(field)
-				if int(length) > len(elem.packet) || int(length) < ipv4.HeaderLen {
-					continue
-				}
-				elem.packet = elem.packet[:length]
-				src := elem.packet[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
-				if device.allowedips.Lookup(src) != peer {
-					device.log.Verbosef("IPv4 packet with disallowed source address from %v", peer)
-					continue
-				}
-
-			case 6:
-				if len(elem.packet) < ipv6.HeaderLen {
-					continue
-				}
-				field := elem.packet[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
-				length := binary.BigEndian.Uint16(field)
-				length += ipv6.HeaderLen
-				if int(length) > len(elem.packet) {
-					continue
-				}
-				elem.packet = elem.packet[:length]
-				src := elem.packet[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
-				if device.allowedips.Lookup(src) != peer {
-					device.log.Verbosef("IPv6 packet with disallowed source address from %v", peer)
-					continue
-				}
-
+	readBatch:
+		for {
+			select {
+			case elemsContainer := <-peer.queue.inbound.c:
+				conts = append(conts, elemsContainer)
 			default:
-				device.log.Verbosef("Packet with invalid IP version from %v", peer)
-				continue
-			}
-
-			bufs = append(bufs, elem.buffer[:MessageTransportOffsetContent+len(elem.packet)])
-		}
-
-		peer.rxBytes.Add(rxBytesLen)
-		if validTailPacket >= 0 {
-			peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
-			peer.keepKeyFreshReceiving()
-			peer.timersAnyAuthenticatedPacketTraversal()
-			peer.timersAnyAuthenticatedPacketReceived()
-		}
-		if dataPacketReceived {
-			peer.timersDataReceived()
-		}
-		if len(bufs) > 0 {
-			_, err := device.tun.device.Write(bufs, MessageTransportOffsetContent)
-			if err != nil && !device.isClosed() {
-				device.log.Errorf("Failed to write packets to TUN device: %v", err)
+				break readBatch
 			}
 		}
-		for _, elem := range elemsContainer.elems {
-			device.PutMessageBuffer(elem.buffer)
-			device.PutInboundElement(elem)
+		for _, elemsContainer := range conts {
+			if elemsContainer == nil {
+				return
+			}
+			elemsContainer.Lock()
+			validTailPacket := -1
+			dataPacketReceived := false
+			rxBytesLen := uint64(0)
+			for i, elem := range elemsContainer.elems {
+				if elem.packet == nil {
+					// decryption failed
+					continue
+				}
+
+				if !elem.keypair.replayFilter.ValidateCounter(elem.counter, RejectAfterMessages) {
+					continue
+				}
+
+				validTailPacket = i
+				if peer.ReceivedWithKeypair(elem.keypair) {
+					peer.SetEndpointFromPacket(elem.endpoint)
+					peer.timersHandshakeComplete()
+					peer.SendStagedPackets()
+				}
+				rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
+
+				if len(elem.packet) == 0 {
+					device.log.Verbosef("%v - Receiving keepalive packet", peer)
+					continue
+				}
+				dataPacketReceived = true
+
+				var dstPeer *Peer
+
+				switch elem.packet[0] >> 4 {
+				case 4:
+					if len(elem.packet) < ipv4.HeaderLen {
+						continue
+					}
+					field := elem.packet[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
+					length := binary.BigEndian.Uint16(field)
+					if int(length) > len(elem.packet) || int(length) < ipv4.HeaderLen {
+						continue
+					}
+					elem.packet = elem.packet[:length]
+					src := elem.packet[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
+					dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+					dstPeer = device.Allowedips.Lookup(dst)
+					if !device.AllowAllInbound && device.Allowedips.Lookup(src) != peer {
+						device.log.Verbosef("IPv4 packet with disallowed source address from %v", peer)
+						continue
+					}
+
+				case 6:
+					if len(elem.packet) < ipv6.HeaderLen {
+						continue
+					}
+					field := elem.packet[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
+					length := binary.BigEndian.Uint16(field)
+					length += ipv6.HeaderLen
+					if int(length) > len(elem.packet) {
+						continue
+					}
+					elem.packet = elem.packet[:length]
+					src := elem.packet[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
+					dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+					dstPeer = device.Allowedips.Lookup(dst)
+					if !device.AllowAllInbound && device.Allowedips.Lookup(src) != peer {
+						device.log.Verbosef("IPv6 packet with disallowed source address from %v", peer)
+						continue
+					}
+
+				case 8:
+					// actually poly socket, let's hope there is no ipv8 in the future LMAO
+					// "IPv8" header: 1 byte version number, 2 byte length
+					if len(elem.packet) < 3 {
+						continue
+					}
+					if device.net.polySocket != nil && device.net.polySocket.recv != nil {
+						field := elem.packet[1:3]
+						length := binary.BigEndian.Uint16(field)
+						length += 3
+						if int(length) > len(elem.packet) {
+							continue
+						}
+						elem.packet = elem.packet[3:length]
+						device.net.polySocket.recv.Receive(elem.packet, elem.endpoint, peer)
+						continue
+					}
+
+				default:
+					device.log.Verbosef("Packet with invalid IP version from %v", peer)
+					continue
+				}
+
+				if dstPeer != nil && !device.UseSystemRouting {
+					// do in-process routing instead of going to the system route table
+					elemsForPeer, ok := elemsByPeer[dstPeer]
+					if !ok {
+						elemsForPeer = device.GetOutboundElementsContainer()
+						elemsByPeer[dstPeer] = elemsForPeer
+					}
+
+					outEle := device.GetOutboundElement()
+					outEle.peer = dstPeer
+					outEle.buffer = elem.buffer
+					outEle.packet = elem.packet
+					elem.buffer = nil
+
+					elemsForPeer.elems = append(elemsForPeer.elems, outEle)
+					continue
+				}
+
+				bufs = append(bufs, elem.buffer[:MessageTransportOffsetContent+len(elem.packet)])
+			}
+
+			peer.rxBytes.Add(rxBytesLen)
+			if validTailPacket >= 0 {
+				peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
+				peer.keepKeyFreshReceiving()
+				peer.timersAnyAuthenticatedPacketTraversal(true)
+				peer.timersAnyAuthenticatedPacketReceived()
+			}
+			if dataPacketReceived {
+				peer.timersDataReceived()
+			}
+			if len(bufs) > 0 {
+				_, err := device.tun.device.Write(bufs, MessageTransportOffsetContent)
+				if err != nil && !device.isClosed() {
+					device.log.Errorf("Failed to write packets to TUN device: %v", err)
+				}
+			}
+			for _, elem := range elemsContainer.elems {
+				if elem.buffer != nil {
+					device.PutMessageBuffer(elem.buffer)
+				}
+				device.PutInboundElement(elem)
+			}
+			bufs = bufs[:0]
+			device.PutInboundElementsContainer(elemsContainer)
 		}
-		bufs = bufs[:0]
-		device.PutInboundElementsContainer(elemsContainer)
+		for p, elemsForPeer := range elemsByPeer {
+			if p.isRunning.Load() {
+				p.StagePackets(elemsForPeer)
+				p.SendStagedPackets()
+			} else {
+				for _, elem := range elemsForPeer.elems {
+					device.PutMessageBuffer(elem.buffer)
+					device.PutOutboundElement(elem)
+				}
+				device.PutOutboundElementsContainer(elemsForPeer)
+			}
+			delete(elemsByPeer, p)
+		}
 	}
 }

@@ -12,7 +12,7 @@ import (
 	"net/netip"
 	"os"
 
-	"golang.zx2c4.com/wireguard/conn"
+	"github.com/encodeous/polyamide/conn"
 )
 
 type ChannelBind struct {
@@ -66,6 +66,9 @@ func (c ChannelEndpoint) DstToBytes() []byte { return []byte{byte(c)} }
 func (c ChannelEndpoint) DstIP() netip.Addr { return netip.AddrFrom4([4]byte{127, 0, 0, 1}) }
 
 func (c ChannelEndpoint) SrcIP() netip.Addr { return netip.Addr{} }
+func (c ChannelEndpoint) DstIPPort() netip.AddrPort {
+	return netip.MustParseAddrPort(fmt.Sprintf("127.0.0.1:%d", c))
+}
 
 func (c *ChannelBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
 	c.closeSignal = make(chan bool)
