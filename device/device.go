@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/ratelimiter"
-	"golang.zx2c4.com/wireguard/rwcancel"
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/ratelimiter"
+	"github.com/encodeous/polyamide/rwcancel"
+	"github.com/encodeous/polyamide/tun"
 )
 
 type Device struct {
@@ -45,6 +45,7 @@ type Device struct {
 		port          uint16 // listening port
 		fwmark        uint32 // mark value (0 = disabled)
 		brokenRoaming bool
+		polySocket    *PolySock
 	}
 
 	staticIdentity struct {
@@ -63,9 +64,11 @@ type Device struct {
 		limiter        ratelimiter.Ratelimiter
 	}
 
-	allowedips    AllowedIPs
-	indexTable    IndexTable
-	cookieChecker CookieChecker
+	AllowAllInbound  bool
+	UseSystemRouting bool
+	Allowedips       AllowedIPs
+	indexTable       IndexTable
+	cookieChecker    CookieChecker
 
 	pool struct {
 		inboundElementsContainer  *WaitPool
@@ -73,6 +76,7 @@ type Device struct {
 		messageBuffers            *WaitPool
 		inboundElements           *WaitPool
 		outboundElements          *WaitPool
+		outboundPolyElements      *WaitPool
 	}
 
 	queue struct {
@@ -128,7 +132,7 @@ func (device *Device) isUp() bool {
 // Must hold device.peers.Lock()
 func removePeerLocked(device *Device, peer *Peer, key NoisePublicKey) {
 	// stop routing and processing of packets
-	device.allowedips.RemoveByPeer(peer)
+	device.Allowedips.RemoveByPeer(peer)
 	peer.Stop()
 
 	// remove from peer map
@@ -321,8 +325,16 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.queue.encryption.wg.Add(1) // RoutineReadFromTUN
 	go device.RoutineReadFromTUN()
 	go device.RoutineTUNEventReader()
+	go device.routineSendPoly()
+
+	device.net.polySocket = newPolySock(device)
 
 	return device
+}
+
+func (device *Device) PolyListen(recv PolyReceiver) *PolySock {
+	device.net.polySocket.recv = recv
+	return device.net.polySocket
 }
 
 // BatchSize returns the BatchSize for the device as a whole which is the max of
@@ -343,6 +355,17 @@ func (device *Device) LookupPeer(pk NoisePublicKey) *Peer {
 	defer device.peers.RUnlock()
 
 	return device.peers.keyMap[pk]
+}
+
+func (device *Device) GetPeers() []*Peer {
+	device.peers.RLock()
+	defer device.peers.RUnlock()
+
+	peers := make([]*Peer, 0, len(device.peers.keyMap))
+	for _, peer := range device.peers.keyMap {
+		peers = append(peers, peer)
+	}
+	return peers
 }
 
 func (device *Device) RemovePeer(key NoisePublicKey) {
@@ -379,6 +402,7 @@ func (device *Device) Close() {
 	device.log.Verbosef("Device closing")
 
 	device.tun.device.Close()
+	device.net.polySocket.stop()
 	device.downLocked()
 
 	// Remove peers before closing queues,

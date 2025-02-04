@@ -191,7 +191,10 @@ func (peer *Peer) timersSessionDerived() {
 }
 
 /* Should be called before a packet with authentication -- keepalive, data, or handshake -- is sent, or after one is received. */
-func (peer *Peer) timersAnyAuthenticatedPacketTraversal() {
+func (peer *Peer) timersAnyAuthenticatedPacketTraversal(remote bool) {
+	if remote {
+		peer.timers.lastReceived.Store(time.Now().UnixNano())
+	}
 	keepalive := peer.persistentKeepaliveInterval.Load()
 	if keepalive > 0 && peer.timersActive() {
 		peer.timers.persistentKeepalive.Mod(time.Duration(keepalive) * time.Second)
