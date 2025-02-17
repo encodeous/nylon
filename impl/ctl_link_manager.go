@@ -18,10 +18,10 @@ func (n *CtlLinkMgr) Cleanup(s *state.State) error {
 }
 
 func probeCtl(s *state.State) error {
-	//ny := Get[*CtlLinkMgr](s)
 	rt := Get[*Router](s)
-	//s.Log.Debug("Probing links", "ny", ny)
-	dbgPrintRouteTable(s)
+	if state.DBG_log_route_table {
+		dbgPrintRouteTable(s)
+	}
 
 	for _, peer := range s.GetPeers() {
 		// make sure we are not already connected to the neighbour

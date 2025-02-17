@@ -40,7 +40,7 @@ func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) b
 
 	if metric < curRoute.Fd ||
 		SeqnoLt(curRoute.Src.Seqno, newRoute.Src.Seqno) ||
-		(metric == curRoute.Fd && curRoute.Metric == INF) {
+		(metric == curRoute.Fd && (curRoute.Metric == INF || curRoute.Retracted)) {
 		return true
 	}
 	return false

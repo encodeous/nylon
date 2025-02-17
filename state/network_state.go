@@ -19,7 +19,7 @@ type DpLink interface {
 	Endpoint() *DpEndpoint
 	// UpdatePing remote means that the ping update is from the finalizer
 	UpdatePing(ping time.Duration)
-	Renew()
+	Renew(remote bool)
 }
 
 type NetLink interface {
@@ -27,7 +27,7 @@ type NetLink interface {
 	Metric() uint16
 	// IsRemote is true if the link is remotely initiated
 	IsRemote() bool
-	IsDead() bool
+	IsAlive() bool
 }
 
 //func (k EdPublicKey) DeriveNylonAddr() net.IP {

@@ -75,4 +75,6 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "lprobe", "p", false, "Write probes to console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_router, "lroute", "r", false, "Write router updates to console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "lwg", "w", false, "Outputs wireguard logs to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")
 }

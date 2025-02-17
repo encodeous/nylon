@@ -10,6 +10,8 @@ const (
 	LinkSwitchMetricCostBase       = time.Microsecond * 500
 	LinkSwitchMetricCostMultiplier = 1.3
 	StarvationDelay                = time.Millisecond * 100
+	SeqnoDedupTTL                  = time.Second * 3
+	EndpointTTL                    = time.Minute * 5
 
 	// WindowSamples is the sliding window size
 	WindowSamples = int(time.Second * 60 / ProbeDpDelay) // approx last 1 min

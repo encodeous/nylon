@@ -34,14 +34,18 @@ type UdpDpLink struct {
 	endpoint    state.DpEndpoint
 	filter      *kalman.KalmanFilter
 	model       *models.SimpleModel
+	hasPong     bool
 }
 
-func (u *UdpDpLink) Renew() {
-	u.lastContact = time.Now()
+func (u *UdpDpLink) Renew(remote bool) {
+	u.hasPong = u.hasPong || remote
+	if remote {
+		u.lastContact = time.Now()
+	}
 }
 
-func (u *UdpDpLink) IsDead() bool {
-	return time.Now().Sub(u.lastContact) > LinkDeadThreshold
+func (u *UdpDpLink) IsAlive() bool {
+	return time.Now().Sub(u.lastContact) <= LinkDeadThreshold || !u.hasPong
 }
 
 func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDpLink {
@@ -156,7 +160,7 @@ func (u *UdpDpLink) Id() uuid.UUID {
 
 func (u *UdpDpLink) Metric() uint16 {
 	// if link is dead, return INF
-	if u.IsDead() {
+	if !u.IsAlive() {
 		return INF
 	}
 	return u.metric
@@ -283,7 +287,7 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 		for _, dpLink := range neigh.DpLinks {
 			if dpLink.Id() == link && neigh.Id == node {
 				// we have a link
-				dpLink.Renew()
+				dpLink.Renew(true)
 				return
 			}
 		}
@@ -316,7 +320,7 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 						s.Log.Error("Error updating routes: ", err)
 					}
 					dpLink.UpdatePing(time.Since(health.Time))
-					dpLink.Renew()
+					dpLink.Renew(true)
 				}
 				return
 			}
@@ -333,7 +337,7 @@ func probeDataPlane(s *state.State) error {
 	// probe existing links
 	for _, neigh := range r.Neighbours {
 		for _, dpLink := range neigh.DpLinks {
-			dpLink.Renew()
+			dpLink.Renew(false)
 			go func() {
 				err := probe(s.Env, d.udpSock, *dpLink.Endpoint().ProbeAddr, dpLink.Id())
 				if err != nil {

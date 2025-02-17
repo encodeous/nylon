@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/encodeous/nylon/nylon_dp"
 	"github.com/encodeous/nylon/state"
+	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"net"
 	"sort"
@@ -16,7 +17,7 @@ type DpLinkMgr struct {
 	dataplane     nylon_dp.NyItf
 	udpSock       *net.UDPConn
 	allowedIpDiff map[string]string
-	endpointDiff  map[string]string
+	endpointDiff  map[uuid.UUID]state.Pair[string, time.Time]
 }
 
 func (w *DpLinkMgr) Cleanup(s *state.State) error {
@@ -68,10 +69,10 @@ func UpdateWireGuard(s *state.State) error {
 			sb.WriteString(fmt.Sprintf("public_key=%s\n", pkey))
 
 			if ep != nil {
-				if x, ok := w.endpointDiff[pkey]; !ok || x != ep.String() {
+				if x, ok := w.endpointDiff[route.Link.Id()]; !ok || x.V1 != ep.String() {
 					sb.WriteString(fmt.Sprintf("endpoint=%s\n", ep))
 					sb.WriteString(fmt.Sprintf("persistent_keepalive_interval=25\n"))
-					w.endpointDiff[pkey] = ep.String()
+					w.endpointDiff[route.Link.Id()] = state.Pair[string, time.Time]{ep.String(), time.Now()}
 				}
 			}
 
@@ -93,7 +94,7 @@ func UpdateWireGuard(s *state.State) error {
 }
 
 func (w *DpLinkMgr) Init(s *state.State) error {
-	w.endpointDiff = make(map[string]string)
+	w.endpointDiff = make(map[uuid.UUID]state.Pair[string, time.Time])
 	w.allowedIpDiff = make(map[string]string)
 	s.Log.Info("initializing Data Plane")
 

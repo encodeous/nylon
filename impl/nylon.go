@@ -19,7 +19,7 @@ func nylonGc(s *state.State) error {
 		// filter ctl links
 		n := 0
 		for _, x := range neigh.CtlLinks {
-			if !x.IsDead() {
+			if x.IsAlive() {
 				neigh.CtlLinks[n] = x
 				n++
 			} else {
@@ -31,7 +31,7 @@ func nylonGc(s *state.State) error {
 		// filter dplinks
 		n = 0
 		for _, x := range neigh.DpLinks {
-			if !x.IsDead() {
+			if x.IsAlive() {
 				neigh.DpLinks[n] = x
 				n++
 			} else {
@@ -46,6 +46,14 @@ func nylonGc(s *state.State) error {
 				s.Log.Debug("removed dead route", "src", x.Src.Id, "nh", neigh.Id)
 				delete(neigh.Routes, k)
 			}
+		}
+	}
+
+	// cleanup link cache
+	w := Get[*DpLinkMgr](s)
+	for k, v := range w.endpointDiff {
+		if v.V2.Before(time.Now().Add(-EndpointTTL)) {
+			delete(w.endpointDiff, k)
 		}
 	}
 	return nil

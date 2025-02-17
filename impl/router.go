@@ -2,6 +2,7 @@ package impl
 
 import (
 	"errors"
+	"fmt"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
@@ -35,7 +36,7 @@ func (r *Router) Init(s *state.State) error {
 	}
 	r.Routes = make(map[state.Node]*state.Route)
 	r.SeqnoDedup = ttlcache.New[state.Node, state.Source](
-		ttlcache.WithTTL[state.Node, state.Source](30*time.Second),
+		ttlcache.WithTTL[state.Node, state.Source](SeqnoDedupTTL),
 		ttlcache.WithDisableTouchOnHit[state.Node, state.Source](),
 	)
 	go r.SeqnoDedup.Start()
@@ -192,7 +193,19 @@ func dbgPrintRouteTable(s *state.State) {
 		s.Log.Debug("--- route table ---")
 	}
 	for _, route := range r.Routes {
-		s.Log.Debug(string(route.Src.Id), "seqno", route.Src.Seqno, "metric", route.Metric, "fd", route.Fd, "ret", route.Retracted, "nh", route.Nh)
+		s.Log.Debug(fmt.Sprintf("%s(%d) -> %s", route.Src.Id, route.Src.Seqno, route.Nh), "met", route.Metric, "fd", route.Fd, "ret", route.Retracted)
+	}
+}
+
+func dbgPrintRouteChanges(s *state.State, curRoute *state.Route, newRoute *state.PubRoute, via state.Node, metric uint16) {
+	if state.DBG_log_route_changes {
+		if curRoute == nil {
+			s.Log.Debug(fmt.Sprintf("[rc] %s(%d) new [%d]%s", newRoute.Src.Id, newRoute.Src.Seqno, metric, via))
+		} else if metric == INF || newRoute == nil {
+			s.Log.Debug(fmt.Sprintf("[rc] %s ret %s(%d)", via, curRoute.Src.Id, curRoute.Src.Seqno))
+		} else {
+			s.Log.Debug(fmt.Sprintf("[rc] %s(%d) via [%d]%s / [%d]%s", curRoute.Src.Id, curRoute.Src.Seqno, metric, via, curRoute.Metric, curRoute.Nh))
+		}
 	}
 }
 
@@ -202,8 +215,6 @@ func updateRoutes(s *state.State) error {
 		SeqnoPush: false,
 		Updates:   make([]*protocol.CtlRouteUpdate_Params, 0),
 	}
-
-	//dbgPrintRouteTable(s)
 
 	improvedSeqno := make([]state.Node, 0)
 
@@ -277,6 +288,9 @@ func updateRoutes(s *state.State) error {
 						// dont update this route, as it might cause oscillations
 						continue
 					}
+					if tRoute.Nh != neigh.Id {
+						dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
+					}
 					tRoute.Metric = metric
 					if SeqnoLt(tRoute.Src.Seqno, neighRoute.Src.Seqno) {
 						improvedSeqno = append(improvedSeqno, neighRoute.Src.Id)
@@ -315,6 +329,8 @@ func updateRoutes(s *state.State) error {
 							tRoute.Retracted = retract
 						}
 						if retract {
+							metric = INF
+							dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
 							retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
 								Source: mapToPktSource(&tRoute.Src),
 								Metric: uint32(INF),
@@ -327,6 +343,7 @@ func updateRoutes(s *state.State) error {
 				if state.DBG_log_router {
 					s.Log.Debug("  new route! added to table")
 				}
+				dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
 				// add new route, if it is not retracted
 				r.Routes[src] = &state.Route{
 					PubRoute: state.PubRoute{
@@ -345,7 +362,7 @@ func updateRoutes(s *state.State) error {
 	// retract routes that the neighbour no longer publishes
 	for _, neigh := range r.Neighbours {
 		for src, route := range r.Routes {
-			if route.Nh == neigh.Id {
+			if route.Nh == neigh.Id && !route.Retracted {
 				if _, ok := neigh.Routes[src]; !ok {
 					route.Retracted = true
 					route.Metric = INF
@@ -353,6 +370,7 @@ func updateRoutes(s *state.State) error {
 						Source: mapToPktSource(&route.Src),
 						Metric: uint32(INF),
 					})
+					dbgPrintRouteChanges(s, route, nil, neigh.Id, INF)
 				}
 			}
 		}
