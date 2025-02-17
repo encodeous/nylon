@@ -1,69 +1,47 @@
 package impl
 
 import (
+	"encoding/hex"
 	"fmt"
-	"github.com/encodeous/nylon/dp_wireguard"
+	"github.com/encodeous/nylon/nylon_dp"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
-	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net"
-	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
 type DpLinkMgr struct {
-	client     *wgctrl.Client
-	deviceName string
-	udpSock    *net.UDPConn
+	dataplane     nylon_dp.NyItf
+	udpSock       *net.UDPConn
+	allowedIpDiff map[string]string
+	endpointDiff  map[string]string
 }
 
 func (w *DpLinkMgr) Cleanup(s *state.State) error {
 	s.Log.Info("cleaning up wireguard")
 	s.PingBuf.Stop()
 	w.udpSock.Close()
-	return dp_wireguard.CleanupWireGuard(s)
-}
-
-func (w *DpLinkMgr) getWgDevice(s *state.State) (*wgtypes.Device, error) {
-	dev, err := w.client.Devices()
-	if err != nil {
-		return nil, err
-	}
-	var dpDevice *wgtypes.Device
-	// check before init
-	for _, d := range dev {
-		if slices.Equal(d.PrivateKey[:], s.WgKey.Bytes()) {
-			dpDevice = d
-		}
-	}
-	if dpDevice == nil {
-		return nil, fmt.Errorf("device not found")
-	}
-	return dpDevice, nil
+	return w.dataplane.Cleanup(s)
 }
 
 func UpdateWireGuard(s *state.State) error {
 	w := Get[*DpLinkMgr](s)
-	r := Get[*Router](s)
-	dev, err := w.getWgDevice(s)
-	if err != nil {
-		return err
-	}
 
-	peers := make([]wgtypes.PeerConfig, 0)
+	r := Get[*Router](s)
 
 	hopsTo := make(map[state.Node][]state.Node)
 
 	for _, route := range r.Routes {
 		hopsTo[route.Nh] = append(hopsTo[route.Nh], route.Src.Id)
 	}
+	sb := new(strings.Builder)
 
 	// configure peers
 	for _, route := range r.Routes {
 		if hopsTo[route.Nh] != nil {
-			allowedIps := make([]net.IPNet, 0)
+			allowedIps := make([]string, 0)
 			for _, src := range hopsTo[route.Nh] {
 				cfg, err := s.GetPubNodeCfg(src)
 				if err != nil {
@@ -73,11 +51,9 @@ func UpdateWireGuard(s *state.State) error {
 				if err != nil {
 					continue
 				}
-				allowedIps = append(allowedIps, *ipNet)
+				allowedIps = append(allowedIps, ipNet.String())
 			}
-			sort.Slice(allowedIps, func(i, j int) bool {
-				return slices.Compare(allowedIps[i].IP, allowedIps[j].IP) < 0
-			})
+			sort.Strings(allowedIps)
 			pcfg, err := s.GetPubNodeCfg(route.Nh)
 			if err != nil {
 				return err
@@ -88,65 +64,44 @@ func UpdateWireGuard(s *state.State) error {
 			} else {
 				ep = nil
 			}
-			dur := time.Second * 25
-			peers = append(peers, wgtypes.PeerConfig{
-				PublicKey:                   wgtypes.Key(pcfg.DpPubKey.Bytes()),
-				Remove:                      false,
-				UpdateOnly:                  true,
-				PresharedKey:                nil,
-				PersistentKeepaliveInterval: &dur,
-				Endpoint:                    ep,
-				AllowedIPs:                  allowedIps,
-			})
+			pkey := hex.EncodeToString(pcfg.DpPubKey.Bytes())
+			sb.WriteString(fmt.Sprintf("public_key=%s\n", pkey))
+
+			if ep != nil {
+				if x, ok := w.endpointDiff[pkey]; !ok || x != ep.String() {
+					sb.WriteString(fmt.Sprintf("endpoint=%s\n", ep))
+					sb.WriteString(fmt.Sprintf("persistent_keepalive_interval=25\n"))
+					w.endpointDiff[pkey] = ep.String()
+				}
+			}
+
+			for _, ip := range allowedIps {
+				if w.allowedIpDiff[ip] != pkey {
+					w.allowedIpDiff[ip] = pkey
+					sb.WriteString(fmt.Sprintf("allowed_ip=%s\n", ip))
+				}
+			}
 		}
 	}
-	sort.Slice(peers, func(i, j int) bool {
-		return slices.Compare(peers[i].PublicKey[:], peers[j].PublicKey[:]) < 0
-	})
-	cfg := wgtypes.Config{
-		ReplacePeers: false,
-		Peers:        peers,
-	}
 
-	err = w.client.ConfigureDevice(dev.Name, cfg)
+	err := w.dataplane.UpdateState(s, &nylon_dp.DpUpdates{Updates: sb.String()})
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 func (w *DpLinkMgr) Init(s *state.State) error {
-	s.Log.Info("initializing WireGuard")
+	w.endpointDiff = make(map[string]string)
+	w.allowedIpDiff = make(map[string]string)
+	s.Log.Info("initializing Data Plane")
 
-	client, err := wgctrl.New()
+	dp, err := nylon_dp.NewItf(s)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not initialize interface: %v", err)
 	}
-	w.client = client
-
-	dev, err := w.getWgDevice(s)
-	if err != nil {
-		err := dp_wireguard.InitWireGuard(s)
-		if err != nil {
-			return err
-		}
-		dev, err = w.getWgDevice(s)
-	}
-
-	if dev == nil {
-		return fmt.Errorf("WireGuard device was not successfully initialized")
-	}
-
-	portAddr := int(s.DpBind.Port())
-
-	cfg := wgtypes.Config{
-		ListenPort: &portAddr,
-	}
-
-	err = client.ConfigureDevice(dev.Name, cfg)
-	if err != nil {
-		return err
-	}
+	w.dataplane = dp
 
 	s.PingBuf = ttlcache.New[uint64, state.LinkPing](
 		ttlcache.WithTTL[uint64, state.LinkPing](5*time.Second),

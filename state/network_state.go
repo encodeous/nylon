@@ -16,9 +16,10 @@ type CtlLink interface {
 
 type DpLink interface {
 	NetLink
-	Endpoint() DpEndpoint
+	Endpoint() *DpEndpoint
 	// UpdatePing remote means that the ping update is from the finalizer
 	UpdatePing(ping time.Duration)
+	Renew()
 }
 
 type NetLink interface {

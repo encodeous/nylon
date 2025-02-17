@@ -74,4 +74,5 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_write_metric_history, "lmetric", "m", false, "Write metric history as csv")
 	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "lprobe", "p", false, "Write probes to console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_router, "lroute", "r", false, "Write router updates to console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "lwg", "w", false, "Outputs wireguard logs to the console")
 }

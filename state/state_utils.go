@@ -17,8 +17,15 @@ func (e Env) GetPubNodeCfg(node Node) (PubNodeCfg, error) {
 	return e.Nodes[idx], nil
 }
 
-func (s State) GetPubNodeCfg(node Node) (PubNodeCfg, error) {
-	return s.Env.GetPubNodeCfg(node)
+func (e Env) MustGetNode(node Node) PubNodeCfg {
+	idx := slices.IndexFunc(e.Nodes, func(cfg PubNodeCfg) bool {
+		return cfg.Id == node
+	})
+	if idx == -1 {
+		panic("node " + string(node) + " not found")
+	}
+
+	return e.Nodes[idx]
 }
 
 type Pair[Ty1, Ty2 any] struct {

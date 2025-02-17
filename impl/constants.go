@@ -6,14 +6,16 @@ const (
 	INF                            = (uint16)(65535)
 	ProbeCtlDelay                  = time.Second * 5
 	RouteUpdateDelay               = time.Second * 5
-	ProbeDpDelay                   = time.Millisecond * 2000
+	ProbeDpDelay                   = time.Millisecond * 400
 	LinkSwitchMetricCostBase       = time.Microsecond * 500
 	LinkSwitchMetricCostMultiplier = 1.3
-	StarvationDelay                = time.Millisecond * 400
+	StarvationDelay                = time.Millisecond * 100
 
-	// sliding window latency
-	WindowSamples = 200 // approx last 1 min
+	// WindowSamples is the sliding window size
+	WindowSamples = int(time.Second * 60 / ProbeDpDelay) // approx last 1 min
+	// minimum number of samples before we lower the ping
+	MinimumConfidenceWindow = int(time.Second * 5 / ProbeDpDelay)
 
-	GcDelay           = time.Second * 5
-	LinkDeadThreshold = time.Second * 30
+	GcDelay           = time.Second * 1
+	LinkDeadThreshold = 5 * ProbeDpDelay
 )

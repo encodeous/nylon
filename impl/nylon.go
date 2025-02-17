@@ -2,6 +2,7 @@ package impl
 
 import (
 	"github.com/encodeous/nylon/state"
+	"time"
 )
 
 type Nylon struct {
@@ -38,6 +39,14 @@ func nylonGc(s *state.State) error {
 			}
 		}
 		neigh.DpLinks = neigh.DpLinks[:n]
+
+		// remove old routes
+		for k, x := range neigh.Routes {
+			if x.LastPublished.Before(time.Now().Add(-RouteUpdateDelay * 2)) {
+				s.Log.Debug("removed dead route", "src", x.Src.Id, "nh", neigh.Id)
+				delete(neigh.Routes, k)
+			}
+		}
 	}
 	return nil
 }

@@ -1,5 +1,7 @@
 package state
 
+import "time"
+
 type Node string
 
 type Neighbour struct {
@@ -24,7 +26,8 @@ type Source struct {
 }
 
 type PubRoute struct {
-	Src       Source
-	Metric    uint16
-	Retracted bool
+	Src           Source
+	Metric        uint16
+	Retracted     bool
+	LastPublished time.Time
 }

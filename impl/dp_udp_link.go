@@ -24,22 +24,24 @@ import (
 	"time"
 )
 
-// TODO: Implement history function and other non-ping related metric calculations, i.e packet loss, p95, p99
-
 type UdpDpLink struct {
-	id               uuid.UUID
-	metric           uint16
-	realLatency      time.Duration
-	history          []time.Duration
-	boxMedian        time.Duration
-	lastMetricUpdate time.Time
-	endpoint         state.DpEndpoint
-	filter           *kalman.KalmanFilter
-	model            *models.SimpleModel
+	id          uuid.UUID
+	metric      uint16
+	realLatency time.Duration
+	history     []time.Duration
+	boxMedian   time.Duration
+	lastContact time.Time
+	endpoint    state.DpEndpoint
+	filter      *kalman.KalmanFilter
+	model       *models.SimpleModel
+}
+
+func (u *UdpDpLink) Renew() {
+	u.lastContact = time.Now()
 }
 
 func (u *UdpDpLink) IsDead() bool {
-	return time.Now().Sub(u.lastMetricUpdate) > LinkDeadThreshold
+	return time.Now().Sub(u.lastContact) > LinkDeadThreshold
 }
 
 func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDpLink {
@@ -50,18 +52,18 @@ func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDp
 		ObservationVariance: float64(time.Millisecond * 10),
 	})
 	return &UdpDpLink{
-		id:               id,
-		metric:           metric,
-		endpoint:         endpoint,
-		filter:           kalman.NewKalmanFilter(model),
-		model:            model,
-		lastMetricUpdate: time.Now(),
-		boxMedian:        time.Millisecond * 500, // start with a relatively high latency so we don't disrupt existing connections before we are sure
+		id:          id,
+		metric:      metric,
+		endpoint:    endpoint,
+		filter:      kalman.NewKalmanFilter(model),
+		model:       model,
+		lastContact: time.Now(),
+		boxMedian:   time.Millisecond * 500, // start with a relatively high latency so we don't disrupt existing connections before we are sure
 	}
 }
 
-func (u *UdpDpLink) Endpoint() state.DpEndpoint {
-	return u.endpoint
+func (u *UdpDpLink) Endpoint() *state.DpEndpoint {
+	return &u.endpoint
 }
 
 func (u *UdpDpLink) computeIQR() time.Duration {
@@ -100,7 +102,7 @@ func (u *UdpDpLink) UpdatePing(ping time.Duration) {
 		u.history = u.history[1:] // discard
 	}
 	iqr := time.Millisecond * 5000 // default
-	if len(u.history) > 20 {
+	if len(u.history) > MinimumConfidenceWindow {
 		iqr = u.computeIQR()
 	}
 	// check if ping is within box
@@ -146,8 +148,6 @@ func (u *UdpDpLink) UpdatePing(ping time.Duration) {
 	u.metric = uint16(min(max(int64(u.metric), 1), int64(INF)))
 
 	//slog.Info("lu", "r", u.realLatency, "f", time.Duration(filtered))
-
-	u.lastMetricUpdate = time.Now()
 }
 
 func (u *UdpDpLink) Id() uuid.UUID {
@@ -155,8 +155,8 @@ func (u *UdpDpLink) Id() uuid.UUID {
 }
 
 func (u *UdpDpLink) Metric() uint16 {
-	// if no pings for the past 3s, we return INF
-	if u.lastMetricUpdate.Before(time.Now().Add(-time.Second * 3)) {
+	// if link is dead, return INF
+	if u.IsDead() {
 		return INF
 	}
 	return u.metric
@@ -283,6 +283,7 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 		for _, dpLink := range neigh.DpLinks {
 			if dpLink.Id() == link && neigh.Id == node {
 				// we have a link
+				dpLink.Renew()
 				return
 			}
 		}
@@ -315,6 +316,7 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 						s.Log.Error("Error updating routes: ", err)
 					}
 					dpLink.UpdatePing(time.Since(health.Time))
+					dpLink.Renew()
 				}
 				return
 			}
@@ -331,6 +333,7 @@ func probeDataPlane(s *state.State) error {
 	// probe existing links
 	for _, neigh := range r.Neighbours {
 		for _, dpLink := range neigh.DpLinks {
+			dpLink.Renew()
 			go func() {
 				err := probe(s.Env, d.udpSock, *dpLink.Endpoint().ProbeAddr, dpLink.Id())
 				if err != nil {
@@ -355,9 +358,10 @@ func probeDataPlane(s *state.State) error {
 		neigh := r.Neighbours[nIdx]
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
 		for _, ep := range cfg.DpAddr {
-			if slices.IndexFunc(neigh.DpLinks, func(link state.DpLink) bool {
+			idx := slices.IndexFunc(neigh.DpLinks, func(link state.DpLink) bool {
 				return !link.IsRemote() && link.Endpoint().Name == ep.Name
-			}) == -1 {
+			})
+			if idx == -1 {
 				// add the link to the neighbour
 				id := uuid.New()
 				neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(id, INF, ep))
@@ -367,6 +371,11 @@ func probeDataPlane(s *state.State) error {
 						//s.Log.Debug("discovery probe failed", "err", err.Error())
 					}
 				}()
+			} else {
+				// associate the endpoint data plane address if it does not exist
+				if neigh.DpLinks[idx].Endpoint().DpAddr == nil {
+					neigh.DpLinks[idx].Endpoint().DpAddr = ep.DpAddr
+				}
 			}
 		}
 	}

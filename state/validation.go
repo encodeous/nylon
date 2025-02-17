@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 )
 
 var namePattern, _ = regexp.Compile("^[0-9a-z._-]+$")
@@ -36,6 +37,11 @@ func BindValidator(s string) error {
 	return err
 }
 
+func PortValidator(s string) error {
+	_, err := strconv.ParseUint(s, 10, 16)
+	return err
+}
+
 func AddrValidator(s string) error {
 	_, err := netip.ParseAddr(s)
 	return err
@@ -49,8 +55,8 @@ func NodeConfigValidator(node *NodeCfg) error {
 	if !node.ProbeBind.IsValid() {
 		return fmt.Errorf("node.ProbeBind is invalid")
 	}
-	if !node.DpBind.IsValid() {
-		return fmt.Errorf("node.DpBind is invalid")
+	if node.DpPort == 0 {
+		return fmt.Errorf("node.DpPort is invalid")
 	}
 	if !node.CtlBind.IsValid() {
 		return fmt.Errorf("node.CtlBind is invalid")

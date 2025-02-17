@@ -75,7 +75,7 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 		mockNode := NodeCfg{
 			Id:        Node(node),
 			CtlBind:   ctlBind,
-			DpBind:    dpAddr,
+			DpPort:    dpAddr.Port(),
 			ProbeBind: probeAddr,
 			Key:       EdPrivateKey(ctlKey),
 			WgKey:     (*EcPrivateKey)(ecKey),

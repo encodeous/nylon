@@ -51,7 +51,7 @@ type NodeCfg struct {
 	// Address and port that the control plane listens on
 	CtlBind netip.AddrPort
 	// Address that the data plane can be accessed by
-	DpBind    netip.AddrPort
+	DpPort    uint16
 	ProbeBind netip.AddrPort
 }
 
@@ -72,7 +72,7 @@ func (k EdPrivateKey) Pubkey() EdPublicKey {
 }
 
 func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
-	extDp := RepAddr(n.DpBind, extIp)
+	extDp := netip.AddrPortFrom(extIp, n.DpPort)
 	extPb := RepAddr(n.ProbeBind, extIp)
 	cfg := PubNodeCfg{
 		Id:      n.Id,

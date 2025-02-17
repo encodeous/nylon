@@ -27,6 +27,7 @@ func (r *Router) Cleanup(s *state.State) error {
 func (r *Router) Init(s *state.State) error {
 	s.Log.Debug("init router")
 	s.Env.RepeatTask(fullRouteUpdate, RouteUpdateDelay)
+	s.Env.RepeatTask(checkStarvation, StarvationDelay)
 	r.Self = &state.Source{
 		Id:    s.Id,
 		Seqno: 0,
@@ -340,6 +341,22 @@ func updateRoutes(s *state.State) error {
 			}
 		}
 	}
+
+	// retract routes that the neighbour no longer publishes
+	for _, neigh := range r.Neighbours {
+		for src, route := range r.Routes {
+			if route.Nh == neigh.Id {
+				if _, ok := neigh.Routes[src]; !ok {
+					route.Retracted = true
+					route.Metric = INF
+					retractions.Updates = append(retractions.Updates, &protocol.CtlRouteUpdate_Params{
+						Source: mapToPktSource(&route.Src),
+						Metric: uint32(INF),
+					})
+				}
+			}
+		}
+	}
 	improvedSeqno = slices.Compact(improvedSeqno)
 	if len(improvedSeqno) > 0 {
 		err := pushSeqnoUpdate(s, improvedSeqno)
@@ -352,11 +369,16 @@ func updateRoutes(s *state.State) error {
 		broadcast(s, &protocol.CtlMsg{Type: &protocol.CtlMsg_Route{Route: &retractions}})
 	}
 
+	return checkStarvation(s)
+}
+
+func checkStarvation(s *state.State) error {
+	r := Get[*Router](s)
 	starved := false
 	// check for starvation
 	if time.Now().Sub(r.LastStarvationRequest) > StarvationDelay {
 		for node, route := range r.Routes {
-			if route.Metric == INF {
+			if route.Link.Metric() == INF || route.Metric == INF {
 				// we dont have a valid route to this node
 				starved = true
 
@@ -377,7 +399,6 @@ func updateRoutes(s *state.State) error {
 	if starved {
 		r.LastStarvationRequest = time.Now()
 	}
-
 	return nil
 }
 
@@ -389,7 +410,6 @@ func routerHandleRouteUpdate(s *state.State, node state.Node, pkt *protocol.CtlR
 		return neighbour.Id == node
 	})
 	neigh := r.Neighbours[nidx]
-	neigh.Routes = make(map[state.Node]state.PubRoute)
 	hasRetractions := false
 	for _, update := range pkt.Updates {
 		cur, ok := neigh.Routes[state.Node(update.Source.Id)]
@@ -397,9 +417,10 @@ func routerHandleRouteUpdate(s *state.State, node state.Node, pkt *protocol.CtlR
 			hasRetractions = hasRetractions || !cur.Retracted && update.Metric == uint32(INF)
 		}
 		neigh.Routes[state.Node(update.Source.Id)] = state.PubRoute{
-			Src:       mapFromPktSource(update.Source),
-			Metric:    uint16(update.Metric),
-			Retracted: update.Metric == uint32(INF),
+			Src:           mapFromPktSource(update.Source),
+			Metric:        uint16(update.Metric),
+			Retracted:     update.Metric == uint32(INF),
+			LastPublished: time.Now(),
 		}
 	}
 	if hasRetractions || pkt.SeqnoPush {

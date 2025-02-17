@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 func promptDefaultStr(label string, def string, validateFunc promptui.ValidateFunc) string {
@@ -61,6 +62,21 @@ func promptDefaultAddrPort(label string, def string, validateFunc promptui.Valid
 	}
 	addr, err := netip.ParseAddrPort(val)
 	return addr
+}
+
+func promptDefaultPort(label string, def string, validateFunc promptui.ValidateFunc) uint16 {
+	prompt := promptui.Prompt{
+		Label:     label,
+		Default:   def,
+		AllowEdit: true,
+		Validate:  validateFunc,
+	}
+	val, err := prompt.Run()
+	if err != nil {
+		panic(err)
+	}
+	port16, err := strconv.ParseUint(val, 10, 16)
+	return uint16(port16)
 }
 
 func promptDefaultAddr(label string, def string, validateFunc promptui.ValidateFunc) netip.Addr {
@@ -124,8 +140,8 @@ func promptCreateNode() state.NodeCfg {
 
 	fmt.Println("Where should the control-plane listen to?:")
 	nodeCfg.CtlBind = promptDefaultAddrPort("[TCP] ip:port", "0.0.0.0:54003", state.BindValidator)
-	fmt.Println("Where should the data-plane (WireGuard) listen to?:")
-	nodeCfg.DpBind = promptDefaultAddrPort("[UDP] ip:port", "0.0.0.0:54004", state.BindValidator)
+	fmt.Println("What port should the data-plane (WireGuard) listen to?:")
+	nodeCfg.DpPort = promptDefaultPort("[UDP] port", "54004", state.PortValidator)
 	fmt.Println("Where should the data-plane probe (for discovery & metric) listen to?:")
 	nodeCfg.ProbeBind = promptDefaultAddrPort("[UDP] ip:port", "0.0.0.0:54003", state.BindValidator)
 
