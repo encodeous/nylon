@@ -58,7 +58,7 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 				res := pkt
 				token := rand.Uint64()
 				res.ResponseToken = &token
-				res.NodeId = generateAnonHash(token, e.Key.Pubkey())
+				res.NodeId = generateAnonHash(token, e.Key.XPubkey())
 
 				pktBytes, err := proto.Marshal(res)
 				if err != nil {
@@ -124,7 +124,7 @@ func UpdateWireGuard(s *state.State) error {
 				return err
 			}
 			ep := net.UDPAddrFromAddrPort(route.Link.Endpoint().Addr)
-			pkey := hex.EncodeToString(pcfg.DpPubKey.Bytes())
+			pkey := hex.EncodeToString(pcfg.PubKey)
 			sb.WriteString(fmt.Sprintf("public_key=%s\n", pkey))
 
 			if ep != nil {

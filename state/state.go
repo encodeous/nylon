@@ -2,10 +2,11 @@ package state
 
 import (
 	"context"
-	"crypto/ecdh"
 	"crypto/ed25519"
 	"fmt"
 	"github.com/jellydator/ttlcache/v3"
+	"go.step.sm/crypto/x25519"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"log/slog"
 	"net/netip"
 	"time"
@@ -39,35 +40,55 @@ type DpEndpoint struct {
 	Addr       netip.AddrPort
 }
 
-// TODO: Allow node to be configured to NOT be a router
+type NyPrivateKey []byte
+type NyPublicKey []byte
 
+// TODO: Allow node to be configured to NOT be a router
 // NodeCfg represents local node-level configuration
 type NodeCfg struct {
 	// Node Private Key
-	Key EdPrivateKey
-	// Data plane (WireGuard) Private key
-	WgKey *EcPrivateKey
-	Id    Node
+	Key NyPrivateKey
+	Id  Node
 	// Address and port that the control plane listens on
 	CtlBind netip.AddrPort
 	// Address that the data plane can be accessed by
 	DpPort uint16
 }
 
-func (k *EcPublicKey) Bytes() []byte {
-	return (*ecdh.PublicKey)(k).Bytes()
+func GenerateKey() NyPrivateKey {
+	key, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		panic(err)
+	}
+	return key[:]
 }
 
-func (k *EcPrivateKey) Bytes() []byte {
-	return (*ecdh.PrivateKey)(k).Bytes()
+func (k NyPrivateKey) XPubkey() NyPublicKey {
+	val, err := x25519.PrivateKey(k).PublicKey()
+	if err != nil {
+		panic(err)
+	}
+	return NyPublicKey(val)
 }
 
-func (k *EcPrivateKey) Pubkey() *EcPublicKey {
-	return (*EcPublicKey)(((*ecdh.PrivateKey)(k).Public()).(*ecdh.PublicKey))
+func (k NyPrivateKey) EdPubkey() []byte {
+	val, err := x25519.PrivateKey(k).PublicKey()
+	if err != nil {
+		panic(err)
+	}
+	val2, err := val.ToEd25519()
+	if err != nil {
+		panic(err)
+	}
+	return val2
 }
 
-func (k EdPrivateKey) Pubkey() EdPublicKey {
-	return EdPublicKey(((ed25519.PrivateKey)(k).Public()).(ed25519.PublicKey))
+func (k NyPublicKey) EdPubkey() []byte {
+	val, err := (x25519.PublicKey(k)).ToEd25519()
+	if err != nil {
+		panic(err)
+	}
+	return val
 }
 
 func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
@@ -80,11 +101,8 @@ func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg
 		},
 		NylonAddr: nylonIp,
 	}
-	if n.WgKey != nil {
-		cfg.DpPubKey = n.WgKey.Pubkey()
-	}
 	if n.Key != nil {
-		cfg.PubKey = n.Key.Pubkey()
+		cfg.PubKey = n.Key.XPubkey()
 	}
 	return cfg
 }
@@ -93,15 +111,14 @@ func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg
 type PubNodeCfg struct {
 	Id        Node
 	NylonAddr netip.Addr
-	PubKey    EdPublicKey
-	DpPubKey  *EcPublicKey
+	PubKey    NyPublicKey
 	CtlAddr   []string
 	DpAddr    []DpEndpoint
 }
 
 type CentralCfg struct {
 	// the public key of the root CA
-	RootPubKey  EdPrivateKey
+	RootPubKey  NyPublicKey
 	Nodes       []PubNodeCfg
 	Edges       []Pair[Node, Node]
 	mockWeights []Triple[Node, Node, *time.Duration]

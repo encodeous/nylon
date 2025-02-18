@@ -172,7 +172,7 @@ func (u *UdpDpLink) IsRemote() bool {
 }
 
 // region probe io
-func generateAnonHash(token uint64, pubKey state.EdPublicKey) []byte {
+func generateAnonHash(token uint64, pubKey state.NyPublicKey) []byte {
 	hash := sha256.Sum256(binary.LittleEndian.AppendUint64(pubKey, token))
 	return hash[:]
 }
@@ -189,7 +189,7 @@ func probe(e *state.Env, sock *device.PolySock, addr netip.AddrPort, linkId uuid
 	ping := &protocol.Probe{
 		Token:         token,
 		ResponseToken: nil,
-		NodeId:        generateAnonHash(token, e.Key.Pubkey()),
+		NodeId:        generateAnonHash(token, e.Key.XPubkey()),
 		LinkId:        uid,
 	}
 	marshal, err := proto.Marshal(ping)

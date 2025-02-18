@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
@@ -26,13 +24,10 @@ var netCmd = &cobra.Command{
 			panic(err)
 		}
 
-		rootPubkey, rootPrivkey, err := ed25519.GenerateKey(rand.Reader)
-		if err != nil {
-			panic(err)
-		}
+		pkey := state.GenerateKey()
 
 		centralConfig := state.CentralCfg{
-			RootPubKey: state.EdPrivateKey(rootPubkey),
+			RootPubKey: pkey.XPubkey(),
 			Nodes: []state.PubNodeCfg{
 				promptGenPubCfg(nodeCfg),
 			},
@@ -55,7 +50,7 @@ var netCmd = &cobra.Command{
 			panic(err)
 		}
 
-		key, err := state.EdPrivateKey(rootPrivkey).MarshalText()
+		key, err := pkey.MarshalText()
 		if err != nil {
 			panic(err)
 		}

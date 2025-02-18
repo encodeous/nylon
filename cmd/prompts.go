@@ -1,13 +1,9 @@
 package cmd
 
 import (
-	"crypto/ecdh"
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"github.com/encodeous/nylon/state"
 	"github.com/manifoldco/promptui"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -114,22 +110,9 @@ Save:
 }
 
 func promptCreateNode() state.NodeCfg {
-	dpKey, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
-		panic(err)
-	}
-	ecKey, err := ecdh.X25519().NewPrivateKey(dpKey[:])
-	if err != nil {
-		panic(err)
-	}
-	_, ctlKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		panic(err)
-	}
 	nodeCfg := state.NodeCfg{
-		Key:   state.EdPrivateKey(ctlKey),
-		WgKey: (*state.EcPrivateKey)(ecKey),
-		Id:    "my-node",
+		Key: state.GenerateKey(),
+		Id:  "my-node",
 	}
 
 	fmt.Println("Nylon Initialization Wizard")

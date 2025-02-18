@@ -1,11 +1,7 @@
 package state
 
 import (
-	"crypto/ecdh"
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"net/netip"
 	"time"
 )
@@ -53,18 +49,6 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 	}
 	nodes := make([]NodeCfg, 0)
 	for i, node := range names {
-		dpKey, err := wgtypes.GeneratePrivateKey()
-		if err != nil {
-			return CentralCfg{}, nil, err
-		}
-		ecKey, err := ecdh.X25519().NewPrivateKey(dpKey[:])
-		if err != nil {
-			return CentralCfg{}, nil, err
-		}
-		_, ctlKey, err := ed25519.GenerateKey(rand.Reader)
-		if err != nil {
-			return CentralCfg{}, nil, err
-		}
 		dpAddr, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", wgBasePort+i))
 		ctlBind, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
@@ -74,8 +58,7 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 			Id:      Node(node),
 			CtlBind: ctlBind,
 			DpPort:  dpAddr.Port(),
-			Key:     EdPrivateKey(ctlKey),
-			WgKey:   (*EcPrivateKey)(ecKey),
+			Key:     GenerateKey(),
 		}
 		nodes = append(nodes, mockNode)
 		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg(netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("10.99.34."+string(rune(i+'0')))))
