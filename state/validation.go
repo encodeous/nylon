@@ -52,9 +52,6 @@ func NodeConfigValidator(node *NodeCfg) error {
 	if err != nil {
 		return err
 	}
-	if !node.ProbeBind.IsValid() {
-		return fmt.Errorf("node.ProbeBind is invalid")
-	}
 	if node.DpPort == 0 {
 		return fmt.Errorf("node.DpPort is invalid")
 	}

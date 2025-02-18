@@ -3,13 +3,17 @@ package nylon_dp
 import (
 	"fmt"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/wireguard-go/device"
-	"github.com/encodeous/wireguard-go/ipc"
+	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/polyamide/ipc"
 )
 
 type NyItfMacos struct {
 	dev      *device.Device
 	realName string
+}
+
+func (n *NyItfMacos) GetDevice() *device.Device {
+	return n.dev
 }
 
 func NewItf(s *state.State) (NyItf, error) {

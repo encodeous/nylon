@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/device"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/rosshemsley/kalman"
@@ -15,7 +17,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"log/slog"
 	"math/rand/v2"
-	"net"
 	"net/netip"
 	"os"
 	"slices"
@@ -167,7 +168,7 @@ func (u *UdpDpLink) Metric() uint16 {
 }
 
 func (u *UdpDpLink) IsRemote() bool {
-	return u.endpoint.DpAddr == nil
+	return u.endpoint.RemoteInit
 }
 
 // region probe io
@@ -176,79 +177,10 @@ func generateAnonHash(token uint64, pubKey state.EdPublicKey) []byte {
 	return hash[:]
 }
 
-func probeListener(e *state.Env, sock *net.UDPConn) {
-	for e.Context.Err() == nil {
-		buf := make([]byte, 256)
-		n, addrport, err := sock.ReadFromUDPAddrPort(buf)
-		if err != nil {
-			continue
-		}
-
-		go func() {
-			pkt := &protocol.Probe{}
-			err := proto.Unmarshal(buf[:n], pkt)
-			if err != nil {
-				return
-			}
-			tok := pkt.Token
-			if pkt.ResponseToken != nil {
-				tok = *pkt.ResponseToken
-			}
-			for _, node := range e.Nodes {
-				if node.Id != e.Id && slices.Equal(generateAnonHash(tok, node.PubKey), pkt.NodeId) {
-					lid, err := uuid.FromBytes(pkt.LinkId)
-					if err != nil {
-						return
-					}
-					if pkt.ResponseToken == nil {
-						// ping
-						// dTODO: Remove after debugging
-						//weight := state.GetMinMockWeight(e.Id, node.Id, e.CentralCfg)
-						//if weight == 0 {
-						//	return
-						//}
-						//time.Sleep(weight)
-
-						// build pong response
-						res := pkt
-						token := rand.Uint64()
-						res.ResponseToken = &token
-						res.NodeId = generateAnonHash(token, e.Key.Pubkey())
-
-						pktBytes, err := proto.Marshal(res)
-						if err != nil {
-							return
-						}
-						_, err = sock.WriteToUDPAddrPort(pktBytes, addrport)
-						if err != nil {
-							return
-						}
-
-						if err != nil {
-							return
-						}
-						e.Dispatch(func(s *state.State) error {
-							handleProbePing(s, lid, node.Id, state.DpEndpoint{
-								Name:      fmt.Sprintf("remote-%s-%s", node.Id, lid.String()),
-								DpAddr:    nil,
-								ProbeAddr: &addrport,
-							})
-							return nil
-						})
-					} else {
-						// pong
-						e.Dispatch(func(s *state.State) error {
-							handleProbePong(s, lid, node.Id, pkt.Token)
-							return nil
-						})
-					}
-				}
-			}
-		}()
+func probe(e *state.Env, sock *device.PolySock, addr netip.AddrPort, linkId uuid.UUID) error {
+	if state.DBG_log_probe {
+		e.Log.Debug("probe", "addr", addr, "linkId", linkId)
 	}
-}
-
-func probe(e *state.Env, sock *net.UDPConn, addr netip.AddrPort, linkId uuid.UUID) error {
 	token := rand.Uint64()
 	uid, err := linkId.MarshalBinary()
 	if err != nil {
@@ -264,10 +196,7 @@ func probe(e *state.Env, sock *net.UDPConn, addr netip.AddrPort, linkId uuid.UUI
 	if err != nil {
 		return err
 	}
-	_, err = sock.WriteToUDPAddrPort(marshal, addr)
-	if err != nil {
-		return err
-	}
+	sock.Send(marshal, &conn.StdNetEndpoint{AddrPort: addr})
 	e.PingBuf.Set(token, state.LinkPing{
 		LinkId: linkId,
 		Time:   time.Now(),
@@ -339,7 +268,7 @@ func probeDataPlane(s *state.State) error {
 		for _, dpLink := range neigh.DpLinks {
 			dpLink.Renew(false)
 			go func() {
-				err := probe(s.Env, d.udpSock, *dpLink.Endpoint().ProbeAddr, dpLink.Id())
+				err := probe(s.Env, d.polySock, dpLink.Endpoint().Addr, dpLink.Id())
 				if err != nil {
 					s.Log.Debug("probe failed", "err", err.Error())
 				}
@@ -370,16 +299,11 @@ func probeDataPlane(s *state.State) error {
 				id := uuid.New()
 				neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(id, INF, ep))
 				go func() {
-					err := probe(s.Env, d.udpSock, *ep.ProbeAddr, id)
+					err := probe(s.Env, d.polySock, ep.Addr, id)
 					if err != nil {
 						//s.Log.Debug("discovery probe failed", "err", err.Error())
 					}
 				}()
-			} else {
-				// associate the endpoint data plane address if it does not exist
-				if neigh.DpLinks[idx].Endpoint().DpAddr == nil {
-					neigh.DpLinks[idx].Endpoint().DpAddr = ep.DpAddr
-				}
 			}
 		}
 	}

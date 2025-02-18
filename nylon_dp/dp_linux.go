@@ -3,12 +3,16 @@ package nylon_dp
 import (
 	"fmt"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/wireguard-go/device"
-	"github.com/encodeous/wireguard-go/ipc"
+	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/polyamide/ipc"
 )
 
 type NyItfLinux struct {
 	dev *device.Device
+}
+
+func (n *NyItfLinux) GetDevice() *device.Device {
+	return n.dev
 }
 
 func (n *NyItfLinux) UpdateState(s *state.State, upd *DpUpdates) error {

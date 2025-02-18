@@ -44,7 +44,6 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 	}
 	basePort := 23000
 	wgBasePort := 24000
-	probeBasePort := 25000
 	names := []string{
 		"bob",
 		"jeb",
@@ -67,18 +66,16 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 			return CentralCfg{}, nil, err
 		}
 		dpAddr, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", wgBasePort+i))
-		probeAddr, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", probeBasePort+i))
 		ctlBind, err := netip.ParseAddrPort(fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
 			return CentralCfg{}, nil, err
 		}
 		mockNode := NodeCfg{
-			Id:        Node(node),
-			CtlBind:   ctlBind,
-			DpPort:    dpAddr.Port(),
-			ProbeBind: probeAddr,
-			Key:       EdPrivateKey(ctlKey),
-			WgKey:     (*EcPrivateKey)(ecKey),
+			Id:      Node(node),
+			CtlBind: ctlBind,
+			DpPort:  dpAddr.Port(),
+			Key:     EdPrivateKey(ctlKey),
+			WgKey:   (*EcPrivateKey)(ecKey),
 		}
 		nodes = append(nodes, mockNode)
 		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg(netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("10.99.34."+string(rune(i+'0')))))

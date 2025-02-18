@@ -4,10 +4,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/encodeous/nylon/nylon_dp"
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/device"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
+	"google.golang.org/protobuf/proto"
+	"math/rand/v2"
 	"net"
+	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -15,15 +22,72 @@ import (
 
 type DpLinkMgr struct {
 	dataplane     nylon_dp.NyItf
-	udpSock       *net.UDPConn
+	polySock      *device.PolySock
 	allowedIpDiff map[string]string
 	endpointDiff  map[uuid.UUID]state.Pair[string, time.Time]
+	nyEnv         *state.Env
+}
+
+func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
+	e := w.nyEnv
+	pkt := &protocol.Probe{}
+	err := proto.Unmarshal(packet, pkt)
+	if err != nil {
+		return
+	}
+	tok := pkt.Token
+	if pkt.ResponseToken != nil {
+		tok = *pkt.ResponseToken
+	}
+	for _, node := range e.Nodes {
+		if node.Id != e.Id && slices.Equal(generateAnonHash(tok, node.PubKey), pkt.NodeId) {
+			lid, err := uuid.FromBytes(pkt.LinkId)
+			if err != nil {
+				return
+			}
+			if pkt.ResponseToken == nil {
+				// ping
+				// dTODO: Remove after debugging
+				//weight := state.GetMinMockWeight(e.Id, node.Id, e.CentralCfg)
+				//if weight == 0 {
+				//	return
+				//}
+				//time.Sleep(weight)
+
+				// build pong response
+				res := pkt
+				token := rand.Uint64()
+				res.ResponseToken = &token
+				res.NodeId = generateAnonHash(token, e.Key.Pubkey())
+
+				pktBytes, err := proto.Marshal(res)
+				if err != nil {
+					return
+				}
+				w.polySock.Send(pktBytes, endpoint)
+
+				e.Dispatch(func(s *state.State) error {
+					handleProbePing(s, lid, node.Id, state.DpEndpoint{
+						Name:       fmt.Sprintf("remote-%s-%s", node.Id, lid.String()),
+						Addr:       netip.MustParseAddrPort(endpoint.DstToString()),
+						RemoteInit: true,
+					})
+					return nil
+				})
+			} else {
+				// pong
+				e.Dispatch(func(s *state.State) error {
+					handleProbePong(s, lid, node.Id, pkt.Token)
+					return nil
+				})
+			}
+		}
+	}
 }
 
 func (w *DpLinkMgr) Cleanup(s *state.State) error {
 	s.Log.Info("cleaning up wireguard")
 	s.PingBuf.Stop()
-	w.udpSock.Close()
 	return w.dataplane.Cleanup(s)
 }
 
@@ -59,12 +123,7 @@ func UpdateWireGuard(s *state.State) error {
 			if err != nil {
 				return err
 			}
-			var ep *net.UDPAddr
-			if route.Link.Endpoint().DpAddr != nil {
-				ep = net.UDPAddrFromAddrPort(*route.Link.Endpoint().DpAddr)
-			} else {
-				ep = nil
-			}
+			ep := net.UDPAddrFromAddrPort(route.Link.Endpoint().Addr)
 			pkey := hex.EncodeToString(pcfg.DpPubKey.Bytes())
 			sb.WriteString(fmt.Sprintf("public_key=%s\n", pkey))
 
@@ -94,6 +153,7 @@ func UpdateWireGuard(s *state.State) error {
 }
 
 func (w *DpLinkMgr) Init(s *state.State) error {
+	w.nyEnv = s.Env
 	w.endpointDiff = make(map[uuid.UUID]state.Pair[string, time.Time])
 	w.allowedIpDiff = make(map[string]string)
 	s.Log.Info("initializing Data Plane")
@@ -110,13 +170,11 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 	)
 	go s.PingBuf.Start()
 
-	w.udpSock, err = net.ListenUDP("udp", &net.UDPAddr{IP: nil, Port: int(s.ProbeBind.Port())})
-	s.Log.Info("started probe sock")
-	if err != nil {
-		return err
-	}
+	wgDev := dp.GetDevice()
 
-	go probeListener(s.Env, w.udpSock)
+	w.polySock = wgDev.PolyListen(w)
+	s.Log.Info("started polysock listener")
+
 	s.RepeatTask(probeDataPlane, ProbeDpDelay)
 	s.RepeatTask(UpdateWireGuard, ProbeDpDelay)
 	return nil

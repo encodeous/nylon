@@ -4,9 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/wireguard-go/conn"
-	"github.com/encodeous/wireguard-go/device"
-	"github.com/encodeous/wireguard-go/tun"
+	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/polyamide/tun"
 	"runtime"
 )
 
@@ -17,6 +17,7 @@ type DpUpdates struct {
 // NyItf is a generic nylon interface, see dp_linux, dp_windows and dp_macos for impl details
 type NyItf interface {
 	UpdateState(s *state.State, upd *DpUpdates) error
+	GetDevice() *device.Device
 	Cleanup(s *state.State) error
 }
 

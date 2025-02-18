@@ -140,10 +140,8 @@ func promptCreateNode() state.NodeCfg {
 
 	fmt.Println("Where should the control-plane listen to?:")
 	nodeCfg.CtlBind = promptDefaultAddrPort("[TCP] ip:port", "0.0.0.0:54003", state.BindValidator)
-	fmt.Println("What port should the data-plane (WireGuard) listen to?:")
+	fmt.Println("What port should the data-plane listen to?:")
 	nodeCfg.DpPort = promptDefaultPort("[UDP] port", "54004", state.PortValidator)
-	fmt.Println("Where should the data-plane probe (for discovery & metric) listen to?:")
-	nodeCfg.ProbeBind = promptDefaultAddrPort("[UDP] ip:port", "0.0.0.0:54003", state.BindValidator)
 
 	fmt.Println("\nNOTE: You should make these ports accessible for best reliability and performance.\nIf it is not possible, as long as one node in the network is reachable, nylon can still work!\n\n")
 

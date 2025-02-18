@@ -8,6 +8,10 @@ github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMn
 github.com/cpuguy83/go-md2man/v2 v2.0.4/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/encodeous/polyamide v0.0.0-20250217221023-ec98233ea409 h1:wa5IXNdygMkCaJxqgJ9k8ykLH+Fy6SHwL8J75Zgs/7g=
+github.com/encodeous/polyamide v0.0.0-20250217221023-ec98233ea409/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250218214352-9fecd39d286a h1:UDPHQxRheiYRv504oRmkagN5Xo7g0PoY+o1oRToGZAQ=
+github.com/encodeous/polyamide v0.0.0-20250218214352-9fecd39d286a/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/encodeous/wireguard-go v0.0.0-20250209131709-8ef49108f2d0 h1:6Qyi0K03OVTN0RVkvCfivN1GH8O29MNFPzA6PermmLo=

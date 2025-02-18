@@ -34,9 +34,9 @@ type Env struct {
 }
 
 type DpEndpoint struct {
-	Name      string
-	DpAddr    *netip.AddrPort
-	ProbeAddr *netip.AddrPort
+	Name       string
+	RemoteInit bool `yaml:"-"`
+	Addr       netip.AddrPort
 }
 
 // TODO: Allow node to be configured to NOT be a router
@@ -51,8 +51,7 @@ type NodeCfg struct {
 	// Address and port that the control plane listens on
 	CtlBind netip.AddrPort
 	// Address that the data plane can be accessed by
-	DpPort    uint16
-	ProbeBind netip.AddrPort
+	DpPort uint16
 }
 
 func (k *EcPublicKey) Bytes() []byte {
@@ -73,12 +72,11 @@ func (k EdPrivateKey) Pubkey() EdPublicKey {
 
 func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
 	extDp := netip.AddrPortFrom(extIp, n.DpPort)
-	extPb := RepAddr(n.ProbeBind, extIp)
 	cfg := PubNodeCfg{
 		Id:      n.Id,
 		CtlAddr: []string{RepAddr(n.CtlBind, extIp).String()},
 		DpAddr: []DpEndpoint{
-			{fmt.Sprintf("%s-pub", n.Id), &extDp, &extPb},
+			{fmt.Sprintf("%s-pub", n.Id), false, extDp},
 		},
 		NylonAddr: nylonIp,
 	}
