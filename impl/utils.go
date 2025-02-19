@@ -46,11 +46,11 @@ func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) b
 	return false
 }
 
-func SwitchHeuristic(curRoute *state.Route, newRoute state.PubRoute, metric uint16) bool {
+func SwitchHeuristic(curRoute *state.Route, newRoute state.PubRoute, metric uint16, metRange uint16) bool {
 	// prevent oscillation
 	curMetric := float64(curRoute.Metric)
 	newMetric := float64(metric)
-	if (newMetric+float64(LinkSwitchMetricCostBase))*LinkSwitchMetricCostMultiplier > curMetric {
+	if (newMetric+float64(metRange)/2)*LinkSwitchMetricCostMultiplier > curMetric {
 		return false
 	}
 	return true

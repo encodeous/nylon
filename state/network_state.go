@@ -20,6 +20,7 @@ type DpLink interface {
 	// UpdatePing remote means that the ping update is from the finalizer
 	UpdatePing(ping time.Duration)
 	Renew(remote bool)
+	MetricRange() uint16
 }
 
 type NetLink interface {

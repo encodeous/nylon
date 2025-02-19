@@ -284,7 +284,7 @@ func updateRoutes(s *state.State) error {
 						s.Log.Debug("  feasible, selected")
 					}
 					// feasible, update existing route, if matching switch heuristic
-					if tRoute.Nh != neigh.Id && !SwitchHeuristic(tRoute, neighRoute, metric) && !tRoute.Retracted {
+					if tRoute.Nh != neigh.Id && !SwitchHeuristic(tRoute, neighRoute, metric, bestLink.MetricRange()) && !tRoute.Retracted {
 						// dont update this route, as it might cause oscillations
 						continue
 					}

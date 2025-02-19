@@ -28,6 +28,7 @@ import (
 type UdpDpLink struct {
 	id          uuid.UUID
 	metric      uint16
+	metricRange uint16
 	realLatency time.Duration
 	history     []time.Duration
 	boxMedian   time.Duration
@@ -36,6 +37,10 @@ type UdpDpLink struct {
 	filter      *kalman.KalmanFilter
 	model       *models.SimpleModel
 	hasPong     bool
+}
+
+func (u *UdpDpLink) MetricRange() uint16 {
+	return u.metricRange
 }
 
 func (u *UdpDpLink) Renew(remote bool) {
@@ -59,11 +64,12 @@ func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDp
 	return &UdpDpLink{
 		id:          id,
 		metric:      metric,
+		metricRange: 5000,
 		endpoint:    endpoint,
 		filter:      kalman.NewKalmanFilter(model),
 		model:       model,
 		lastContact: time.Now(),
-		boxMedian:   time.Millisecond * 500, // start with a relatively high latency so we don't disrupt existing connections before we are sure
+		boxMedian:   time.Millisecond * 1000, // start with a relatively high latency so we don't disrupt existing connections before we are sure
 	}
 }
 
@@ -149,8 +155,10 @@ func (u *UdpDpLink) UpdatePing(ping time.Duration) {
 	// latency in increments of 100 microseconds
 	latencyContrib := u.boxMedian.Microseconds() / 100
 
-	u.metric = uint16(min(max(latencyContrib, 1), int64(INF)))
-	u.metric = uint16(min(max(int64(u.metric), 1), int64(INF)))
+	u.metric = uint16(min(max(latencyContrib, 1), int64(INF-1)))
+	u.metric = uint16(min(max(int64(u.metric), 1), int64(INF-1)))
+
+	u.metricRange = uint16(min(max(iqr.Microseconds()/100, 1), int64(INF-1)))
 
 	//slog.Info("lu", "r", u.realLatency, "f", time.Duration(filtered))
 }

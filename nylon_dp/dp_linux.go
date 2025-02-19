@@ -80,5 +80,11 @@ func NewItf(s *state.State) (NyItf, error) {
 		}
 	}
 
+	// disable icmp redirect for ipv4
+	err = Exec("/usr/sbin/sysctl", fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", name))
+	if err != nil {
+		return nil, err
+	}
+
 	return &itf, nil
 }
