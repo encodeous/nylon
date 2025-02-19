@@ -25,11 +25,12 @@ go.work.sum
 .DS_Store
 nylon
 
-nylon-central.key
-nylon-central.yaml
-nylon-node.yaml
+central.key
+central.yaml
+node.yaml
 
 distribute.sh
+distribute-conf.sh
 log
 
 log.csv

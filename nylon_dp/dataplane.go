@@ -37,11 +37,7 @@ func initDevice(s *state.State) (*device.Device, string, error) {
 		itfName = "utun"
 	}
 
-	//addr := s.MustGetNode(s.Id).NylonAddr
 	tdev, err := tun.CreateTUN(itfName, device.DefaultMTU)
-	//tdev, _, err := netstack.CreateNetTUN([]netip.Addr{
-	//	addr,
-	//}, make([]netip.Addr, 0), device.DefaultMTU)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
 	}
@@ -75,6 +71,16 @@ allow_inbound=true
 			s.DpPort,
 		),
 	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to configure wg device: %v", err)
+	}
+
+	sb := strings.Builder{}
+	for _, neigh := range s.GetPeers() {
+		sb.WriteString(fmt.Sprintf("public_key=%s\n", hex.EncodeToString(s.MustGetNode(neigh).PubKey)))
+	}
+	sb.WriteString("\n")
+	err = dev.IpcSet(sb.String())
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to configure wg device: %v", err)
 	}

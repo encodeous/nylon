@@ -26,17 +26,16 @@ import (
 )
 
 type UdpDpLink struct {
-	id          uuid.UUID
-	metric      uint16
-	metricRange uint16
-	realLatency time.Duration
-	history     []time.Duration
-	boxMedian   time.Duration
-	lastContact time.Time
-	endpoint    state.DpEndpoint
-	filter      *kalman.KalmanFilter
-	model       *models.SimpleModel
-	hasPong     bool
+	id            uuid.UUID
+	metric        uint16
+	metricRange   uint16
+	realLatency   time.Duration
+	history       []time.Duration
+	boxMedian     time.Duration
+	lastHeardBack time.Time
+	endpoint      state.DpEndpoint
+	filter        *kalman.KalmanFilter
+	model         *models.SimpleModel
 }
 
 func (u *UdpDpLink) MetricRange() uint16 {
@@ -44,14 +43,13 @@ func (u *UdpDpLink) MetricRange() uint16 {
 }
 
 func (u *UdpDpLink) Renew(remote bool) {
-	u.hasPong = u.hasPong || remote
 	if remote {
-		u.lastContact = time.Now()
+		u.lastHeardBack = time.Now()
 	}
 }
 
 func (u *UdpDpLink) IsAlive() bool {
-	return time.Now().Sub(u.lastContact) <= LinkDeadThreshold || !u.hasPong
+	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold || u.lastHeardBack.IsZero()
 }
 
 func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDpLink {
@@ -68,7 +66,6 @@ func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDp
 		endpoint:    endpoint,
 		filter:      kalman.NewKalmanFilter(model),
 		model:       model,
-		lastContact: time.Now(),
 		boxMedian:   time.Millisecond * 1000, // start with a relatively high latency so we don't disrupt existing connections before we are sure
 	}
 }
@@ -225,6 +222,11 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 			if dpLink.Id() == link && neigh.Id == node {
 				// we have a link
 				dpLink.Renew(true)
+
+				// refresh endpoint too, in case of roaming
+				if dpLink.IsRemote() {
+					dpLink.Endpoint().Addr = endpoint.Addr
+				}
 				return
 			}
 		}
@@ -239,7 +241,7 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 	return
 }
 
-func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint64) {
+func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint64, receptionTime time.Time, ep conn.Endpoint) {
 	// check if link exists
 	r := Get[*Router](s)
 	for _, neigh := range r.Neighbours {
@@ -248,16 +250,22 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 				linkHealth, ok := s.PingBuf.GetAndDelete(token)
 				if ok {
 					health := linkHealth.Value()
+					singlePing := receptionTime.Sub(health.Time)
 					// we have a link
 					if state.DBG_log_probe {
-						s.Log.Debug("ping update", "peer", node, "ping", time.Since(health.Time))
+						s.Log.Debug("ping update", "peer", node, "ping", singlePing)
 					}
 					err := updateRoutes(s)
 					if err != nil {
 						s.Log.Error("Error updating routes: ", err)
 					}
-					dpLink.UpdatePing(time.Since(health.Time))
+					dpLink.UpdatePing(singlePing)
 					dpLink.Renew(true)
+
+					// refresh endpoint too, in case of roaming
+					if dpLink.IsRemote() {
+						dpLink.Endpoint().Addr = netip.MustParseAddrPort(ep.DstToString())
+					}
 				}
 				return
 			}

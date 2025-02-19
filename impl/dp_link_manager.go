@@ -52,6 +52,8 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 				res := pkt
 				token := rand.Uint64()
 				res.ResponseToken = &token
+				ctime := time.Now().UnixMicro()
+				res.ReceptionTime = &ctime
 				res.NodeId = generateAnonHash(token, e.Key.XPubkey())
 
 				// send pong
@@ -63,7 +65,7 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 
 				e.Dispatch(func(s *state.State) error {
 					handleProbePing(s, lid, node.Id, state.DpEndpoint{
-						Name:       fmt.Sprintf("remote-%s-%s", node.Id, lid.String()),
+						Name:       fmt.Sprintf("remote-%s-%s", node.Id, endpoint.DstToString()),
 						Addr:       netip.MustParseAddrPort(endpoint.DstToString()),
 						RemoteInit: true,
 					})
@@ -71,8 +73,11 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 				})
 			} else {
 				// pong
+				if pkt.ReceptionTime == nil {
+					continue
+				}
 				e.Dispatch(func(s *state.State) error {
-					handleProbePong(s, lid, node.Id, pkt.Token)
+					handleProbePong(s, lid, node.Id, pkt.Token, time.UnixMicro(*pkt.ReceptionTime), endpoint)
 					return nil
 				})
 			}
@@ -136,6 +141,8 @@ func UpdateWireGuard(s *state.State) error {
 			}
 		}
 	}
+
+	sb.WriteString("\n")
 
 	err := w.dataplane.UpdateState(s, &nylon_dp.DpUpdates{Updates: sb.String()})
 	if err != nil {
