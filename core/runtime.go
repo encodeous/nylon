@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"syscall"
 	"time"
 )
 
@@ -55,7 +56,8 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 
 	s.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		for _ = range c {
 			s.Cancel(errors.New("received shutdown signal"))

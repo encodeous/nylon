@@ -1,0 +1,10 @@
+[Unit]
+Description=Nylon Service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/nylon run -vg
+WorkingDirectory=/home/encodeous
+
+[Install]
+WantedBy=multi-user.target

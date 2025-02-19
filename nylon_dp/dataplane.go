@@ -8,6 +8,7 @@ import (
 	"github.com/encodeous/polyamide/device"
 	"github.com/encodeous/polyamide/tun"
 	"runtime"
+	"strings"
 )
 
 type DpUpdates struct {
@@ -57,6 +58,9 @@ func initDevice(s *state.State) (*device.Device, string, error) {
 			}
 		},
 		Errorf: func(format string, args ...any) {
+			if strings.Contains(format, "Failed to send PolySock packets") {
+				return
+			}
 			s.Log.Error(fmt.Sprintf(format, args...))
 		},
 	})

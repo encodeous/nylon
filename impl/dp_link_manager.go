@@ -47,12 +47,6 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 			}
 			if pkt.ResponseToken == nil {
 				// ping
-				// dTODO: Remove after debugging
-				//weight := state.GetMinMockWeight(e.Id, node.Id, e.CentralCfg)
-				//if weight == 0 {
-				//	return
-				//}
-				//time.Sleep(weight)
 
 				// build pong response
 				res := pkt
@@ -60,6 +54,7 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 				res.ResponseToken = &token
 				res.NodeId = generateAnonHash(token, e.Key.XPubkey())
 
+				// send pong
 				pktBytes, err := proto.Marshal(res)
 				if err != nil {
 					return
@@ -93,11 +88,9 @@ func (w *DpLinkMgr) Cleanup(s *state.State) error {
 
 func UpdateWireGuard(s *state.State) error {
 	w := Get[*DpLinkMgr](s)
-
 	r := Get[*Router](s)
 
 	hopsTo := make(map[state.Node][]state.Node)
-
 	for _, route := range r.Routes {
 		hopsTo[route.Nh] = append(hopsTo[route.Nh], route.Src.Id)
 	}
@@ -175,7 +168,8 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 	w.polySock = wgDev.PolyListen(w)
 	s.Log.Info("started polysock listener")
 
-	s.RepeatTask(probeDataPlane, ProbeDpDelay)
+	s.RepeatTask(probeExisting, ProbeDpDelay)
+	s.RepeatTask(probeNew, ProbeNewDpDelay)
 	s.RepeatTask(UpdateWireGuard, ProbeDpDelay)
 	return nil
 }

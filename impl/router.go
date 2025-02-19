@@ -279,7 +279,7 @@ func updateRoutes(s *state.State) error {
 					s.Log.Debug("  existing route", "src", src, "met", metric, "nh", tRoute.Nh)
 				}
 				// route exists
-				if IsFeasible(tRoute, neighRoute, metric) {
+				if IsFeasible(tRoute, neighRoute, metric) && bestLink != nil {
 					if state.DBG_log_router {
 						s.Log.Debug("  feasible, selected")
 					}

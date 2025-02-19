@@ -38,6 +38,10 @@ func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) b
 		return false
 	}
 
+	if metric == INF {
+		return false
+	}
+
 	if metric < curRoute.Fd ||
 		SeqnoLt(curRoute.Src.Seqno, newRoute.Src.Seqno) ||
 		(metric == curRoute.Fd && (curRoute.Metric == INF || curRoute.Retracted)) {
@@ -50,7 +54,7 @@ func SwitchHeuristic(curRoute *state.Route, newRoute state.PubRoute, metric uint
 	// prevent oscillation
 	curMetric := float64(curRoute.Metric)
 	newMetric := float64(metric)
-	if (newMetric+float64(metRange)/2)*LinkSwitchMetricCostMultiplier > curMetric {
+	if (newMetric+float64(metRange))*LinkSwitchMetricCostMultiplier > curMetric {
 		return false
 	}
 	return true

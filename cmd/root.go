@@ -16,9 +16,9 @@ At its core, nylon ensures nodes are reachable even under the most difficult net
 	// Run: func(cmd *cobra.Command, args []string) { },
 }
 
-var nodeConfigPath = "./nylon-node.yaml"
-var centralConfigPath = "./nylon-central.yaml"
-var centralKeyPath = "./nylon-central.key"
+var nodeConfigPath = "./node.yaml"
+var centralConfigPath = "./central.yaml"
+var centralKeyPath = "./central.key"
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
