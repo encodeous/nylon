@@ -3,7 +3,7 @@ Description=Nylon Service
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/nylon run -vgw
+ExecStart=/usr/bin/nylon run -vgt
 WorkingDirectory=/home/encodeous
 
 [Install]

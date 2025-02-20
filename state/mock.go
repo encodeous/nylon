@@ -63,15 +63,6 @@ func MockCfg() (CentralCfg, []NodeCfg, error) {
 		nodes = append(nodes, mockNode)
 		mockCentralCfg.Nodes = append(mockCentralCfg.Nodes, mockNode.GeneratePubCfg(netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("10.99.34."+string(rune(i+'0')))))
 	}
-	mockCentralCfg.Edges = []Pair[Node, Node]{
-		{"bob", "jeb"},
-		{"bob", "kat"},
-		{"bob", "eve"},
-		{"jeb", "kat"},
-		{"kat", "ada"},
-		{"kat", "eve"},
-		{"eve", "ada"},
-	}
 	mockCentralCfg.mockWeights = []Triple[Node, Node, *time.Duration]{
 		{"bob", "jeb", Box(7)},
 		{"bob", "kat", Box(9)},

@@ -77,6 +77,7 @@ allow_inbound=true
 
 	sb := strings.Builder{}
 	for _, neigh := range s.GetPeers() {
+		s.Log.Debug("", "neigh", neigh)
 		sb.WriteString(fmt.Sprintf("public_key=%s\n", hex.EncodeToString(s.MustGetNode(neigh).PubKey)))
 	}
 	sb.WriteString("\n")

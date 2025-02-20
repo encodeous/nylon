@@ -12,6 +12,10 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/encodeous/polyamide v0.0.0-20250218214352-9fecd39d286a h1:UDPHQxRheiYRv504oRmkagN5Xo7g0PoY+o1oRToGZAQ=
 github.com/encodeous/polyamide v0.0.0-20250218214352-9fecd39d286a/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250220165520-f01ee463daf9 h1:yf4mfNNVncRc3SdQHUQACuTGsZBcb/qISkpbZEOfYE0=
+github.com/encodeous/polyamide v0.0.0-20250220165520-f01ee463daf9/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250220171724-134b465d052b h1:Z7I8V/m46hQkP42KB0VCJvoKfK27itbTBGTgMTHpU0M=
+github.com/encodeous/polyamide v0.0.0-20250220171724-134b465d052b/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=

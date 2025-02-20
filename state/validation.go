@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 )
 
@@ -62,29 +61,17 @@ func NodeConfigValidator(node *NodeCfg) error {
 }
 
 func CentralConfigValidator(cfg *CentralCfg) error {
+	nodes := make([]string, 0)
 	for _, node := range cfg.Nodes {
 		err := NameValidator(string(node.Id))
 		if err != nil {
 			return err
 		}
+		nodes = append(nodes, string(node.Id))
 	}
-	nodeRel := make([]Pair[Node, Node], 0)
-	for _, edge := range cfg.Edges {
-		if slices.Contains(nodeRel, edge) {
-			return fmt.Errorf("duplicate edge found: %s, %s", edge.V1, edge.V2)
-		}
-		if !slices.ContainsFunc(cfg.Nodes, func(cfg PubNodeCfg) bool {
-			return cfg.Id == edge.V1
-		}) {
-			return fmt.Errorf("node %s not defined", edge.V1)
-		}
-		if !slices.ContainsFunc(cfg.Nodes, func(cfg PubNodeCfg) bool {
-			return cfg.Id == edge.V2
-		}) {
-			return fmt.Errorf("node %s not defined", edge.V2)
-		}
-		nodeRel = append(nodeRel, edge)
-		nodeRel = append(nodeRel, Pair[Node, Node]{edge.V2, edge.V1})
+	_, err := ParseGraph(cfg.Graph, nodes)
+	if err != nil {
+		return err
 	}
 	return nil
 }

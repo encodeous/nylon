@@ -313,6 +313,9 @@ func probeNew(s *state.State) error {
 		neigh := r.Neighbours[nIdx]
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
 		for _, ep := range cfg.DpAddr {
+			if !ep.Addr.IsValid() {
+				continue
+			}
 			idx := slices.IndexFunc(neigh.DpLinks, func(link state.DpLink) bool {
 				return !link.IsRemote() && link.Endpoint().Name == ep.Name
 			})

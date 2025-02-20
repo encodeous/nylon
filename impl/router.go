@@ -260,6 +260,7 @@ func updateRoutes(s *state.State) error {
 
 			if bestLink != nil {
 				metric = AddMetric(bestLink.Metric(), neighRoute.Metric)
+				metric = AddMetric(metric, HopCost)
 			}
 
 			if state.DBG_log_router {
@@ -375,6 +376,7 @@ func updateRoutes(s *state.State) error {
 			}
 		}
 	}
+	slices.Sort(improvedSeqno)
 	improvedSeqno = slices.Compact(improvedSeqno)
 	if len(improvedSeqno) > 0 {
 		err := pushSeqnoUpdate(s, improvedSeqno)

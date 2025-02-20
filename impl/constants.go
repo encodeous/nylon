@@ -4,6 +4,7 @@ import "time"
 
 const (
 	INF                            = (uint16)(65535)
+	HopCost                        = (uint16)(5) // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
 	ProbeCtlDelay                  = time.Second * 5
 	RouteUpdateDelay               = time.Second * 5
 	ProbeNewDpDelay                = time.Second * 3

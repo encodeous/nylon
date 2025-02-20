@@ -8,7 +8,11 @@ import (
 	"go.step.sm/crypto/x25519"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"log/slog"
+	"maps"
 	"net/netip"
+	"slices"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -120,14 +124,121 @@ type CentralCfg struct {
 	// the public key of the root CA
 	RootPubKey  NyPublicKey
 	Nodes       []PubNodeCfg
-	Edges       []Pair[Node, Node]
+	Graph       []string
 	mockWeights []Triple[Node, Node, *time.Duration]
 	Version     uint64
 }
 
+func parseSymbolList(s string, validSymbols []string) ([]string, error) {
+	spl := strings.Split(strings.TrimSpace(s), ",")
+	line := make([]string, len(spl))
+	for _, s := range spl {
+		x := strings.TrimSpace(s)
+		if !slices.Contains(validSymbols, x) {
+			return nil, fmt.Errorf(`%s is not a valid node/group`, x)
+		}
+		line = append(line, x)
+	}
+	if len(line) == 0 {
+		return nil, fmt.Errorf(`node/group list must not be empty`)
+	}
+	slices.Sort(line)
+	return slices.Compact(line), nil
+}
+
+/*
+ParseGraph Graph syntax is something like this:
+
+Group1 = node1, node2, node3
+
+Group2 = node4, node5
+
+Group1, Group2, OtherNode // Group1, Group2, OtherNode will all be interconnected, but not within Group1 or Group2
+
+Group1, Group1 // every node is connected to every other node
+
+node8, node9 // node8 and node9 will be connected
+*/
+func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
+	// why can't we just have unordered_set<Pair<Node, Node>> :(
+
+	pairings := make([]Pair[Node, Node], 0)
+
+	groups := make(map[string][]string)
+
+	for _, line := range graph {
+		line = strings.ToLower(strings.TrimSpace(line))
+		if strings.Contains(line, "=") {
+			// group definition
+			spl := strings.Split(line, "=")
+			if len(spl) != 2 {
+				return nil, fmt.Errorf("invalid graph: %s. group definition must contain one '='", line)
+			}
+			grp := strings.TrimSpace(spl[0])
+			if slices.Contains(nodes, grp) {
+				return nil, fmt.Errorf("group name must not be a node name: %s", grp)
+			}
+			if _, ok := groups[grp]; ok {
+				return nil, fmt.Errorf("duplicate group name: %s", grp)
+			}
+			lst, err := parseSymbolList(spl[1], append(nodes, slices.Collect(maps.Keys(groups))...))
+			if err != nil {
+				return nil, err
+			}
+			groups[grp] = lst
+		} else {
+			names, err := parseSymbolList(line, append(nodes, slices.Collect(maps.Keys(groups))...))
+			if err != nil {
+				return nil, err
+			}
+			interconnectNodes := make([]Node, 0)
+			for _, name := range names {
+				if slices.Contains(nodes, name) {
+					for _, node := range interconnectNodes {
+						pairings = append(pairings, makeSortedPair(node, Node(name)))
+					}
+					interconnectNodes = append(interconnectNodes, Node(name))
+				} else {
+					for _, node := range interconnectNodes {
+						for _, grpNode := range groups[name] {
+							pairings = append(pairings, makeSortedPair(node, Node(grpNode)))
+						}
+					}
+					for _, grpNode := range groups[name] {
+						interconnectNodes = append(interconnectNodes, Node(grpNode))
+					}
+				}
+			}
+			sort.Slice(pairings, func(i, j int) bool {
+				x := strings.Compare(string(pairings[i].V1), string(pairings[i].V1))
+				y := strings.Compare(string(pairings[i].V2), string(pairings[i].V2))
+				return x < 0 || x == 0 && y < 0
+			})
+			slices.Compact(pairings)
+		}
+	}
+	return pairings, nil
+}
+
+func makeSortedPair(a Node, b Node) Pair[Node, Node] {
+	if strings.Compare(string(a), string(b)) < 0 {
+		return Pair[Node, Node]{a, b}
+	} else {
+		return Pair[Node, Node]{b, a}
+	}
+}
+
 func (e Env) GetPeers() []Node {
+	allNodes := make([]string, 0)
+	for _, node := range e.Nodes {
+		allNodes = append(allNodes, string(node.Id))
+	}
+	graph, err := ParseGraph(e.Graph, allNodes)
+	if err != nil {
+		panic(err)
+	}
 	nodes := make([]Node, 0)
-	for _, edge := range e.Edges {
+	for _, edge := range graph {
 		var neighNode Node
 		if edge.V1 == e.Id {
 			neighNode = edge.V2

@@ -31,8 +31,10 @@ var netCmd = &cobra.Command{
 			Nodes: []state.PubNodeCfg{
 				promptGenPubCfg(nodeCfg),
 			},
-			Edges: []state.Pair[state.Node, state.Node]{
-				{nodeCfg.Id, "other-node"},
+			Graph: []string{
+				"Group1 = node1, node2",
+				"Group2 = node5, node6",
+				"Group1, Group2, node7",
 			},
 			Version: 0,
 		}
