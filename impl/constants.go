@@ -9,7 +9,7 @@ const (
 	RouteUpdateDelay               = time.Second * 5
 	ProbeNewDpDelay                = time.Second * 3
 	ProbeDpDelay                   = time.Millisecond * 400
-	LinkSwitchMetricCostMultiplier = 1.3
+	LinkSwitchMetricCostMultiplier = 1.10
 	StarvationDelay                = time.Millisecond * 100
 	SeqnoDedupTTL                  = time.Second * 3
 	EndpointTTL                    = time.Minute * 5
