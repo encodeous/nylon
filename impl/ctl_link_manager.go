@@ -19,9 +19,7 @@ func (n *CtlLinkMgr) Cleanup(s *state.State) error {
 
 func probeCtl(s *state.State) error {
 	rt := Get[*Router](s)
-	if state.DBG_log_route_table {
-		dbgPrintRouteTable(s)
-	}
+	dbgPrintRouteTable(s)
 
 	for _, peer := range s.GetPeers() {
 		// make sure we are not already connected to the neighbour

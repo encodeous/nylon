@@ -21,5 +21,6 @@ const (
 	MinimumConfidenceWindow = int(time.Second * 15 / ProbeDpDelay)
 
 	GcDelay           = time.Second * 1
+	OtelDelay         = time.Second * 1
 	LinkDeadThreshold = 5 * ProbeDpDelay
 )

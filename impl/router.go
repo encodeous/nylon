@@ -189,11 +189,17 @@ func pushSeqnoUpdate(s *state.State, sources []state.Node) error {
 
 func dbgPrintRouteTable(s *state.State) {
 	r := Get[*Router](s)
-	if len(r.Routes) != 0 {
-		s.Log.Debug("--- route table ---")
+	if state.DBG_log_route_table {
+		if len(r.Routes) != 0 {
+			s.Log.Debug("--- route table ---")
+		}
+		for _, route := range r.Routes {
+			s.Log.Debug(fmt.Sprintf("%s(%d) -> %s", route.Src.Id, route.Src.Seqno, route.Nh), "met", route.Metric, "fd", route.Fd, "ret", route.Retracted)
+		}
 	}
+
 	for _, route := range r.Routes {
-		s.Log.Debug(fmt.Sprintf("%s(%d) -> %s", route.Src.Id, route.Src.Seqno, route.Nh), "met", route.Metric, "fd", route.Fd, "ret", route.Retracted)
+		otelLog.Info("nylon.route.selected", "router", string(s.Id), "src", string(route.Src.Id), "nh", string(route.Nh), "ret", route.Retracted, "fd", route.Fd, "met", route.Metric, "seqno", route.Src.Seqno)
 	}
 }
 

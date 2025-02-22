@@ -61,6 +61,8 @@ func initDevice(s *state.State) (*device.Device, string, error) {
 		},
 	})
 
+	dev.DisableSomeRoamingForBrokenMobileSemantics()
+
 	err = dev.IpcSet(
 		fmt.Sprintf(
 			`private_key=%s
@@ -85,6 +87,5 @@ allow_inbound=true
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to configure wg device: %v", err)
 	}
-
 	return dev, itfName, nil
 }

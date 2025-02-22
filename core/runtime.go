@@ -18,6 +18,20 @@ import (
 func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
+	// create otel environment variables
+	if _, ok := os.LookupEnv("OTEL_SERVICE_NAME"); !ok {
+		err := os.Setenv("OTEL_SERVICE_NAME", "nylon")
+		if err != nil {
+			return err
+		}
+	}
+
+	// Set up OpenTelemetry.
+	otelShutdown, err := SetupOTelSDK(ctx)
+	if err != nil {
+		return err
+	}
+
 	dispatch := make(chan func(env *state.State) error)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
@@ -25,7 +39,7 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 		//AddSource:    true,
 
 		AddSource:  false,
-		TimeFormat: "15:04:05",
+		TimeFormat: "",
 
 		CustomPrefix: string(ncfg.Id),
 	}))
@@ -48,19 +62,24 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}
 
 	s.Log.Info("init modules")
-	err := initModules(&s)
+	err = initModules(&s)
 	if err != nil {
 		return err
 	}
 	s.Log.Info("init modules complete")
 
 	s.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
-	c := make(chan os.Signal, 1)
 
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		for _ = range c {
 			s.Cancel(errors.New("received shutdown signal"))
+			err := otelShutdown(context.Background())
+			if err != nil {
+				s.Log.Error(err.Error())
+			}
+			break
 		}
 	}()
 

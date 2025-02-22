@@ -2,7 +2,20 @@ package impl
 
 import (
 	"github.com/encodeous/nylon/state"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"time"
+)
+
+var (
+	otelMet = otel.Meter("encodeous.ca/nylon/metric")
+	otelLog = otelslog.NewLogger("encodeous.ca/nylon/route")
+
+	linkMet, _ = otelMet.Int64Gauge("link.metric",
+		metric.WithDescription("The adjusted metric for each link"),
+		metric.WithUnit("{met}"))
 )
 
 type Nylon struct {
@@ -59,9 +72,27 @@ func nylonGc(s *state.State) error {
 	return nil
 }
 
+func otelUpdate(s *state.State) error {
+	r := Get[*Router](s)
+
+	for _, neigh := range r.Neighbours {
+		for _, x := range neigh.DpLinks {
+			if x.IsAlive() {
+				linkMet.Record(s.Context, int64(x.Metric()),
+					metric.WithAttributes(attribute.String("link.from", string(s.Id))),
+					metric.WithAttributes(attribute.String("link.to", string(neigh.Id))),
+					metric.WithAttributes(attribute.String("link.name", x.Endpoint().Name)),
+				)
+			}
+		}
+	}
+	return nil
+}
+
 func (n *Nylon) Init(s *state.State) error {
 	s.Log.Debug("init nylon")
 	s.Env.RepeatTask(nylonGc, GcDelay)
+	s.Env.RepeatTask(otelUpdate, OtelDelay)
 
 	return nil
 }
