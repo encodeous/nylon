@@ -17,7 +17,6 @@ type DpUpdates struct {
 
 // NyItf is a generic nylon interface, see dp_linux, dp_windows and dp_macos for impl details
 type NyItf interface {
-	UpdateState(s *state.State, upd *DpUpdates) error
 	GetDevice() *device.Device
 	Cleanup(s *state.State) error
 }
@@ -77,15 +76,19 @@ allow_inbound=true
 		return nil, "", fmt.Errorf("failed to configure wg device: %v", err)
 	}
 
-	sb := strings.Builder{}
 	for _, neigh := range s.GetPeers() {
 		s.Log.Debug("", "neigh", neigh)
-		sb.WriteString(fmt.Sprintf("public_key=%s\n", hex.EncodeToString(s.MustGetNode(neigh).PubKey)))
-	}
-	sb.WriteString("\n")
-	err = dev.IpcSet(sb.String())
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to configure wg device: %v", err)
+		ncfg := s.MustGetNode(neigh)
+		peer, err := dev.NewPeer(device.NoisePublicKey(ncfg.PubKey))
+		if err != nil {
+			return nil, "", err
+		}
+		peer.Start()
+		endpoints := make([]conn.Endpoint, 0)
+		for _, nep := range ncfg.DpAddr {
+			endpoints = append(endpoints, nep.GetWgEndpoint())
+		}
+		peer.SetEndpoints(endpoints)
 	}
 	return dev, itfName, nil
 }

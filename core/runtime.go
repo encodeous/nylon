@@ -26,11 +26,15 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 		}
 	}
 
-	// Set up OpenTelemetry.
-	otelShutdown, err := SetupOTelSDK(ctx)
-	if err != nil {
-		return err
-	}
+	state.OtelEnabled = false
+	//Set up OpenTelemetry.
+	//go func() {
+	//	_, err := SetupOTelSDK(context.Background())
+	//	if err != nil {
+	//		slog.Error("opentelemetry setup failed", "err", err)
+	//		state.OtelEnabled = false
+	//	}
+	//}()
 
 	dispatch := make(chan func(env *state.State) error)
 
@@ -62,7 +66,7 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}
 
 	s.Log.Info("init modules")
-	err = initModules(&s)
+	err := initModules(&s)
 	if err != nil {
 		return err
 	}
@@ -75,10 +79,6 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	go func() {
 		for _ = range c {
 			s.Cancel(errors.New("received shutdown signal"))
-			err := otelShutdown(context.Background())
-			if err != nil {
-				s.Log.Error(err.Error())
-			}
 			break
 		}
 	}()

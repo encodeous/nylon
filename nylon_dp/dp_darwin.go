@@ -73,7 +73,3 @@ func (n *NyItfMacos) Cleanup(s *state.State) error {
 	n.dev.Close()
 	return nil
 }
-
-func (n *NyItfMacos) UpdateState(s *state.State, upd *DpUpdates) error {
-	return applyUapiUpdates(n.dev, upd)
-}

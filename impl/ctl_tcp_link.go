@@ -17,6 +17,10 @@ type TCPCtlLink struct {
 	dead   bool
 }
 
+func (T *TCPCtlLink) IsActive() bool {
+	return !T.dead
+}
+
 func (T *TCPCtlLink) IsAlive() bool {
 	return !T.dead
 }

@@ -74,10 +74,9 @@ func nylonGc(s *state.State) error {
 
 func otelUpdate(s *state.State) error {
 	r := Get[*Router](s)
-
 	for _, neigh := range r.Neighbours {
 		for _, x := range neigh.DpLinks {
-			if x.IsAlive() {
+			if x.IsActive() && state.OtelEnabled {
 				linkMet.Record(s.Context, int64(x.Metric()),
 					metric.WithAttributes(attribute.String("link.from", string(s.Id))),
 					metric.WithAttributes(attribute.String("link.to", string(neigh.Id))),

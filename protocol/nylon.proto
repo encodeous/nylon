@@ -44,8 +44,6 @@ message CtlRouteUpdate {
 message Probe {
   uint64 Token = 1;
   optional uint64 ResponseToken = 2;
-  bytes NodeId = 3;
-  bytes LinkId = 4;
-  optional int64 ReceptionTime = 5;
-  // TODO: Add signature
+  bytes LinkId = 3;
+  optional int64 ReceptionTime = 4;
 }

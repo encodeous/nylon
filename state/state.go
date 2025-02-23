@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/encodeous/polyamide/conn"
 	"github.com/jellydator/ttlcache/v3"
 	"go.step.sm/crypto/x25519"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -40,8 +41,16 @@ type Env struct {
 
 type DpEndpoint struct {
 	Name       string
-	RemoteInit bool `yaml:"-"`
-	Addr       netip.AddrPort
+	RemoteInit bool          `yaml:"-"`
+	WgEndpoint conn.Endpoint `yaml:"-"`
+	Ep         netip.AddrPort
+}
+
+func (ep *DpEndpoint) GetWgEndpoint() conn.Endpoint {
+	if ep.WgEndpoint == nil || ep.WgEndpoint.DstToString() != ep.Ep.String() {
+		ep.WgEndpoint = &conn.StdNetEndpoint{AddrPort: ep.Ep}
+	}
+	return ep.WgEndpoint
 }
 
 type NyPrivateKey []byte
@@ -100,8 +109,8 @@ func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg
 	cfg := PubNodeCfg{
 		Id:      n.Id,
 		CtlAddr: []string{RepAddr(n.CtlBind, extIp).String()},
-		DpAddr: []DpEndpoint{
-			{fmt.Sprintf("%s-pub", n.Id), false, extDp},
+		DpAddr: []*DpEndpoint{
+			{fmt.Sprintf("%s-pub", n.Id), false, nil, extDp},
 		},
 		NylonAddr: nylonIp,
 	}
@@ -117,7 +126,7 @@ type PubNodeCfg struct {
 	NylonAddr netip.Addr
 	PubKey    NyPublicKey
 	CtlAddr   []string
-	DpAddr    []DpEndpoint
+	DpAddr    []*DpEndpoint
 }
 
 type CentralCfg struct {

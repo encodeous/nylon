@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/encodeous/nylon/nylon_dp"
 	"github.com/encodeous/nylon/protocol"
@@ -16,31 +15,26 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 )
 
 type DpLinkMgr struct {
 	dataplane     nylon_dp.NyItf
 	polySock      *device.PolySock
-	allowedIpDiff map[string]string
+	allowedIpDiff map[string]state.Node
 	endpointDiff  map[uuid.UUID]state.Pair[string, time.Time]
 	nyEnv         *state.Env
 }
 
-func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
+func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint, peer *device.Peer) {
 	e := w.nyEnv
 	pkt := &protocol.Probe{}
 	err := proto.Unmarshal(packet, pkt)
 	if err != nil {
 		return
 	}
-	tok := pkt.Token
-	if pkt.ResponseToken != nil {
-		tok = *pkt.ResponseToken
-	}
 	for _, node := range e.Nodes {
-		if node.Id != e.Id && slices.Equal(generateAnonHash(tok, node.PubKey), pkt.NodeId) {
+		if node.Id != e.Id && peer.GetPublicKey().Equals(device.NoisePublicKey(e.MustGetNode(node.Id).PubKey)) {
 			lid, err := uuid.FromBytes(pkt.LinkId)
 			if err != nil {
 				return
@@ -54,21 +48,16 @@ func (w *DpLinkMgr) Receive(packet []byte, endpoint conn.Endpoint) {
 				res.ResponseToken = &token
 				ctime := time.Now().UnixMicro()
 				res.ReceptionTime = &ctime
-				res.NodeId = generateAnonHash(token, e.Key.XPubkey())
 
 				// send pong
 				pktBytes, err := proto.Marshal(res)
 				if err != nil {
 					return
 				}
-				w.polySock.Send(pktBytes, endpoint)
+				w.polySock.Send(pktBytes, endpoint, peer)
 
 				e.Dispatch(func(s *state.State) error {
-					handleProbePing(s, lid, node.Id, state.DpEndpoint{
-						Name:       fmt.Sprintf("remote-%s-%s", node.Id, endpoint.DstToString()),
-						Addr:       netip.MustParseAddrPort(endpoint.DstToString()),
-						RemoteInit: true,
-					})
+					handleProbePing(s, lid, node.Id, endpoint)
 					return nil
 				})
 			} else {
@@ -94,68 +83,68 @@ func (w *DpLinkMgr) Cleanup(s *state.State) error {
 func UpdateWireGuard(s *state.State) error {
 	w := Get[*DpLinkMgr](s)
 	r := Get[*Router](s)
+	dev := w.polySock.Device
 
-	hopsTo := make(map[state.Node][]state.Node)
+	routesToNeigh := make(map[state.Node][]*state.Route)
 	for _, route := range r.Routes {
-		hopsTo[route.Nh] = append(hopsTo[route.Nh], route.Src.Id)
+		routesToNeigh[route.Nh] = append(routesToNeigh[route.Nh], route)
 	}
-	sb := new(strings.Builder)
 
 	// configure peers
-	for _, route := range r.Routes {
-		if hopsTo[route.Nh] != nil {
-			allowedIps := make([]string, 0)
-			for _, src := range hopsTo[route.Nh] {
-				cfg, err := s.GetPubNodeCfg(src)
-				if err != nil {
-					continue
-				}
-				_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.NylonAddr, cfg.NylonAddr.BitLen()))
-				if err != nil {
-					continue
-				}
-				allowedIps = append(allowedIps, ipNet.String())
-			}
-			sort.Strings(allowedIps)
-			pcfg, err := s.GetPubNodeCfg(route.Nh)
+	for neigh, routes := range routesToNeigh {
+		pcfg := s.MustGetNode(neigh)
+		allowedIps := make([]string, 0)
+		for _, route := range routes {
+			cfg, err := s.GetPubNodeCfg(route.Src.Id)
 			if err != nil {
-				return err
+				continue
 			}
-			ep := net.UDPAddrFromAddrPort(route.Link.Endpoint().Addr)
-			pkey := hex.EncodeToString(pcfg.PubKey)
-			sb.WriteString(fmt.Sprintf("public_key=%s\n", pkey))
+			_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.NylonAddr, cfg.NylonAddr.BitLen())) // TODO: add support for prefixes
+			if err != nil {
+				continue
+			}
+			allowedIps = append(allowedIps, ipNet.String())
+		}
+		sort.Strings(allowedIps)
 
-			if ep != nil {
-				if x, ok := w.endpointDiff[route.Link.Id()]; !ok || x.V1 != ep.String() {
-					sb.WriteString(fmt.Sprintf("endpoint=%s\n", ep))
-					sb.WriteString(fmt.Sprintf("persistent_keepalive_interval=25\n"))
-					w.endpointDiff[route.Link.Id()] = state.Pair[string, time.Time]{ep.String(), time.Now()}
-				}
-			}
-
-			for _, ip := range allowedIps {
-				if w.allowedIpDiff[ip] != pkey {
-					w.allowedIpDiff[ip] = pkey
-					sb.WriteString(fmt.Sprintf("allowed_ip=%s\n", ip))
-				}
-			}
+		peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
+		for _, allowedIp := range allowedIps {
+			dev.Allowedips.Insert(netip.MustParsePrefix(allowedIp), peer)
 		}
 	}
 
-	sb.WriteString("\n")
+	for _, neigh := range s.GetPeers() {
+		pcfg := s.MustGetNode(neigh)
+		nhNeigh := r.GetNeighbour(neigh)
+		eps := make([]conn.Endpoint, 0)
 
-	err := w.dataplane.UpdateState(s, &nylon_dp.DpUpdates{Updates: sb.String()})
-	if err != nil {
-		return err
+		if nhNeigh != nil {
+			links := slices.Clone(nhNeigh.DpLinks)
+			slices.SortStableFunc(links, func(a, b state.DpLink) int {
+				return -int(a.Metric() - b.Metric())
+			})
+			for _, ep := range links {
+				eps = append(eps, ep.Endpoint().GetWgEndpoint())
+			}
+		}
+
+		// add endpoint if it is not in the list
+		for _, ep := range pcfg.DpAddr {
+			if !slices.Contains(eps, ep.GetWgEndpoint()) {
+				eps = append(eps, ep.GetWgEndpoint())
+			}
+		}
+
+		peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
+		peer.SetEndpoints(eps)
 	}
-
 	return nil
 }
 
 func (w *DpLinkMgr) Init(s *state.State) error {
 	w.nyEnv = s.Env
 	w.endpointDiff = make(map[uuid.UUID]state.Pair[string, time.Time])
-	w.allowedIpDiff = make(map[string]string)
+	w.allowedIpDiff = make(map[string]state.Node)
 	s.Log.Info("initializing Data Plane")
 
 	dp, err := nylon_dp.NewItf(s)
@@ -175,7 +164,12 @@ func (w *DpLinkMgr) Init(s *state.State) error {
 	w.polySock = wgDev.PolyListen(w)
 	s.Log.Info("started polysock listener")
 
-	s.RepeatTask(probeExisting, ProbeDpDelay)
+	s.RepeatTask(func(s *state.State) error {
+		return probeLinks(s, true)
+	}, ProbeDpDelay)
+	s.RepeatTask(func(s *state.State) error {
+		return probeLinks(s, false)
+	}, ProbeDpInactiveDelay)
 	s.RepeatTask(probeNew, ProbeNewDpDelay)
 	s.RepeatTask(UpdateWireGuard, ProbeDpDelay)
 	return nil

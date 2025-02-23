@@ -1,8 +1,6 @@
 package impl
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -33,9 +31,13 @@ type UdpDpLink struct {
 	history       []time.Duration
 	boxMedian     time.Duration
 	lastHeardBack time.Time
-	endpoint      state.DpEndpoint
+	endpoint      *state.DpEndpoint
 	filter        *kalman.KalmanFilter
 	model         *models.SimpleModel
+}
+
+func (u *UdpDpLink) IsActive() bool {
+	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold
 }
 
 func (u *UdpDpLink) MetricRange() uint16 {
@@ -49,10 +51,10 @@ func (u *UdpDpLink) Renew(remote bool) {
 }
 
 func (u *UdpDpLink) IsAlive() bool {
-	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold || u.lastHeardBack.IsZero()
+	return u.IsActive() || u.lastHeardBack.IsZero()
 }
 
-func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDpLink {
+func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint *state.DpEndpoint) *UdpDpLink {
 	// TODO: These parameters are sort of arbitrary... Probably tune them better?
 	model := models.NewSimpleModel(time.Now(), float64(time.Millisecond*50), models.SimpleModelConfig{
 		InitialVariance:     0,
@@ -71,7 +73,7 @@ func NewUdpDpLink(id uuid.UUID, metric uint16, endpoint state.DpEndpoint) *UdpDp
 }
 
 func (u *UdpDpLink) Endpoint() *state.DpEndpoint {
-	return &u.endpoint
+	return u.endpoint
 }
 
 func (u *UdpDpLink) computeRange() time.Duration {
@@ -166,7 +168,7 @@ func (u *UdpDpLink) Id() uuid.UUID {
 
 func (u *UdpDpLink) Metric() uint16 {
 	// if link is dead, return INF
-	if !u.IsAlive() {
+	if !u.IsActive() {
 		return INF
 	}
 	return u.metric
@@ -177,14 +179,12 @@ func (u *UdpDpLink) IsRemote() bool {
 }
 
 // region probe io
-func generateAnonHash(token uint64, pubKey state.NyPublicKey) []byte {
-	hash := sha256.Sum256(binary.LittleEndian.AppendUint64(pubKey, token))
-	return hash[:]
-}
 
-func probe(e *state.Env, sock *device.PolySock, addr netip.AddrPort, linkId uuid.UUID) error {
+func probe(e *state.Env, sock *device.PolySock, dpLink state.DpLink, peer state.Node) error {
+	linkId := dpLink.Id()
+	ep := dpLink.Endpoint()
 	if state.DBG_log_probe {
-		e.Log.Debug("probe", "addr", addr, "linkId", linkId)
+		e.Log.Debug("probe", "addr", ep.Ep, "linkId", linkId)
 	}
 	token := rand.Uint64()
 	uid, err := linkId.MarshalBinary()
@@ -194,14 +194,14 @@ func probe(e *state.Env, sock *device.PolySock, addr netip.AddrPort, linkId uuid
 	ping := &protocol.Probe{
 		Token:         token,
 		ResponseToken: nil,
-		NodeId:        generateAnonHash(token, e.Key.XPubkey()),
 		LinkId:        uid,
 	}
 	marshal, err := proto.Marshal(ping)
 	if err != nil {
 		return err
 	}
-	sock.Send(marshal, &conn.StdNetEndpoint{AddrPort: addr})
+
+	sock.Send(marshal, ep.GetWgEndpoint(), sock.Device.LookupPeer(device.NoisePublicKey(e.MustGetNode(peer).PubKey)))
 	e.PingBuf.Set(token, state.LinkPing{
 		LinkId: linkId,
 		Time:   time.Now(),
@@ -211,12 +211,13 @@ func probe(e *state.Env, sock *device.PolySock, addr netip.AddrPort, linkId uuid
 
 // endregion probe io
 
-func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint state.DpEndpoint) {
+func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint conn.Endpoint) {
 	if node == s.Id {
 		return
 	}
 	// check if link exists
 	r := Get[*Router](s)
+	addrPort := netip.MustParseAddrPort(endpoint.DstToString())
 	for _, neigh := range r.Neighbours {
 		for _, dpLink := range neigh.DpLinks {
 			if dpLink.Id() == link && neigh.Id == node {
@@ -225,7 +226,7 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 
 				// refresh endpoint too, in case of roaming
 				if dpLink.IsRemote() {
-					dpLink.Endpoint().Addr = endpoint.Addr
+					dpLink.Endpoint().Ep = addrPort
 				}
 				return
 			}
@@ -234,7 +235,13 @@ func handleProbePing(s *state.State, link uuid.UUID, node state.Node, endpoint s
 	// create a new link if we dont have a link
 	for _, neigh := range r.Neighbours {
 		if neigh.Id == node {
-			neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(link, INF, endpoint))
+			nyEp := &state.DpEndpoint{
+				Name:       fmt.Sprintf("remote-%s-%s", node, endpoint.DstToString()),
+				Ep:         addrPort,
+				WgEndpoint: endpoint,
+				RemoteInit: true,
+			}
+			neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(link, INF, nyEp))
 			return
 		}
 	}
@@ -264,7 +271,7 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 
 					// refresh endpoint too, in case of roaming
 					if dpLink.IsRemote() {
-						dpLink.Endpoint().Addr = netip.MustParseAddrPort(ep.DstToString())
+						dpLink.Endpoint().Ep = netip.MustParseAddrPort(ep.DstToString())
 					}
 				}
 				return
@@ -275,20 +282,22 @@ func handleProbePong(s *state.State, link uuid.UUID, node state.Node, token uint
 	return
 }
 
-func probeExisting(s *state.State) error {
+func probeLinks(s *state.State, active bool) error {
 	r := Get[*Router](s)
 	d := Get[*DpLinkMgr](s)
 
-	// probe existing links
+	// probe active links
 	for _, neigh := range r.Neighbours {
 		for _, dpLink := range neigh.DpLinks {
-			dpLink.Renew(false)
-			go func() {
-				err := probe(s.Env, d.polySock, dpLink.Endpoint().Addr, dpLink.Id())
-				if err != nil {
-					s.Log.Debug("probe failed", "err", err.Error())
-				}
-			}()
+			if dpLink.IsActive() == active {
+				dpLink.Renew(false)
+				go func() {
+					err := probe(s.Env, d.polySock, dpLink, neigh.Id)
+					if err != nil {
+						s.Log.Debug("probe failed", "err", err.Error())
+					}
+				}()
+			}
 		}
 	}
 	return nil
@@ -304,16 +313,13 @@ func probeNew(s *state.State) error {
 		if err != nil {
 			continue
 		}
-		nIdx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
-			return neighbour.Id == peer
-		})
-		if nIdx == -1 {
+		neigh := r.GetNeighbour(peer)
+		if neigh == nil {
 			continue
 		}
-		neigh := r.Neighbours[nIdx]
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
 		for _, ep := range cfg.DpAddr {
-			if !ep.Addr.IsValid() {
+			if !ep.Ep.IsValid() {
 				continue
 			}
 			idx := slices.IndexFunc(neigh.DpLinks, func(link state.DpLink) bool {
@@ -322,9 +328,10 @@ func probeNew(s *state.State) error {
 			if idx == -1 {
 				// add the link to the neighbour
 				id := uuid.New()
-				neigh.DpLinks = append(neigh.DpLinks, NewUdpDpLink(id, INF, ep))
+				dpl := NewUdpDpLink(id, INF, ep)
+				neigh.DpLinks = append(neigh.DpLinks, dpl)
 				go func() {
-					err := probe(s.Env, d.polySock, ep.Addr, id)
+					err := probe(s.Env, d.polySock, dpl, neigh.Id)
 					if err != nil {
 						//s.Log.Debug("discovery probe failed", "err", err.Error())
 					}

@@ -28,7 +28,10 @@ type NetLink interface {
 	Metric() uint16
 	// IsRemote is true if the link is remotely initiated
 	IsRemote() bool
+	// alive means that this link should not be garbage collected
 	IsAlive() bool
+	// active means that data could be sent through this link
+	IsActive() bool
 }
 
 //func (k EdPublicKey) DeriveNylonAddr() net.IP {

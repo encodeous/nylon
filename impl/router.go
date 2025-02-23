@@ -20,6 +20,16 @@ type Router struct {
 	LastStarvationRequest time.Time
 }
 
+func (r *Router) GetNeighbour(node state.Node) *state.Neighbour {
+	nIdx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
+		return neighbour.Id == node
+	})
+	if nIdx == -1 {
+		return nil
+	}
+	return r.Neighbours[nIdx]
+}
+
 func (r *Router) Cleanup(s *state.State) error {
 	r.SeqnoDedup.Stop()
 	return nil
@@ -69,10 +79,8 @@ func AddNeighbour(s *state.State, cfg state.PubNodeCfg, link state.CtlLink) erro
 	// TODO: allow dynamic peer discovery
 	// TODO: do not assume neighbours are directly reachable
 	r := Get[*Router](s)
-	idx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
-		return neighbour.Id == cfg.Id
-	})
-	if idx == -1 {
+	neigh := r.GetNeighbour(cfg.Id)
+	if neigh == nil {
 		s.Log.Debug("discovered neighbour", "node", cfg.Id)
 
 		r.Neighbours = append(r.Neighbours, &state.Neighbour{
@@ -84,7 +92,6 @@ func AddNeighbour(s *state.State, cfg state.PubNodeCfg, link state.CtlLink) erro
 		})
 	} else {
 		s.Log.Debug("added new link to existing neighbour", "node", cfg.Id)
-		neigh := r.Neighbours[idx]
 		neigh.CtlLinks = append(neigh.CtlLinks, link)
 	}
 	return nil
@@ -198,8 +205,10 @@ func dbgPrintRouteTable(s *state.State) {
 		}
 	}
 
-	for _, route := range r.Routes {
-		otelLog.Info("nylon.route.selected", "router", string(s.Id), "src", string(route.Src.Id), "nh", string(route.Nh), "ret", route.Retracted, "fd", route.Fd, "met", route.Metric, "seqno", route.Src.Seqno)
+	if state.OtelEnabled {
+		for _, route := range r.Routes {
+			otelLog.Info("nylon.route.selected", "router", string(s.Id), "src", string(route.Src.Id), "nh", string(route.Nh), "ret", route.Retracted, "fd", route.Fd, "met", route.Metric, "seqno", route.Src.Seqno)
+		}
 	}
 }
 
@@ -432,10 +441,7 @@ func checkStarvation(s *state.State) error {
 func routerHandleRouteUpdate(s *state.State, node state.Node, pkt *protocol.CtlRouteUpdate) error {
 	r := Get[*Router](s)
 
-	nidx := slices.IndexFunc(r.Neighbours, func(neighbour *state.Neighbour) bool {
-		return neighbour.Id == node
-	})
-	neigh := r.Neighbours[nidx]
+	neigh := r.GetNeighbour(node)
 	hasRetractions := false
 	for _, update := range pkt.Updates {
 		cur, ok := neigh.Routes[state.Node(update.Source.Id)]

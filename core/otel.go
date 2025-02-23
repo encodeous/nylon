@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"log/slog"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -35,7 +36,7 @@ func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, er
 
 	// handleErr calls shutdown for cleanup and makes sure that all errors are returned.
 	handleErr := func(inErr error) {
-		err = errors.Join(inErr, shutdown(ctx))
+		slog.Error("otel error", "err", inErr)
 	}
 
 	// Set up propagator.
