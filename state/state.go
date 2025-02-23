@@ -140,7 +140,7 @@ type CentralCfg struct {
 
 func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 	spl := strings.Split(strings.TrimSpace(s), ",")
-	line := make([]string, len(spl))
+	line := make([]string, 0)
 	for _, s := range spl {
 		x := strings.TrimSpace(s)
 		if !slices.Contains(validSymbols, x) {
@@ -152,7 +152,7 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 		return nil, fmt.Errorf(`node/group list must not be empty`)
 	}
 	slices.Sort(line)
-	return slices.Compact(line), nil
+	return line, nil
 }
 
 /*
@@ -204,13 +204,17 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
 			for _, name := range names {
 				if slices.Contains(nodes, name) {
 					for _, node := range interconnectNodes {
-						pairings = append(pairings, makeSortedPair(node, Node(name)))
+						if node != Node(name) {
+							pairings = append(pairings, makeSortedPair(node, Node(name)))
+						}
 					}
 					interconnectNodes = append(interconnectNodes, Node(name))
 				} else {
 					for _, node := range interconnectNodes {
 						for _, grpNode := range groups[name] {
-							pairings = append(pairings, makeSortedPair(node, Node(grpNode)))
+							if node != Node(grpNode) {
+								pairings = append(pairings, makeSortedPair(node, Node(grpNode)))
+							}
 						}
 					}
 					for _, grpNode := range groups[name] {
@@ -219,11 +223,11 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
 				}
 			}
 			sort.Slice(pairings, func(i, j int) bool {
-				x := strings.Compare(string(pairings[i].V1), string(pairings[i].V1))
-				y := strings.Compare(string(pairings[i].V2), string(pairings[i].V2))
+				x := strings.Compare(string(pairings[i].V1), string(pairings[j].V1))
+				y := strings.Compare(string(pairings[i].V2), string(pairings[j].V2))
 				return x < 0 || x == 0 && y < 0
 			})
-			slices.Compact(pairings)
+			pairings = slices.Compact(pairings)
 		}
 	}
 	return pairings, nil
