@@ -3,11 +3,6 @@ package main
 
 import (
 	"github.com/encodeous/nylon/cmd"
-	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/state"
-	"log/slog"
-	"sync"
-	"time"
 )
 
 //func mock() (*state.CentralCfg, *state.NodeCfg, error) {
@@ -56,49 +51,4 @@ import (
 
 func main() {
 	cmd.Execute()
-	return
-
-	ccfg, ncfg, err := state.MockCfg()
-
-	if err != nil {
-		panic(err)
-	}
-	wg := sync.WaitGroup{}
-	for x, node := range ncfg {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			level := slog.LevelInfo
-			if x == 0 {
-				level = slog.LevelDebug
-			}
-			err := core.Start(ccfg, node, level)
-			if err != nil {
-				panic(err)
-			}
-		}()
-	}
-	go func() {
-		wg.Add(1)
-		defer wg.Done()
-		// weight changer
-		for {
-			//slog.Info("Changing Weights...")
-			//for _, edge := range ccfg.mockWeights {
-			//	met := edge.V3
-			//	res := rand.Int()%4 == 0
-			//	if res && *met > 1 {
-			//		*met--
-			//	} else {
-			//		*met += time.Millisecond * time.Duration(rand.Int()%15+5)
-			//	}
-			//	if *met == 0 {
-			//		*met++
-			//	}
-			//	slog.Info("changed", "a", edge.V1, "b", edge.V2, "met", *edge.V3)
-			//}
-			time.Sleep(time.Second * 10)
-		}
-	}()
-	wg.Wait()
 }

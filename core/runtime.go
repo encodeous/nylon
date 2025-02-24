@@ -62,7 +62,7 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}
 
 	for _, node := range ccfg.Nodes {
-		s.TrustedNodes[node.Id] = ed25519.PublicKey(node.PubKey)
+		s.TrustedNodes[node.Id] = node.PubKey[:]
 	}
 
 	s.Log.Info("init modules")
@@ -88,10 +88,8 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 
 func initModules(s *state.State) error {
 	modules := []state.NyModule{
+		&impl.Nylon{}, // nylon must start before router
 		&impl.Router{},
-		&impl.Nylon{},
-		&impl.CtlLinkMgr{},
-		&impl.DpLinkMgr{},
 	}
 
 	for _, module := range modules {
@@ -131,9 +129,6 @@ endLoop:
 }
 
 func cleanup(s *state.State) {
-	if s.LinkChannel != nil {
-		close(s.LinkChannel)
-	}
 	if s.DispatchChannel != nil {
 		close(s.DispatchChannel)
 	}

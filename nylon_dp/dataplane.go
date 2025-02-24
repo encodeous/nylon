@@ -68,7 +68,7 @@ func initDevice(s *state.State) (*device.Device, string, error) {
 listen_port=%d
 allow_inbound=true
 `,
-			hex.EncodeToString(s.Key),
+			hex.EncodeToString(s.Key[:]),
 			s.DpPort,
 		),
 	)

@@ -5,7 +5,7 @@ go 1.23.1
 toolchain go1.23.4
 
 require (
-	github.com/encodeous/polyamide v0.0.0-20250223094010-90001fab06e7
+	github.com/encodeous/polyamide v0.0.0-20250224171335-4715ec81fcb1
 	github.com/encodeous/tint v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jellydator/ttlcache/v3 v3.3.0

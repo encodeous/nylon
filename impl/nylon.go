@@ -1,10 +1,12 @@
 package impl
 
 import (
+	"github.com/encodeous/nylon/nylon_dp"
 	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide/device"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"time"
 )
@@ -18,80 +20,63 @@ var (
 		metric.WithUnit("{met}"))
 )
 
+// Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
-}
-
-func (n *Nylon) Cleanup(s *state.State) error {
-	return nil
-}
-
-func nylonGc(s *state.State) error {
-	// scan for dead links
-	r := Get[*Router](s)
-	for _, neigh := range r.Neighbours {
-		// filter ctl links
-		n := 0
-		for _, x := range neigh.CtlLinks {
-			if x.IsAlive() {
-				neigh.CtlLinks[n] = x
-				n++
-			} else {
-				s.Log.Debug("removed dead ctllink", "id", x.Id())
-			}
-		}
-		neigh.CtlLinks = neigh.CtlLinks[:n]
-
-		// filter dplinks
-		n = 0
-		for _, x := range neigh.DpLinks {
-			if x.IsAlive() {
-				neigh.DpLinks[n] = x
-				n++
-			} else {
-				s.Log.Debug("removed dead dplink", "id", x.Id(), "name", x.Endpoint().Name)
-			}
-		}
-		neigh.DpLinks = neigh.DpLinks[:n]
-
-		// remove old routes
-		for k, x := range neigh.Routes {
-			if x.LastPublished.Before(time.Now().Add(-RouteUpdateDelay * 2)) {
-				s.Log.Debug("removed dead route", "src", x.Src.Id, "nh", neigh.Id)
-				delete(neigh.Routes, k)
-			}
-		}
-	}
-
-	// cleanup link cache
-	w := Get[*DpLinkMgr](s)
-	for k, v := range w.endpointDiff {
-		if v.V2.Before(time.Now().Add(-EndpointTTL)) {
-			delete(w.endpointDiff, k)
-		}
-	}
-	return nil
-}
-
-func otelUpdate(s *state.State) error {
-	r := Get[*Router](s)
-	for _, neigh := range r.Neighbours {
-		for _, x := range neigh.DpLinks {
-			if x.IsActive() && state.OtelEnabled {
-				linkMet.Record(s.Context, int64(x.Metric()),
-					metric.WithAttributes(attribute.String("link.from", string(s.Id))),
-					metric.WithAttributes(attribute.String("link.to", string(neigh.Id))),
-					metric.WithAttributes(attribute.String("link.name", x.Endpoint().Name)),
-				)
-			}
-		}
-	}
-	return nil
+	PolySock  *device.PolySock
+	PingBuf   *ttlcache.Cache[uint64, EpPing]
+	WgDevice  *device.Device
+	dataplane nylon_dp.NyItf
+	env       *state.Env
 }
 
 func (n *Nylon) Init(s *state.State) error {
+	n.env = s.Env
+
 	s.Log.Debug("init nylon")
-	s.Env.RepeatTask(nylonGc, GcDelay)
-	s.Env.RepeatTask(otelUpdate, OtelDelay)
+
+	// add neighbours
+	for _, neigh := range s.GetPeers() {
+		stNeigh := &state.Neighbour{
+			Id:     neigh,
+			Routes: make(map[state.Node]state.PubRoute),
+			Eps:    make([]*state.DynamicEndpoint, 0),
+		}
+		cfg := s.MustGetNode(neigh)
+		for _, ep := range cfg.DpAddr {
+			stNeigh.Eps = append(stNeigh.Eps, state.NewUdpDpLink(ep, neigh))
+		}
+
+		s.Neighbours = append(s.Neighbours, stNeigh)
+	}
+
+	n.PingBuf = ttlcache.New[uint64, EpPing](
+		ttlcache.WithTTL[uint64, EpPing](5*time.Second),
+		ttlcache.WithDisableTouchOnHit[uint64, EpPing](),
+	)
+	go n.PingBuf.Start()
+
+	s.Env.RepeatTask(nylonGc, state.GcDelay)
+	s.Env.RepeatTask(otelUpdate, state.OtelDelay)
+
+	// wireguard configuration
+	err := n.initWireGuard(s)
+	if err != nil {
+		return err
+	}
+
+	// endpoint probing
+	s.Env.RepeatTask(func(s *state.State) error {
+		return n.probeLinks(s, true)
+	}, state.ProbeDpDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		return n.probeLinks(s, false)
+	}, state.ProbeDpInactiveDelay)
 
 	return nil
+}
+
+func (n *Nylon) Cleanup(s *state.State) error {
+	n.PingBuf.Stop()
+
+	return n.cleanupWireGuard(s)
 }

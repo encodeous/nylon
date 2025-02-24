@@ -66,6 +66,10 @@ github.com/encodeous/polyamide v0.0.0-20250223092925-8551ba527025 h1:t7zuAup2+x5
 github.com/encodeous/polyamide v0.0.0-20250223092925-8551ba527025/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/polyamide v0.0.0-20250223094010-90001fab06e7 h1:pkMMr7ddFZhol/Pwr7HZJvhUAiRWv7th9lBMOq602jk=
 github.com/encodeous/polyamide v0.0.0-20250223094010-90001fab06e7/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250224170651-c6d90327058f h1:98HNdAHkN+R0wxF8+6mLrb3JVV5SiSOoRdSEwCLR4Lo=
+github.com/encodeous/polyamide v0.0.0-20250224170651-c6d90327058f/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250224171335-4715ec81fcb1 h1:CC6oPgECLxCnQExcgoKVXSs1Dtz5U+Vy4Pe0pgt3n6A=
+github.com/encodeous/polyamide v0.0.0-20250224171335-4715ec81fcb1/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
