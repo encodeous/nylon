@@ -85,8 +85,8 @@ allow_inbound=true
 		}
 		peer.Start()
 		endpoints := make([]conn.Endpoint, 0)
-		for _, nep := range ncfg.DpAddr {
-			endpoints = append(endpoints, nep.GetWgEndpoint())
+		for _, nep := range ncfg.Endpoints {
+			endpoints = append(endpoints, &conn.StdNetEndpoint{AddrPort: nep})
 		}
 		peer.SetEndpoints(endpoints)
 	}

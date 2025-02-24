@@ -4,9 +4,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"github.com/encodeous/polyamide/conn"
 	"github.com/rosshemsley/kalman"
 	"github.com/rosshemsley/kalman/models"
 	"log/slog"
+	"net/netip"
 	"os"
 	"sort"
 	"strconv"
@@ -46,7 +48,7 @@ func (u *DynamicEndpoint) IsAlive() bool {
 	return u.IsActive() || !u.endpoint.RemoteInit // we never gc endpoints that we have in our config
 }
 
-func NewUdpDpLink(endpoint *NetworkEndpoint, node Node) *DynamicEndpoint {
+func NewEndpoint(endpoint netip.AddrPort, node Node, remoteInit bool, wgEndpoint conn.Endpoint) *DynamicEndpoint {
 	// TODO: These parameters are sort of arbitrary... Probably tune them better?
 	model := models.NewSimpleModel(time.Now(), float64(time.Millisecond*50), models.SimpleModelConfig{
 		InitialVariance:     0,
@@ -56,11 +58,15 @@ func NewUdpDpLink(endpoint *NetworkEndpoint, node Node) *DynamicEndpoint {
 	return &DynamicEndpoint{
 		metric:      INF,
 		metricRange: 5000,
-		endpoint:    endpoint,
-		filter:      kalman.NewKalmanFilter(model),
-		model:       model,
-		node:        node,
-		boxMedian:   time.Millisecond * 1000, // start with a relatively high latency so we don't disrupt existing connections before we are sure
+		endpoint: &NetworkEndpoint{
+			RemoteInit: remoteInit,
+			WgEndpoint: wgEndpoint,
+			Ep:         endpoint,
+		},
+		filter:    kalman.NewKalmanFilter(model),
+		model:     model,
+		node:      node,
+		boxMedian: time.Millisecond * 1000, // start with a relatively high latency so we don't disrupt existing connections before we are sure
 	}
 }
 
@@ -119,7 +125,7 @@ func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
 
 	if DBG_write_metric_history {
 		writeHeader := false
-		fname := fmt.Sprintf("log/latlog-%s.csv", u.NetworkEndpoint().Name)
+		fname := fmt.Sprintf("log/latlog-%s.csv", u.NetworkEndpoint())
 		if _, err := os.Stat(fname); errors.Is(err, os.ErrNotExist) {
 			writeHeader = true
 		}

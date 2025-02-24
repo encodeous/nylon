@@ -59,7 +59,7 @@ func NewItf(s *state.State) (NyItf, error) {
 	}
 
 	// assign ip
-	addr := s.MustGetNode(s.Id).NylonAddr
+	addr := s.MustGetNode(s.Id).Prefix
 
 	err = Exec("/usr/bin/ip", "addr", "add", "dev", name, fmt.Sprintf("%s/%d", addr.String(), addr.BitLen()))
 	if err != nil {
@@ -70,11 +70,11 @@ func NewItf(s *state.State) (NyItf, error) {
 		if peer.Id == s.Id {
 			continue
 		}
-		err = Exec("/usr/bin/ip", "route", "flush", fmt.Sprintf("%s/%d", peer.NylonAddr.String(), peer.NylonAddr.BitLen()))
+		err = Exec("/usr/bin/ip", "route", "flush", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()))
 		if err != nil {
 			return nil, err
 		}
-		err = Exec("/usr/bin/ip", "route", "add", fmt.Sprintf("%s/%d", peer.NylonAddr.String(), peer.NylonAddr.BitLen()), "via", addr.String(), "dev", name)
+		err = Exec("/usr/bin/ip", "route", "add", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()), "via", addr.String(), "dev", name)
 		if err != nil {
 			return nil, err
 		}

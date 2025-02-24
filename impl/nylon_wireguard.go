@@ -54,7 +54,7 @@ func UpdateWireGuard(s *state.State) error {
 			if err != nil {
 				continue
 			}
-			_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.NylonAddr, cfg.NylonAddr.BitLen())) // TODO: add support for prefixes
+			_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.Prefix, cfg.Prefix.BitLen())) // TODO: add support for prefixes
 			if err != nil {
 				continue
 			}
@@ -84,9 +84,11 @@ func UpdateWireGuard(s *state.State) error {
 		}
 
 		// add endpoint if it is not in the list
-		for _, ep := range pcfg.DpAddr {
-			if !slices.Contains(eps, ep.GetWgEndpoint()) {
-				eps = append(eps, ep.GetWgEndpoint())
+		for _, ep := range pcfg.Endpoints {
+			if !slices.ContainsFunc(eps, func(endpoint conn.Endpoint) bool {
+				return endpoint.DstIPPort() == ep
+			}) {
+				eps = append(eps, &conn.StdNetEndpoint{AddrPort: ep})
 			}
 		}
 

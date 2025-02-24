@@ -13,10 +13,9 @@ import (
 // PubNodeCfg represents a central representation of a node
 type PubNodeCfg struct {
 	Id        Node
-	NylonAddr netip.Addr
+	Prefix    netip.Addr
 	PubKey    NyPublicKey
-	CtlAddr   []string
-	DpAddr    []*NetworkEndpoint
+	Endpoints []netip.AddrPort
 }
 
 type CentralCfg struct {
@@ -42,12 +41,11 @@ type NodeCfg struct {
 func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
 	extDp := netip.AddrPortFrom(extIp, n.DpPort)
 	cfg := PubNodeCfg{
-		Id:      n.Id,
-		CtlAddr: []string{netip.AddrPortFrom(extIp, n.CtlBind.Port()).String()},
-		DpAddr: []*NetworkEndpoint{
-			{fmt.Sprintf("%s-pub", n.Id), false, nil, extDp},
+		Id: n.Id,
+		Endpoints: []netip.AddrPort{
+			extDp,
 		},
-		NylonAddr: nylonIp,
+		Prefix: nylonIp,
 	}
 	cfg.PubKey = n.Key.XPubkey()
 	return cfg

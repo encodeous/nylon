@@ -125,7 +125,7 @@ func updateRoutes(s *state.State) error {
 
 		if state.DBG_log_router {
 			if bestEp != nil {
-				s.Log.Debug(" selected", "name", bestEp.NetworkEndpoint().Name, "met", bestEp.Metric())
+				s.Log.Debug(" selected", "met", bestEp.Metric())
 			} else {
 				s.Log.Debug(" no link to neighbour")
 			}

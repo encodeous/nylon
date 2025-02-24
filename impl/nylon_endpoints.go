@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"fmt"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/conn"
@@ -9,7 +8,6 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"google.golang.org/protobuf/proto"
 	"math/rand/v2"
-	"net/netip"
 	"slices"
 	"time"
 )
@@ -79,7 +77,6 @@ func handleProbePing(s *state.State, node state.Node, ep conn.Endpoint) {
 		return
 	}
 	// check if link exists
-	addrPort := netip.MustParseAddrPort(ep.DstToString())
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
 			if dep.NetworkEndpoint().Ep == ep.DstIPPort() && neigh.Id == node {
@@ -90,7 +87,7 @@ func handleProbePing(s *state.State, node state.Node, ep conn.Endpoint) {
 				dep.NetworkEndpoint().WgEndpoint = ep
 
 				if state.DBG_log_probe {
-					s.Log.Debug("probe from", "addr", dep.NetworkEndpoint().Ep, "link", dep.NetworkEndpoint().Name)
+					s.Log.Debug("probe from", "addr", dep.NetworkEndpoint().Ep)
 				}
 				return
 			}
@@ -99,13 +96,7 @@ func handleProbePing(s *state.State, node state.Node, ep conn.Endpoint) {
 	// create a new link if we dont have a link
 	for _, neigh := range s.Neighbours {
 		if neigh.Id == node {
-			nyEp := &state.NetworkEndpoint{
-				Name:       fmt.Sprintf("remote-%s-%s", node, ep.DstToString()),
-				Ep:         addrPort,
-				WgEndpoint: ep,
-				RemoteInit: true,
-			}
-			neigh.Eps = append(neigh.Eps, state.NewUdpDpLink(nyEp, neigh.Id))
+			neigh.Eps = append(neigh.Eps, state.NewEndpoint(ep.DstIPPort(), neigh.Id, true, ep))
 			return
 		}
 	}
@@ -173,16 +164,16 @@ func (n *Nylon) probeNew(s *state.State) error {
 			continue
 		}
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
-		for _, ep := range cfg.DpAddr {
-			if !ep.Ep.IsValid() {
+		for _, ep := range cfg.Endpoints {
+			if !ep.IsValid() {
 				continue
 			}
 			idx := slices.IndexFunc(neigh.Eps, func(link *state.DynamicEndpoint) bool {
-				return !link.IsRemote() && link.NetworkEndpoint().Name == ep.Name
+				return !link.IsRemote() && link.NetworkEndpoint().Ep == ep
 			})
 			if idx == -1 {
 				// add the link to the neighbour
-				dpl := state.NewUdpDpLink(ep, peer)
+				dpl := state.NewEndpoint(ep, peer, false, nil)
 				neigh.Eps = append(neigh.Eps, dpl)
 				go func() {
 					err := n.Probe(s.Env, dpl)

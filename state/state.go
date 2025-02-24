@@ -43,9 +43,8 @@ type Env struct {
 }
 
 type NetworkEndpoint struct {
-	Name       string
-	RemoteInit bool          `yaml:"-"`
-	WgEndpoint conn.Endpoint `yaml:"-"`
+	RemoteInit bool
+	WgEndpoint conn.Endpoint
 	Ep         netip.AddrPort
 }
 

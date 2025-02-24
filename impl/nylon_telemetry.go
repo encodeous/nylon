@@ -13,7 +13,6 @@ func otelUpdate(s *state.State) error {
 				linkMet.Record(s.Context, int64(x.Metric()),
 					metric.WithAttributes(attribute.String("link.from", string(s.Id))),
 					metric.WithAttributes(attribute.String("link.to", string(neigh.Id))),
-					metric.WithAttributes(attribute.String("link.name", x.NetworkEndpoint().Name)),
 				)
 			}
 		}

@@ -46,7 +46,7 @@ func NewItf(s *state.State) (NyItf, error) {
 
 	// configure system
 	// assign ip
-	addr := s.MustGetNode(s.Id).NylonAddr
+	addr := s.MustGetNode(s.Id).Prefix
 	if addr.Is4() {
 		err = Exec("/sbin/ifconfig", name, "alias", addr.String(), addr.String(), "netmask", "255.255.255.255")
 	} else {
@@ -60,7 +60,7 @@ func NewItf(s *state.State) (NyItf, error) {
 		if peer.Id == s.Id {
 			continue
 		}
-		err = Exec("/sbin/route", "-n", "add", "-net", fmt.Sprintf("%s/%d", peer.NylonAddr.String(), peer.NylonAddr.BitLen()), addr.String())
+		err = Exec("/sbin/route", "-n", "add", "-net", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()), addr.String())
 		if err != nil {
 			return nil, err
 		}

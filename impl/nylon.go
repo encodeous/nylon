@@ -42,8 +42,8 @@ func (n *Nylon) Init(s *state.State) error {
 			Eps:    make([]*state.DynamicEndpoint, 0),
 		}
 		cfg := s.MustGetNode(neigh)
-		for _, ep := range cfg.DpAddr {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewUdpDpLink(ep, neigh))
+		for _, ep := range cfg.Endpoints {
+			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, neigh, false, nil))
 		}
 
 		s.Neighbours = append(s.Neighbours, stNeigh)
