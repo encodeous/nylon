@@ -6,7 +6,6 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/conn"
 	"github.com/encodeous/polyamide/device"
-	"net"
 	"net/netip"
 	"slices"
 	"sort"
@@ -54,11 +53,9 @@ func UpdateWireGuard(s *state.State) error {
 			if err != nil {
 				continue
 			}
-			_, ipNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", cfg.Prefix, cfg.Prefix.BitLen())) // TODO: add support for prefixes
-			if err != nil {
-				continue
+			for _, prefix := range cfg.Prefixes {
+				allowedIps = append(allowedIps, prefix.String())
 			}
-			allowedIps = append(allowedIps, ipNet.String())
 		}
 		sort.Strings(allowedIps)
 

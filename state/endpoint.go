@@ -28,6 +28,30 @@ type DynamicEndpoint struct {
 	model         *models.SimpleModel
 }
 
+type NetworkEndpoint struct {
+	RemoteInit bool
+	WgEndpoint conn.Endpoint
+	Ep         netip.AddrPort
+}
+
+func (ep *NetworkEndpoint) GetWgEndpoint() conn.Endpoint {
+	if ep.WgEndpoint == nil || ep.WgEndpoint.DstToString() != ep.Ep.String() {
+		ep.WgEndpoint = &conn.StdNetEndpoint{AddrPort: ep.Ep}
+	}
+	return ep.WgEndpoint
+}
+
+func (n *Neighbour) BestEndpoint() *DynamicEndpoint {
+	var best *DynamicEndpoint
+
+	for _, link := range n.Eps {
+		if best == nil || link.Metric() < best.Metric() || (link.IsActive() && !best.IsActive()) {
+			best = link
+		}
+	}
+	return best
+}
+
 func (u *DynamicEndpoint) Node() Node {
 	return u.node
 }

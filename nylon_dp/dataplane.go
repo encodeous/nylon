@@ -60,8 +60,6 @@ func initDevice(s *state.State) (*device.Device, string, error) {
 		},
 	})
 
-	dev.DisableSomeRoamingForBrokenMobileSemantics()
-
 	err = dev.IpcSet(
 		fmt.Sprintf(
 			`private_key=%s
@@ -69,7 +67,7 @@ listen_port=%d
 allow_inbound=true
 `,
 			hex.EncodeToString(s.Key[:]),
-			s.DpPort,
+			s.Port,
 		),
 	)
 	if err != nil {

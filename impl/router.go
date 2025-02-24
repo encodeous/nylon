@@ -277,7 +277,12 @@ func checkStarvation(s *state.State) error {
 	if time.Now().Sub(r.LastStarvationRequest) > state.StarvationDelay {
 		for node, route := range r.Routes {
 			neigh := s.GetNeighbour(route.Nh)
-			if neigh.BestEndpoint().Metric() == state.INF || route.PubMetric == state.INF {
+			bestMetric := state.INF
+			bestEp := neigh.BestEndpoint()
+			if bestEp != nil {
+				bestMetric = bestEp.Metric()
+			}
+			if bestMetric == state.INF || route.PubMetric == state.INF {
 				// we dont have a valid route to this node
 				starved = true
 

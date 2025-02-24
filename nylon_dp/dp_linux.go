@@ -59,24 +59,30 @@ func NewItf(s *state.State) (NyItf, error) {
 	}
 
 	// assign ip
-	addr := s.MustGetNode(s.Id).Prefix
+	selfPrefixes := s.MustGetNode(s.Id).Prefixes
 
-	err = Exec("/usr/bin/ip", "addr", "add", "dev", name, fmt.Sprintf("%s/%d", addr.String(), addr.BitLen()))
-	if err != nil {
-		return nil, err
-	}
+	if len(selfPrefixes) != 0 {
+		for _, prefix := range selfPrefixes {
+			err = Exec("/usr/bin/ip", "addr", "add", "dev", name, prefix.String())
+			if err != nil {
+				return nil, err
+			}
+		}
 
-	for _, peer := range s.CentralCfg.Nodes {
-		if peer.Id == s.Id {
-			continue
-		}
-		err = Exec("/usr/bin/ip", "route", "flush", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()))
-		if err != nil {
-			return nil, err
-		}
-		err = Exec("/usr/bin/ip", "route", "add", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()), "via", addr.String(), "dev", name)
-		if err != nil {
-			return nil, err
+		for _, peer := range s.CentralCfg.Nodes {
+			if peer.Id == s.Id {
+				continue
+			}
+			for _, prefix := range peer.Prefixes {
+				err = Exec("/usr/bin/ip", "route", "flush", prefix.String())
+				if err != nil {
+					return nil, err
+				}
+				err = Exec("/usr/bin/ip", "route", "add", prefix.String(), "via", selfPrefixes[0].Addr().String(), "dev", name)
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 

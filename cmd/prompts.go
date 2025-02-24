@@ -121,21 +121,11 @@ func promptCreateNode() state.NodeCfg {
 	fmt.Println("Give this node a name:")
 	nodeCfg.Id = state.Node(promptDefaultStr("name", string(nodeCfg.Id), state.NameValidator))
 
-	fmt.Println("Where should the control-plane listen to?:")
-	nodeCfg.CtlBind = promptDefaultAddrPort("[TCP] ip:port", "0.0.0.0:57175", state.BindValidator)
-	fmt.Println("What port should the data-plane listen to?:")
-	nodeCfg.DpPort = promptDefaultPort("[UDP] port", "57175", state.PortValidator)
+	fmt.Println("What port should nylon listen on?:")
+	nodeCfg.Port = promptDefaultPort("[UDP] port", "57175", state.PortValidator)
 
-	fmt.Println("\nNOTE: You should make these ports accessible for best reliability and performance.\nIf it is not possible, as long as one node in the network is reachable, nylon can still work!\n\n")
+	fmt.Printf("Your node public key is: %s. Add this to the central config on every node\n", nodeCfg.Key.XPubkey())
 
 	nodeConfigPath = safeSaveFile(nodeConfigPath, "Node Config")
 	return nodeCfg
-}
-
-func promptGenPubCfg(cfg state.NodeCfg) state.PubNodeCfg {
-	fmt.Println("What is your publicly accessible ip address?:")
-	ext := promptDefaultAddr("ip - optional", "127.0.0.1", state.AddrValidator)
-	fmt.Println("What do you want your Nylon address to be?:")
-	nylIp := promptDefaultAddr("ip - optional", "10.0.0.1", state.AddrValidator)
-	return cfg.GeneratePubCfg(ext, nylIp)
 }

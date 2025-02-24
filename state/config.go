@@ -13,7 +13,7 @@ import (
 // PubNodeCfg represents a central representation of a node
 type PubNodeCfg struct {
 	Id        Node
-	Prefix    netip.Addr
+	Prefixes  []netip.Prefix
 	PubKey    NyPublicKey
 	Endpoints []netip.AddrPort
 }
@@ -32,20 +32,20 @@ type NodeCfg struct {
 	// Node Private Key
 	Key NyPrivateKey
 	Id  Node
-	// Address and port that the control plane listens on
-	CtlBind netip.AddrPort
 	// Address that the data plane can be accessed by
-	DpPort uint16
+	Port uint16
 }
 
-func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, nylonIp netip.Addr) PubNodeCfg {
-	extDp := netip.AddrPortFrom(extIp, n.DpPort)
+func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) PubNodeCfg {
+	extDp := netip.AddrPortFrom(extIp, port)
 	cfg := PubNodeCfg{
 		Id: n.Id,
 		Endpoints: []netip.AddrPort{
 			extDp,
 		},
-		Prefix: nylonIp,
+		Prefixes: []netip.Prefix{
+			nylonIp,
+		},
 	}
 	cfg.PubKey = n.Key.XPubkey()
 	return cfg

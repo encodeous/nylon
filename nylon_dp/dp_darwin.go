@@ -1,10 +1,10 @@
 package nylon_dp
 
 import (
-	"fmt"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/device"
 	"github.com/encodeous/polyamide/ipc"
+	"net"
 )
 
 type NyItfMacos struct {
@@ -44,25 +44,34 @@ func NewItf(s *state.State) (NyItf, error) {
 
 	s.Log.Info("Created WireGuard interface", "name", itf.realName)
 
-	// configure system
-	// assign ip
-	addr := s.MustGetNode(s.Id).Prefix
-	if addr.Is4() {
-		err = Exec("/sbin/ifconfig", name, "alias", addr.String(), addr.String(), "netmask", "255.255.255.255")
-	} else {
-		err = Exec("/sbin/ifconfig", name, "inet6", addr.String()+"/128", "add")
-	}
-	if err != nil {
-		return nil, err
-	}
+	selfPrefixes := s.MustGetNode(s.Id).Prefixes
 
-	for _, peer := range s.CentralCfg.Nodes {
-		if peer.Id == s.Id {
-			continue
+	if len(selfPrefixes) != 0 {
+		// configure system
+		// assign ip
+		for _, prefix := range selfPrefixes {
+			addr := prefix.Addr()
+			if addr.Is4() {
+				_, mask, _ := net.ParseCIDR(prefix.String())
+				err = Exec("/sbin/ifconfig", name, "alias", addr.String(), addr.String(), "netmask", net.IP(mask.Mask).String())
+			} else {
+				err = Exec("/sbin/ifconfig", name, "inet6", prefix.String(), "add")
+			}
+			if err != nil {
+				return nil, err
+			}
 		}
-		err = Exec("/sbin/route", "-n", "add", "-net", fmt.Sprintf("%s/%d", peer.Prefix.String(), peer.Prefix.BitLen()), addr.String())
-		if err != nil {
-			return nil, err
+
+		for _, peer := range s.CentralCfg.Nodes {
+			if peer.Id == s.Id {
+				continue
+			}
+			for _, prefix := range peer.Prefixes {
+				err = Exec("/sbin/route", "-n", "add", "-net", prefix.String(), selfPrefixes[0].Addr().String())
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 

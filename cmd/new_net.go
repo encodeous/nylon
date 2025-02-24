@@ -5,6 +5,7 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	"net/netip"
 	"os"
 )
 
@@ -29,7 +30,18 @@ var netCmd = &cobra.Command{
 		centralConfig := state.CentralCfg{
 			RootPubKey: pkey.XPubkey(),
 			Nodes: []state.PubNodeCfg{
-				promptGenPubCfg(nodeCfg),
+				{
+					Id: "sample node",
+					Prefixes: []netip.Prefix{
+						netip.MustParsePrefix("10.0.0.1/32"),
+						netip.MustParsePrefix("10.0.0.2/32"),
+						netip.MustParsePrefix("10.1.0.0/16"),
+					},
+					PubKey: state.NyPublicKey{},
+					Endpoints: []netip.AddrPort{
+						netip.MustParseAddrPort(fmt.Sprintf("8.8.8.8:%d", nodeCfg.Port)),
+					},
+				},
 			},
 			Graph: []string{
 				"Group1 = node1, node2",
@@ -67,14 +79,4 @@ var netCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(netCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// netCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// netCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
