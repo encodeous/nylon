@@ -124,8 +124,13 @@ func promptCreateNode() state.NodeCfg {
 	fmt.Println("What port should nylon listen on?:")
 	nodeCfg.Port = promptDefaultPort("[UDP] port", "57175", state.PortValidator)
 
-	fmt.Printf("Your node public key is: %s. Add this to the central config on every node\n", nodeCfg.Key.XPubkey())
+	pkStr, err := nodeCfg.Key.XPubkey().MarshalText()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Your node public key is: %s. Add this to the central config on every node\n", string(pkStr))
 
+	fmt.Println("Where should the node config be saved?:")
 	nodeConfigPath = safeSaveFile(nodeConfigPath, "Node Config")
 	return nodeCfg
 }

@@ -51,9 +51,9 @@ var netCmd = &cobra.Command{
 			Version: 0,
 		}
 
-		fmt.Println("\n\nCentral Network Configuration")
-
+		fmt.Println("Where should the central config be saved?:")
 		centralConfigPath = safeSaveFile(centralConfigPath, "Central Config")
+		fmt.Println("Where should the central key be saved?:")
 		centralKeyPath = safeSaveFile(centralKeyPath, "Central Key")
 		ccfg, err := yaml.Marshal(&centralConfig)
 		if err != nil {
