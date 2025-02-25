@@ -31,7 +31,7 @@ var netCmd = &cobra.Command{
 			RootPubKey: pkey.XPubkey(),
 			Nodes: []state.PubNodeCfg{
 				{
-					Id: "sample node",
+					Id: "samplenode1",
 					Prefixes: []netip.Prefix{
 						netip.MustParsePrefix("10.0.0.1/32"),
 						netip.MustParsePrefix("10.0.0.2/32"),

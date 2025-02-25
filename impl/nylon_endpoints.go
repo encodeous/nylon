@@ -40,7 +40,7 @@ func (n *Nylon) Probe(e *state.Env, ep *state.DynamicEndpoint) error {
 
 func (n *Nylon) Send(packet []byte, ep *state.DynamicEndpoint) {
 	neigh := n.env.MustGetNode(ep.Node())
-	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(), n.WgDevice.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
+	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(), n.Device.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
 }
 
 func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.Node) {

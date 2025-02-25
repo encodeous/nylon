@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"github.com/encodeous/nylon/nylon_dp"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/device"
 	"github.com/jellydator/ttlcache/v3"
@@ -22,11 +21,11 @@ var (
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
-	PolySock  *device.PolySock
-	PingBuf   *ttlcache.Cache[uint64, EpPing]
-	WgDevice  *device.Device
-	dataplane nylon_dp.NyItf
-	env       *state.Env
+	PolySock *device.PolySock
+	PingBuf  *ttlcache.Cache[uint64, EpPing]
+	Device   *device.Device
+	env      *state.Env
+	itfName  string
 }
 
 func (n *Nylon) Init(s *state.State) error {
