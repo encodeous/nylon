@@ -23,6 +23,6 @@ const (
 	LinkDeadThreshold = 5 * ProbeDelay
 
 	// client configuration
-	ClientKeepaliveInterval = 5 * time.Second
+	ClientKeepaliveInterval = 25 * time.Second
 	ClientDeadThreshold     = 3 * ClientKeepaliveInterval
 )

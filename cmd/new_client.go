@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -31,6 +32,13 @@ var clientCmd = &cobra.Command{
 
 		pkey := state.GenerateKey()
 
+		println("Please select a gateway router for this client to connect to:")
+		router := promptSelectRouter(centralCfg)
+		rIdx := slices.IndexFunc(centralCfg.Routers, func(cfg state.RouterCfg) bool {
+			return cfg.Id == router
+		})
+		rCfg := centralCfg.Routers[rIdx]
+
 		sb := strings.Builder{}
 		sb.WriteString("[Interface]\n")
 		out, _ := pkey.MarshalText()
@@ -38,8 +46,16 @@ var clientCmd = &cobra.Command{
 		sb.WriteString("Address = <your prefix>\n\n")
 		sb.WriteString("[Peer]\n")
 		sb.WriteString("PersistentKeepalive = 25\n")
-		sb.WriteString("PublicKey = <choose gateway router from central config>\n")
-		sb.WriteString("Endpoint = <choose gateway router from central config>\n")
+		routerPkey, err := rCfg.PubKey.MarshalText()
+		if err != nil {
+			panic(err)
+		}
+		sb.WriteString(fmt.Sprintf("PublicKey = %s\n", string(routerPkey)))
+		if len(rCfg.Endpoints) != 0 {
+			sb.WriteString(fmt.Sprintf("Endpoint = %s\n", rCfg.Endpoints[0].String()))
+		} else {
+			sb.WriteString("Endpoint = <specify endpoint>\n")
+		}
 		allowedIps := make([]string, 0)
 		for _, node := range centralCfg.GetNodes() {
 			for _, prefix := range node.Prefixes {

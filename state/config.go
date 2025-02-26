@@ -50,7 +50,9 @@ type LocalCfg struct {
 	Key NyPrivateKey
 	Id  NodeId
 	// Address that the data plane can be accessed by
-	Port uint16
+	Port            uint16
+	NoNetConfigure  bool
+	AllowedPrefixes []netip.Prefix
 }
 
 func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) RouterCfg {

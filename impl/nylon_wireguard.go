@@ -120,31 +120,41 @@ allow_inbound=true
 
 	// configure system networking
 
-	selfPrefixes := s.GetRouter(s.Id).Prefixes
-
-	err = sys.InitInterface(itfName)
-	if err != nil {
-		return err
-	}
-
-	if len(selfPrefixes) != 0 {
-		// configure system
-		// assign ip
-		for _, prefix := range selfPrefixes {
-			err = sys.ConfigureAlias(itfName, prefix)
-			if err != nil {
-				return err
-			}
+	if !s.LocalCfg.NoNetConfigure {
+		selfPrefixes := s.GetRouter(s.Id).Prefixes
+		err = sys.InitInterface(itfName)
+		if err != nil {
+			return err
 		}
 
-		for _, peer := range s.CentralCfg.GetNodes() {
-			if peer.Id == s.Id {
-				continue
-			}
-			for _, prefix := range peer.Prefixes {
-				err = sys.ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+		if len(selfPrefixes) != 0 {
+			// configure system
+			// assign ip
+			for _, prefix := range selfPrefixes {
+				err = sys.ConfigureAlias(itfName, prefix)
 				if err != nil {
 					return err
+				}
+			}
+
+			if len(s.LocalCfg.AllowedPrefixes) == 0 {
+				for _, peer := range s.CentralCfg.GetNodes() {
+					if peer.Id == s.Id {
+						continue
+					}
+					for _, prefix := range peer.Prefixes {
+						err = sys.ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+						if err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				for _, prefix := range s.LocalCfg.AllowedPrefixes {
+					err = sys.ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}

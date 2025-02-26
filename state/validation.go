@@ -58,6 +58,9 @@ func NodeConfigValidator(node *LocalCfg) error {
 	if node.Key == [32]byte{} {
 		return fmt.Errorf("private key must not be empty")
 	}
+	if node.NoNetConfigure && len(node.AllowedPrefixes) != 0 {
+		return fmt.Errorf("cannot configure allowed prefixes if nonetconfigure is enabled")
+	}
 	return nil
 }
 

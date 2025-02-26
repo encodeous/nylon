@@ -134,3 +134,23 @@ func promptCreateNode() state.LocalCfg {
 	nodeConfigPath = safeSaveFile(nodeConfigPath, "Node Config")
 	return nodeCfg
 }
+
+func promptSelectRouter(central state.CentralCfg) state.NodeId {
+	routers := make([]state.NodeId, 0)
+	for _, router := range central.Routers {
+		routers = append(routers, router.Id)
+	}
+	if len(routers) == 0 {
+		panic("no routers configured")
+	}
+	prompt := promptui.Select{
+		Label:             "router",
+		Items:             routers,
+		StartInSearchMode: true,
+	}
+	_, node, err := prompt.Run()
+	if err != nil {
+		panic(err)
+	}
+	return state.NodeId(node)
+}
