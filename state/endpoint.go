@@ -16,7 +16,7 @@ import (
 )
 
 type DynamicEndpoint struct {
-	node          Node
+	node          NodeId
 	metric        uint16
 	metricRange   uint16
 	realLatency   time.Duration
@@ -52,7 +52,7 @@ func (n *Neighbour) BestEndpoint() *DynamicEndpoint {
 	return best
 }
 
-func (u *DynamicEndpoint) Node() Node {
+func (u *DynamicEndpoint) Node() NodeId {
 	return u.node
 }
 
@@ -72,7 +72,7 @@ func (u *DynamicEndpoint) IsAlive() bool {
 	return u.IsActive() || !u.endpoint.RemoteInit // we never gc endpoints that we have in our config
 }
 
-func NewEndpoint(endpoint netip.AddrPort, node Node, remoteInit bool, wgEndpoint conn.Endpoint) *DynamicEndpoint {
+func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoint conn.Endpoint) *DynamicEndpoint {
 	// TODO: These parameters are sort of arbitrary... Probably tune them better?
 	model := models.NewSimpleModel(time.Now(), float64(time.Millisecond*50), models.SimpleModelConfig{
 		InitialVariance:     0,

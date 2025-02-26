@@ -7,12 +7,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func IncrementSeqno(s *state.State) {
-	r := Get[*Router](s)
-	r.Self.Seqno++
-	// TODO: Signature
-}
-
 func broadcast(s *state.State, message proto.Message) {
 	r := s.Neighbours
 	n := Get[*Nylon](s)
@@ -49,14 +43,12 @@ func mapToPktSource(source *state.Source) *protocol.Ny_Source {
 	return &protocol.Ny_Source{
 		Id:    string(source.Id),
 		Seqno: uint32(source.Seqno),
-		Sig:   source.Sig,
 	}
 }
 func mapFromPktSource(source *protocol.Ny_Source) state.Source {
 	return state.Source{
-		Id:    state.Node(source.Id),
+		Id:    state.NodeId(source.Id),
 		Seqno: uint16(source.Seqno),
-		Sig:   source.Sig,
 	}
 }
 
@@ -78,7 +70,7 @@ func dbgPrintRouteTable(s *state.State) {
 	}
 }
 
-func dbgPrintRouteChanges(s *state.State, curRoute *state.Route, newRoute *state.PubRoute, via state.Node, metric uint16) {
+func dbgPrintRouteChanges(s *state.State, curRoute *state.Route, newRoute *state.PubRoute, via state.NodeId, metric uint16) {
 	if state.DBG_log_route_changes {
 		if curRoute == nil {
 			s.Log.Debug(fmt.Sprintf("[rc] %s(%d) new [%d]%s", newRoute.Src.Id, newRoute.Src.Seqno, metric, via))

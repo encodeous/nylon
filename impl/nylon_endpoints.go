@@ -39,11 +39,11 @@ func (n *Nylon) Probe(e *state.Env, ep *state.DynamicEndpoint) error {
 }
 
 func (n *Nylon) Send(packet []byte, ep *state.DynamicEndpoint) {
-	neigh := n.env.MustGetNode(ep.Node())
+	neigh := n.env.GetRouter(ep.Node())
 	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(), n.Device.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
 }
 
-func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.Node) {
+func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.NodeId) {
 
 	if pkt.ResponseToken == nil {
 		// ping
@@ -72,7 +72,7 @@ func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, en
 	}
 }
 
-func handleProbePing(s *state.State, node state.Node, ep conn.Endpoint) {
+func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	if node == s.Id {
 		return
 	}
@@ -103,7 +103,7 @@ func handleProbePing(s *state.State, node state.Node, ep conn.Endpoint) {
 	return
 }
 
-func handleProbePong(s *state.State, node state.Node, token uint64, ep conn.Endpoint) {
+func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.Endpoint) {
 	n := Get[*Nylon](s)
 	// check if link exists
 	for _, neigh := range s.Neighbours {
@@ -155,14 +155,14 @@ func (n *Nylon) probeLinks(s *state.State, active bool) error {
 func (n *Nylon) probeNew(s *state.State) error {
 	// probe for new dp links
 	for _, peer := range s.GetPeers() {
-		cfg, err := s.GetPubNodeCfg(peer)
-		if err != nil {
+		if !s.IsRouter(peer) {
 			continue
 		}
 		neigh := s.GetNeighbour(peer)
 		if neigh == nil {
 			continue
 		}
+		cfg := s.GetRouter(peer)
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
 		for _, ep := range cfg.Endpoints {
 			if !ep.IsValid() {

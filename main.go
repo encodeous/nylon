@@ -5,7 +5,7 @@ import (
 	"github.com/encodeous/nylon/cmd"
 )
 
-//func mock() (*state.CentralCfg, *state.NodeCfg, error) {
+//func mock() (*state.CentralCfg, *state.LocalCfg, error) {
 //	_, nodeKey, err := ed25519.GenerateKey(nil)
 //	if err != nil {
 //		return nil, nil, err
@@ -29,18 +29,18 @@ import (
 //	}
 //
 //	dpKey, err := ecdh.X25519().GenerateKey(rand.Reader)
-//	mockNode := state.NodeCfg{
+//	mockNode := state.LocalCfg{
 //		Id:    "currentNode",
 //		Key:   state.EdPrivateKey(nodeKey),
 //		WgKey: (*state.EcPrivateKey)(dpKey),
 //		Cert:  state.Cert(ss),
 //	}
 //
-//	mockPubNode := mockNode.GeneratePubCfg()
+//	mockPubNode := mockNode.NewRouterCfg()
 //
 //	mockCentralCfg := state.CentralCfg{
 //		RootPubKey: ss,
-//		Nodes: []state.PubNodeCfg{
+//		Routers: []state.PubNodeCfg{
 //			mockPubNode,
 //		},
 //		Version: 0,

@@ -14,7 +14,7 @@ type NyModule interface {
 // State access must be done only on a single Goroutine
 type State struct {
 	*Env
-	TrustedNodes map[Node]ed25519.PublicKey
+	TrustedNodes map[NodeId]ed25519.PublicKey
 	Modules      map[string]NyModule
 	Neighbours   []*Neighbour
 }
@@ -23,7 +23,7 @@ type State struct {
 type Env struct {
 	DispatchChannel chan<- func(s *State) error
 	CentralCfg
-	NodeCfg
+	LocalCfg
 	Context context.Context
 	Cancel  context.CancelCauseFunc
 	Log     *slog.Logger

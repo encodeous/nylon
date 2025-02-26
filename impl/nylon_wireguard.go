@@ -56,6 +56,7 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	n.Device = dev
 	n.itfName = itfName
 
+	// TODO: fully convert to code-based api
 	err = dev.IpcSet(
 		fmt.Sprintf(
 			`private_key=%s
@@ -71,19 +72,29 @@ allow_inbound=true
 	}
 
 	// add peers
-	for _, neigh := range s.GetPeers() {
-		s.Log.Debug("", "neigh", neigh)
-		ncfg := s.MustGetNode(neigh)
-		peer, err := dev.NewPeer(device.NoisePublicKey(ncfg.PubKey))
+	peers := s.GetPeers()
+	for _, peer := range peers {
+		s.Log.Debug("adding", "peer", peer)
+		ncfg := s.GetNode(peer)
+		wgPeer, err := dev.NewPeer(device.NoisePublicKey(ncfg.PubKey))
 		if err != nil {
 			return err
 		}
-		peer.Start()
+		if s.IsClient(peer) {
+			wgPeer.SetPreferRoaming(true)
+		}
+		wgPeer.Start()
+
+		// seed initial endpoints
+		if s.IsClient(peer) {
+			continue
+		}
+		rcfg := s.GetRouter(peer)
 		endpoints := make([]conn.Endpoint, 0)
-		for _, nep := range ncfg.Endpoints {
+		for _, nep := range rcfg.Endpoints {
 			endpoints = append(endpoints, &conn.StdNetEndpoint{AddrPort: nep})
 		}
-		peer.SetEndpoints(endpoints)
+		wgPeer.SetEndpoints(endpoints)
 	}
 
 	// start uapi for wg command
@@ -109,7 +120,7 @@ allow_inbound=true
 
 	// configure system networking
 
-	selfPrefixes := s.MustGetNode(s.Id).Prefixes
+	selfPrefixes := s.GetRouter(s.Id).Prefixes
 
 	err = sys.InitInterface(itfName)
 	if err != nil {
@@ -126,7 +137,7 @@ allow_inbound=true
 			}
 		}
 
-		for _, peer := range s.CentralCfg.Nodes {
+		for _, peer := range s.CentralCfg.GetNodes() {
 			if peer.Id == s.Id {
 				continue
 			}
@@ -144,7 +155,7 @@ allow_inbound=true
 	n.PolySock = dev.PolyListen(n)
 	s.Log.Info("started polysock listener")
 
-	s.RepeatTask(UpdateWireGuard, state.ProbeDpDelay)
+	s.RepeatTask(UpdateWireGuard, state.ProbeDelay)
 
 	return nil
 }
@@ -159,35 +170,50 @@ func UpdateWireGuard(s *state.State) error {
 	n := Get[*Nylon](s)
 	dev := n.Device
 
-	routesToNeigh := make(map[state.Node][]*state.Route)
+	routesToNeigh := make(map[state.NodeId][]*state.Route)
 	for _, route := range r.Routes {
 		routesToNeigh[route.Nh] = append(routesToNeigh[route.Nh], route)
 	}
 
-	// configure peers
+	// configure peers/routing
 	for neigh, routes := range routesToNeigh {
-		pcfg := s.MustGetNode(neigh)
-		allowedIps := make([]string, 0)
-		for _, route := range routes {
-			cfg, err := s.GetPubNodeCfg(route.Src.Id)
-			if err != nil {
-				continue
+		if neigh == s.Id {
+			// set client allowedIps individually
+			for _, route := range routes {
+				nid := route.Src.Id
+				if s.IsClient(nid) {
+					ccfg := s.GetClient(nid)
+					peer := dev.LookupPeer(device.NoisePublicKey(ccfg.PubKey))
+					for _, prefix := range ccfg.Prefixes {
+						dev.Allowedips.Insert(prefix, peer)
+					}
+				}
 			}
-			for _, prefix := range cfg.Prefixes {
-				allowedIps = append(allowedIps, prefix.String())
+		} else {
+			allowedIps := make([]string, 0)
+			pcfg := s.GetNode(neigh)
+			for _, route := range routes {
+				cfg := s.GetNode(route.Src.Id)
+				for _, prefix := range cfg.Prefixes {
+					allowedIps = append(allowedIps, prefix.String())
+				}
 			}
-		}
-		sort.Strings(allowedIps)
+			sort.Strings(allowedIps)
 
-		peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
-		for _, allowedIp := range allowedIps {
-			dev.Allowedips.Insert(netip.MustParsePrefix(allowedIp), peer)
+			peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
+			for _, allowedIp := range allowedIps {
+				dev.Allowedips.Insert(netip.MustParsePrefix(allowedIp), peer)
+			}
 		}
 	}
 
-	for _, neigh := range s.GetPeers() {
-		pcfg := s.MustGetNode(neigh)
-		nhNeigh := s.GetNeighbour(neigh)
+	// configure endpoints
+	for _, peer := range s.GetPeers() {
+		if s.IsClient(peer) {
+			continue
+		}
+		pcfg := s.GetRouter(peer)
+		nhNeigh := s.GetNeighbour(peer)
 		eps := make([]conn.Endpoint, 0)
 
 		if nhNeigh != nil {
@@ -209,8 +235,8 @@ func UpdateWireGuard(s *state.State) error {
 			}
 		}
 
-		peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
-		peer.SetEndpoints(eps)
+		wgPeer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
+		wgPeer.SetEndpoints(eps)
 	}
 	return nil
 }

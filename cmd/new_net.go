@@ -29,17 +29,30 @@ var netCmd = &cobra.Command{
 
 		centralConfig := state.CentralCfg{
 			RootPubKey: pkey.XPubkey(),
-			Nodes: []state.PubNodeCfg{
+			Routers: []state.RouterCfg{
 				{
-					Id: "samplenode1",
-					Prefixes: []netip.Prefix{
-						netip.MustParsePrefix("10.0.0.1/32"),
-						netip.MustParsePrefix("10.0.0.2/32"),
-						netip.MustParsePrefix("10.1.0.0/16"),
+					NodeCfg: state.NodeCfg{
+						Id: "sample_node1",
+						Prefixes: []netip.Prefix{
+							netip.MustParsePrefix("10.0.0.1/32"),
+							netip.MustParsePrefix("10.0.0.2/32"),
+							netip.MustParsePrefix("10.1.0.0/16"),
+						},
+						PubKey: state.NyPublicKey{},
 					},
-					PubKey: state.NyPublicKey{},
 					Endpoints: []netip.AddrPort{
 						netip.MustParseAddrPort(fmt.Sprintf("8.8.8.8:%d", nodeCfg.Port)),
+					},
+				},
+			},
+			Clients: []state.ClientCfg{
+				{
+					NodeCfg: state.NodeCfg{
+						Id:     "external-client",
+						PubKey: state.NyPublicKey{},
+						Prefixes: []netip.Prefix{
+							netip.MustParsePrefix("10.2.0.1/32"),
+						},
 					},
 				},
 			},

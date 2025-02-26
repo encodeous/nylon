@@ -25,7 +25,7 @@ var runCmd = &cobra.Command{
 			panic(err)
 		}
 
-		var nodeCfg state.NodeCfg
+		var nodeCfg state.LocalCfg
 		file, err = os.ReadFile(nodeConfigPath)
 		if err != nil {
 			panic(err)

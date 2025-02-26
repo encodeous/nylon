@@ -17,7 +17,6 @@ message Ny {
   message Source {
     string Id = 1;
     uint32 Seqno = 2;
-    bytes Sig = 3;
   }
 
   message Probe {

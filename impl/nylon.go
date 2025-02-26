@@ -34,15 +34,18 @@ func (n *Nylon) Init(s *state.State) error {
 	s.Log.Debug("init nylon")
 
 	// add neighbours
-	for _, neigh := range s.GetPeers() {
+	for _, peer := range s.GetPeers() {
+		if !s.IsRouter(peer) {
+			continue
+		}
 		stNeigh := &state.Neighbour{
-			Id:     neigh,
-			Routes: make(map[state.Node]state.PubRoute),
+			Id:     peer,
+			Routes: make(map[state.NodeId]state.PubRoute),
 			Eps:    make([]*state.DynamicEndpoint, 0),
 		}
-		cfg := s.MustGetNode(neigh)
+		cfg := s.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, neigh, false, nil))
+			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, peer, false, nil))
 		}
 
 		s.Neighbours = append(s.Neighbours, stNeigh)
@@ -66,10 +69,15 @@ func (n *Nylon) Init(s *state.State) error {
 	// endpoint probing
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, true)
-	}, state.ProbeDpDelay)
+	}, state.ProbeDelay)
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, false)
-	}, state.ProbeDpInactiveDelay)
+	}, state.DiscoveryDelay)
+
+	err = n.initPassiveClient(s)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -109,8 +109,8 @@ Save:
 	return path
 }
 
-func promptCreateNode() state.NodeCfg {
-	nodeCfg := state.NodeCfg{
+func promptCreateNode() state.LocalCfg {
+	nodeCfg := state.LocalCfg{
 		Key: state.GenerateKey(),
 		Id:  "my-node",
 	}
@@ -119,7 +119,7 @@ func promptCreateNode() state.NodeCfg {
 
 	fmt.Println("Node Configuration")
 	fmt.Println("Give this node a name:")
-	nodeCfg.Id = state.Node(promptDefaultStr("name", string(nodeCfg.Id), state.NameValidator))
+	nodeCfg.Id = state.NodeId(promptDefaultStr("name", string(nodeCfg.Id), state.NameValidator))
 
 	fmt.Println("What port should nylon listen on?:")
 	nodeCfg.Port = promptDefaultPort("[UDP] port", "57175", state.PortValidator)

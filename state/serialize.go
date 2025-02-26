@@ -47,9 +47,9 @@ func (p *Pair[N, M]) UnmarshalText(text []byte) error {
 		return err
 	}
 	switch t := any(p).(type) {
-	case *Pair[Node, Node]:
-		t.V1 = Node(v1)
-		t.V2 = Node(v2)
+	case *Pair[NodeId, NodeId]:
+		t.V1 = NodeId(v1)
+		t.V2 = NodeId(v2)
 	default:
 		return fmt.Errorf("unknown pair type: %T", t)
 	}

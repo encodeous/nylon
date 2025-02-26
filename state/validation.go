@@ -7,10 +7,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 )
 
-var namePattern, _ = regexp.Compile("^[0-9a-z._-]+$")
+var namePattern, _ = regexp.Compile("^[0-9a-z._/-]+$")
 
 func PathValidator(s string) error {
 	_, err := os.Stat(path.Dir(s))
@@ -46,7 +47,7 @@ func AddrValidator(s string) error {
 	return err
 }
 
-func NodeConfigValidator(node *NodeCfg) error {
+func NodeConfigValidator(node *LocalCfg) error {
 	err := NameValidator(string(node.Id))
 	if err != nil {
 		return err
@@ -62,10 +63,23 @@ func NodeConfigValidator(node *NodeCfg) error {
 
 func CentralConfigValidator(cfg *CentralCfg) error {
 	nodes := make([]string, 0)
-	for _, node := range cfg.Nodes {
+	for _, node := range cfg.Routers {
 		err := NameValidator(string(node.Id))
 		if err != nil {
 			return err
+		}
+		if slices.Contains(nodes, string(node.Id)) {
+			return fmt.Errorf("duplicate router id %s", node.Id)
+		}
+		nodes = append(nodes, string(node.Id))
+	}
+	for _, node := range cfg.Clients {
+		err := NameValidator(string(node.Id))
+		if err != nil {
+			return err
+		}
+		if slices.Contains(nodes, string(node.Id)) {
+			return fmt.Errorf("duplicate client id %s", node.Id)
 		}
 		nodes = append(nodes, string(node.Id))
 	}
@@ -77,7 +91,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 	prefixes := make([]netip.Prefix, 0)
 
 	// ensure prefixes do not overlap
-	for _, node := range cfg.Nodes {
+	for _, node := range cfg.Routers {
 		for _, prefix := range node.Prefixes {
 			for _, oPrefix := range prefixes {
 				if oPrefix.Overlaps(prefix) {

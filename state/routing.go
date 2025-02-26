@@ -5,18 +5,17 @@ import (
 	"time"
 )
 
-type Node string
+type NodeId string
 
 type Neighbour struct {
-	Id     Node
-	Routes map[Node]PubRoute
+	Id     NodeId
+	Routes map[NodeId]PubRoute
 	Eps    []*DynamicEndpoint
 }
 
 type Source struct {
-	Id    Node
+	Id    NodeId
 	Seqno uint16 // Sequence Number
-	Sig   []byte // signature
 }
 
 type PubRoute struct {
@@ -29,14 +28,10 @@ type PubRoute struct {
 type Route struct {
 	PubRoute
 	Fd uint16 // feasibility distance
-	Nh Node   // next hop node
+	Nh NodeId // next hop node
 }
 
-func (r *Route) Metric() uint16 {
-	panic("TODO, select best dynamic endpoint and PubMetric")
-}
-
-func (s *State) GetNeighbour(node Node) *Neighbour {
+func (s *State) GetNeighbour(node NodeId) *Neighbour {
 	nIdx := slices.IndexFunc(s.Neighbours, func(neighbour *Neighbour) bool {
 		return neighbour.Id == node
 	})

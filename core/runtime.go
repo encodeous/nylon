@@ -11,11 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"runtime"
 	"syscall"
 	"time"
 )
 
-func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	// create otel environment variables
@@ -49,19 +50,19 @@ func Start(ccfg state.CentralCfg, ncfg state.NodeCfg, logLevel slog.Level) error
 	}))
 
 	s := state.State{
-		TrustedNodes: make(map[state.Node]ed25519.PublicKey),
+		TrustedNodes: make(map[state.NodeId]ed25519.PublicKey),
 		Modules:      make(map[string]state.NyModule),
 		Env: &state.Env{
 			Context:         ctx,
 			Cancel:          cancel,
 			DispatchChannel: dispatch,
 			CentralCfg:      ccfg,
-			NodeCfg:         ncfg,
+			LocalCfg:        ncfg,
 			Log:             logger,
 		},
 	}
 
-	for _, node := range ccfg.Nodes {
+	for _, node := range ccfg.Routers {
 		s.TrustedNodes[node.Id] = node.PubKey[:]
 	}
 
@@ -114,8 +115,8 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 				s.Cancel(err)
 			}
 			elapsed := time.Since(start)
-			if elapsed > time.Millisecond*50 {
-				s.Log.Warn("dispatch took a long time!", "fun", fun, "elapsed", elapsed)
+			if elapsed > time.Millisecond*4 {
+				s.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed)
 			}
 			//s.Log.Debug("done", "elapsed", elapsed)
 		case <-s.Context.Done():

@@ -11,10 +11,11 @@ import (
 
 type Router struct {
 	// list of active neighbours
-	Routes                map[state.Node]*state.Route
-	SeqnoDedup            *ttlcache.Cache[state.Node, state.Source]
+	Routes                map[state.NodeId]*state.Route
+	SeqnoDedup            *ttlcache.Cache[state.NodeId, state.Source]
 	Self                  *state.Source
 	LastStarvationRequest time.Time
+	Clients               []state.NodeId
 }
 
 func (r *Router) Cleanup(s *state.State) error {
@@ -29,12 +30,11 @@ func (r *Router) Init(s *state.State) error {
 	r.Self = &state.Source{
 		Id:    s.Id,
 		Seqno: 0,
-		Sig:   nil,
 	}
-	r.Routes = make(map[state.Node]*state.Route)
-	r.SeqnoDedup = ttlcache.New[state.Node, state.Source](
-		ttlcache.WithTTL[state.Node, state.Source](state.SeqnoDedupTTL),
-		ttlcache.WithDisableTouchOnHit[state.Node, state.Source](),
+	r.Routes = make(map[state.NodeId]*state.Route)
+	r.SeqnoDedup = ttlcache.New[state.NodeId, state.Source](
+		ttlcache.WithTTL[state.NodeId, state.Source](state.SeqnoDedupTTL),
+		ttlcache.WithDisableTouchOnHit[state.NodeId, state.Source](),
 	)
 	go r.SeqnoDedup.Start()
 	return nil
@@ -46,6 +46,8 @@ func fullRouteUpdate(s *state.State) error {
 	if err != nil {
 		return err
 	}
+
+	dbgPrintRouteTable(s)
 
 	// broadcast routes
 
@@ -69,7 +71,7 @@ func fullRouteUpdate(s *state.State) error {
 	return nil
 }
 
-func pushSeqnoUpdate(s *state.State, sources []state.Node) error {
+func pushSeqnoUpdate(s *state.State, sources []state.NodeId) error {
 	if len(sources) == 0 {
 		return nil
 	}
@@ -103,8 +105,7 @@ func pushSeqnoUpdate(s *state.State, sources []state.Node) error {
 func updateRoutes(s *state.State) error {
 	r := Get[*Router](s)
 	retractions := make([]*protocol.Ny_Update, 0)
-
-	improvedSeqno := make([]state.Node, 0)
+	improvedSeqno := make([]state.NodeId, 0)
 
 	// basically bellman ford algorithm
 
@@ -254,6 +255,20 @@ func updateRoutes(s *state.State) error {
 			}
 		}
 	}
+
+	// retract published client routes
+	for src, route := range r.Routes {
+		if route.Nh == s.Id && !slices.Contains(r.Clients, src) && !route.Retracted {
+			route.Retracted = true
+			route.PubMetric = state.INF
+			retractions = append(retractions, &protocol.Ny_Update{
+				Source: mapToPktSource(&route.Src),
+				Metric: uint32(state.INF),
+			})
+			dbgPrintRouteChanges(s, route, nil, s.Id, state.INF)
+		}
+	}
+
 	slices.Sort(improvedSeqno)
 	improvedSeqno = slices.Compact(improvedSeqno)
 	if len(improvedSeqno) > 0 {
@@ -276,12 +291,18 @@ func checkStarvation(s *state.State) error {
 	// check for starvation
 	if time.Now().Sub(r.LastStarvationRequest) > state.StarvationDelay {
 		for node, route := range r.Routes {
-			neigh := s.GetNeighbour(route.Nh)
 			bestMetric := state.INF
-			bestEp := neigh.BestEndpoint()
-			if bestEp != nil {
-				bestMetric = bestEp.Metric()
+			if route.Nh == s.Id {
+				// for clients directly connected to the current node
+				bestMetric = route.PubMetric
+			} else {
+				neigh := s.GetNeighbour(route.Nh)
+				bestEp := neigh.BestEndpoint()
+				if bestEp != nil {
+					bestMetric = bestEp.Metric()
+				}
 			}
+
 			if bestMetric == state.INF || route.PubMetric == state.INF {
 				// we dont have a valid route to this node
 				starved = true
@@ -298,6 +319,87 @@ func checkStarvation(s *state.State) error {
 	}
 	if starved {
 		r.LastStarvationRequest = time.Now()
+	}
+	return nil
+}
+
+func (r *Router) updatePassiveClient(client state.NodeId) {
+	// inserts an artificial route into the table
+	if _, ok := r.Routes[client]; !ok {
+		r.Routes[client] = &state.Route{
+			PubRoute: state.PubRoute{
+				Src: state.Source{
+					Id:    client,
+					Seqno: 0,
+				},
+			},
+		}
+	}
+	// since the client can only connect to a single node, we know we have the best link to it
+	k := r.Routes[client]
+	k.PubMetric = 0
+	k.Fd = 0
+	k.Nh = r.Self.Id
+	k.Retracted = false
+	k.LastPublished = time.Now()
+}
+
+// packet handlers
+func routerHandleRouteUpdate(s *state.State, node state.NodeId, pkt *protocol.Ny_UpdateBundle) error {
+	neigh := s.GetNeighbour(node)
+	hasRetractions := false
+	for _, update := range pkt.Updates {
+		cur, ok := neigh.Routes[state.NodeId(update.Source.Id)]
+		if ok {
+			hasRetractions = hasRetractions || !cur.Retracted && update.Metric == uint32(state.INF)
+		}
+		neigh.Routes[state.NodeId(update.Source.Id)] = state.PubRoute{
+			Src:           mapFromPktSource(update.Source),
+			PubMetric:     uint16(update.Metric),
+			Retracted:     update.Metric == uint32(state.INF),
+			LastPublished: time.Now(),
+		}
+	}
+	if hasRetractions || pkt.SeqnoPush {
+		return updateRoutes(s)
+	}
+	return nil
+}
+
+func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.Ny_Source) error {
+	r := Get[*Router](s)
+	src := mapFromPktSource(pkt)
+
+	var fSrc *state.Source
+
+	froute, ok := r.Routes[src.Id]
+
+	if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
+		fSrc = &froute.Src
+	} else if s.Id == src.Id {
+		if SeqnoLe(r.Self.Seqno, src.Seqno) {
+			r.Self.Seqno = src.Seqno + 1
+		}
+		fSrc = r.Self
+	} else if slices.Contains(r.Clients, src.Id) {
+		// client is directly connected to us!
+		clientSrc := &r.Routes[src.Id].Src
+		if SeqnoLe(clientSrc.Seqno, src.Seqno) {
+			clientSrc.Seqno = src.Seqno + 1
+		}
+		fSrc = clientSrc
+	}
+
+	if fSrc != nil {
+		// we have a better one cached, we can respond to this request
+		return pushSeqnoUpdate(s, []state.NodeId{fSrc.Id})
+	} else {
+		prev := r.SeqnoDedup.Get(src.Id)
+		if prev != nil && SeqnoGe(prev.Value().Seqno, src.Seqno) {
+			return nil // we have already sent such a request before
+		}
+		r.SeqnoDedup.Set(src.Id, src, ttlcache.DefaultTTL)
+		broadcastSeqnoRequest(s, pkt)
 	}
 	return nil
 }

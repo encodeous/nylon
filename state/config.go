@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"net/netip"
@@ -10,41 +9,61 @@ import (
 	"strings"
 )
 
-// PubNodeCfg represents a central representation of a node
-type PubNodeCfg struct {
-	Id        Node
-	Prefixes  []netip.Prefix
-	PubKey    NyPublicKey
-	Endpoints []netip.AddrPort
+type NodeCfg struct {
+	Id       NodeId
+	PubKey   NyPublicKey
+	Prefixes []netip.Prefix
 }
 
+// RouterCfg represents a central representation of a node that can route
+type RouterCfg struct {
+	NodeCfg   `yaml:",inline"`
+	Endpoints []netip.AddrPort
+}
+type ClientCfg struct {
+	NodeCfg `yaml:",inline"`
+}
 type CentralCfg struct {
 	// the public key of the root CA
 	RootPubKey NyPublicKey
-	Nodes      []PubNodeCfg
+	Routers    []RouterCfg
+	Clients    []ClientCfg
 	Graph      []string
 	Version    uint64
 }
 
+func (c *CentralCfg) GetNodes() []NodeCfg {
+	nodes := make([]NodeCfg, 0)
+	for _, n := range c.Routers {
+		nodes = append(nodes, n.NodeCfg)
+	}
+	for _, n := range c.Clients {
+		nodes = append(nodes, n.NodeCfg)
+	}
+	return nodes
+}
+
 // TODO: Allow node to be configured to NOT be a router
-// NodeCfg represents local node-level configuration
-type NodeCfg struct {
+// LocalCfg represents local node-level configuration
+type LocalCfg struct {
 	// Node Private Key
 	Key NyPrivateKey
-	Id  Node
+	Id  NodeId
 	// Address that the data plane can be accessed by
 	Port uint16
 }
 
-func (n NodeCfg) GeneratePubCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) PubNodeCfg {
+func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) RouterCfg {
 	extDp := netip.AddrPortFrom(extIp, port)
-	cfg := PubNodeCfg{
-		Id: n.Id,
+	cfg := RouterCfg{
+		NodeCfg: NodeCfg{
+			Id: n.Id,
+			Prefixes: []netip.Prefix{
+				nylonIp,
+			},
+		},
 		Endpoints: []netip.AddrPort{
 			extDp,
-		},
-		Prefixes: []netip.Prefix{
-			nylonIp,
 		},
 	}
 	cfg.PubKey = n.Key.XPubkey()
@@ -81,10 +100,10 @@ Group1, Group1 // every node is connected to every other node
 
 node8, node9 // node8 and node9 will be connected
 */
-func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
-	// why can't we just have unordered_set<Pair<Node, Node>> :(
+func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) {
+	// why can't we just have unordered_set<Pair<NodeId, NodeId>> :(
 
-	pairings := make([]Pair[Node, Node], 0)
+	pairings := make([]Pair[NodeId, NodeId], 0)
 
 	groups := make(map[string][]string)
 
@@ -113,25 +132,25 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
 			if err != nil {
 				return nil, err
 			}
-			interconnectNodes := make([]Node, 0)
+			interconnectNodes := make([]NodeId, 0)
 			for _, name := range names {
 				if slices.Contains(nodes, name) {
 					for _, node := range interconnectNodes {
-						if node != Node(name) {
-							pairings = append(pairings, makeSortedPair(node, Node(name)))
+						if node != NodeId(name) {
+							pairings = append(pairings, makeSortedPair(node, NodeId(name)))
 						}
 					}
-					interconnectNodes = append(interconnectNodes, Node(name))
+					interconnectNodes = append(interconnectNodes, NodeId(name))
 				} else {
 					for _, node := range interconnectNodes {
 						for _, grpNode := range groups[name] {
-							if node != Node(grpNode) {
-								pairings = append(pairings, makeSortedPair(node, Node(grpNode)))
+							if node != NodeId(grpNode) {
+								pairings = append(pairings, makeSortedPair(node, NodeId(grpNode)))
 							}
 						}
 					}
 					for _, grpNode := range groups[name] {
-						interconnectNodes = append(interconnectNodes, Node(grpNode))
+						interconnectNodes = append(interconnectNodes, NodeId(grpNode))
 					}
 				}
 			}
@@ -146,35 +165,43 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[Node, Node], error) {
 	return pairings, nil
 }
 
-func makeSortedPair(a Node, b Node) Pair[Node, Node] {
+func makeSortedPair(a NodeId, b NodeId) Pair[NodeId, NodeId] {
 	if strings.Compare(string(a), string(b)) < 0 {
-		return Pair[Node, Node]{a, b}
+		return Pair[NodeId, NodeId]{a, b}
 	} else {
-		return Pair[Node, Node]{b, a}
+		return Pair[NodeId, NodeId]{b, a}
 	}
 }
 
-func (e Env) GetNodeBy(pkey NyPublicKey) *PubNodeCfg {
-	for _, n := range e.Nodes {
+func (e Env) FindNodeBy(pkey NyPublicKey) *NodeId {
+	for _, n := range e.Routers {
 		if n.PubKey == pkey {
-			return &n
+			return &n.Id
+		}
+	}
+	for _, n := range e.Clients {
+		if n.PubKey == pkey {
+			return &n.Id
 		}
 	}
 	return nil
 }
 
-func (e Env) GetPeers() []Node {
+func (e Env) GetPeers() []NodeId {
 	allNodes := make([]string, 0)
-	for _, node := range e.Nodes {
+	for _, node := range e.Routers {
+		allNodes = append(allNodes, string(node.Id))
+	}
+	for _, node := range e.Clients {
 		allNodes = append(allNodes, string(node.Id))
 	}
 	graph, err := ParseGraph(e.Graph, allNodes)
 	if err != nil {
 		panic(err)
 	}
-	nodes := make([]Node, 0)
+	nodes := make([]NodeId, 0)
 	for _, edge := range graph {
-		var neighNode Node
+		var neighNode NodeId
 		if edge.V1 == e.Id {
 			neighNode = edge.V2
 		}
@@ -188,24 +215,58 @@ func (e Env) GetPeers() []Node {
 	return nodes
 }
 
-func (e Env) GetPubNodeCfg(node Node) (PubNodeCfg, error) {
-	idx := slices.IndexFunc(e.Nodes, func(cfg PubNodeCfg) bool {
+func (e Env) IsRouter(node NodeId) bool {
+	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
-	if idx == -1 {
-		return PubNodeCfg{}, errors.New("node " + string(node) + " not found")
-	}
-
-	return e.Nodes[idx], nil
+	return idx != -1
 }
 
-func (e Env) MustGetNode(node Node) PubNodeCfg {
-	idx := slices.IndexFunc(e.Nodes, func(cfg PubNodeCfg) bool {
+func (e Env) IsClient(node NodeId) bool {
+	idx := slices.IndexFunc(e.Clients, func(cfg ClientCfg) bool {
+		return cfg.Id == node
+	})
+	return idx != -1
+}
+
+func (e Env) IsNode(node NodeId) bool {
+	return e.IsRouter(node) || e.IsClient(node)
+}
+
+func (e Env) GetNode(node NodeId) NodeCfg {
+	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
 	if idx == -1 {
-		panic("node " + string(node) + " not found")
+		idx = slices.IndexFunc(e.Clients, func(cfg ClientCfg) bool {
+			return cfg.Id == node
+		})
+		if idx == -1 {
+			panic("node " + string(node) + " not found")
+		}
+		return e.Clients[idx].NodeCfg
+	}
+	return e.Routers[idx].NodeCfg
+}
+
+func (e Env) GetRouter(node NodeId) RouterCfg {
+	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
+		return cfg.Id == node
+	})
+	if idx == -1 {
+		panic("router " + string(node) + " not found")
 	}
 
-	return e.Nodes[idx]
+	return e.Routers[idx]
+}
+
+func (e Env) GetClient(node NodeId) ClientCfg {
+	idx := slices.IndexFunc(e.Clients, func(cfg ClientCfg) bool {
+		return cfg.Id == node
+	})
+	if idx == -1 {
+		panic("client " + string(node) + " not found")
+	}
+
+	return e.Clients[idx]
 }

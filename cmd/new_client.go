@@ -1,0 +1,68 @@
+package cmd
+
+import (
+	"fmt"
+	"github.com/encodeous/nylon/state"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+	"os"
+	"strings"
+)
+
+// netCmd represents the net command
+var clientCmd = &cobra.Command{
+	Use:   "new-client",
+	Short: "Create a new passive WireGuard client",
+	Run: func(cmd *cobra.Command, args []string) {
+		var centralCfg state.CentralCfg
+		file, err := os.ReadFile(centralConfigPath)
+		if err != nil {
+			panic(err)
+		}
+		err = yaml.Unmarshal(file, &centralCfg)
+		if err != nil {
+			panic(err)
+		}
+
+		err = state.CentralConfigValidator(&centralCfg)
+		if err != nil {
+			panic(err)
+		}
+
+		pkey := state.GenerateKey()
+
+		sb := strings.Builder{}
+		sb.WriteString("[Interface]\n")
+		out, _ := pkey.MarshalText()
+		sb.WriteString(fmt.Sprintf("PrivateKey = %s\n", string(out)))
+		sb.WriteString("Address = <your prefix>\n\n")
+		sb.WriteString("[Peer]\n")
+		sb.WriteString("PersistentKeepalive = 25\n")
+		sb.WriteString("PublicKey = <choose gateway router from central config>\n")
+		sb.WriteString("Endpoint = <choose gateway router from central config>\n")
+		allowedIps := make([]string, 0)
+		for _, node := range centralCfg.GetNodes() {
+			for _, prefix := range node.Prefixes {
+				allowedIps = append(allowedIps, prefix.String())
+			}
+		}
+		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
+
+		fmt.Println("WireGuard Client Configuration:")
+		fmt.Printf(sb.String())
+		fmt.Println("Please add this client's public key to the central config.")
+		out, _ = pkey.XPubkey().MarshalText()
+		fmt.Printf(`clients:
+  - id: your-client
+    pubkey: %s
+    prefixes:
+      - <your prefix>
+
+`, string(out))
+	},
+	GroupID: "init",
+}
+
+func init() {
+	rootCmd.AddCommand(clientCmd)
+}

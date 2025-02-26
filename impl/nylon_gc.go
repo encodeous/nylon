@@ -28,5 +28,10 @@ func nylonGc(s *state.State) error {
 			}
 		}
 	}
+
+	err := cleanPassivePeers(s)
+	if err != nil {
+		return err
+	}
 	return nil
 }
