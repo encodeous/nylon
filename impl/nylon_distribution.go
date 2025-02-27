@@ -12,7 +12,10 @@ import (
 
 // responsible for central config distribution
 func checkForConfigUpdates(s *state.State) error {
-	for _, repoStr := range s.Repos {
+	if s.Dist == nil {
+		return errors.New("nylon is not configured for automatic config distribution")
+	}
+	for _, repoStr := range s.Dist.Repos {
 		repo, err := url.Parse(repoStr)
 		if err != nil {
 			return err
@@ -43,7 +46,7 @@ func checkForConfigUpdates(s *state.State) error {
 					}
 				}
 
-				config, err := state.UnbundleConfig(string(cfgBody), e.RootKey)
+				config, err := state.UnbundleConfig(string(cfgBody), e.Dist.Key)
 				if err != nil {
 					return err
 				}

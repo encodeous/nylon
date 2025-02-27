@@ -106,11 +106,13 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		}
 	}
 
-	// validate repos
-	for _, repo := range cfg.Repos {
-		_, err := url.Parse(repo)
-		if err != nil {
-			return err
+	if cfg.Dist != nil {
+		// validate repos
+		for _, repo := range cfg.Dist.Repos {
+			_, err := url.Parse(repo)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -27,10 +27,14 @@ type RouterCfg struct {
 type ClientCfg struct {
 	NodeCfg `yaml:",inline"`
 }
+
+type DistributionCfg struct {
+	Key   NyPublicKey // also used as shared secret, so, although its "public", it's not a good idea to share it.
+	Repos []string
+}
+
 type CentralCfg struct {
-	// the public key of the root CA
-	RootKey   NyPublicKey
-	Repos     []string
+	Dist      *DistributionCfg `yaml:",omitempty"`
 	Routers   []RouterCfg
 	Clients   []ClientCfg
 	Graph     []string

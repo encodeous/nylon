@@ -29,7 +29,13 @@ var netCmd = &cobra.Command{
 		pkey := state.GenerateKey()
 
 		centralConfig := state.CentralCfg{
-			RootKey: pkey.XPubkey(),
+			Dist: &state.DistributionCfg{
+				Key: pkey.XPubkey(),
+				Repos: []string{
+					"file:~/.nylon/central.nybundle",
+					"https://127.0.0.1:8000/example/central.nybundle",
+				},
+			},
 			Routers: []state.RouterCfg{
 				{
 					NodeCfg: state.NodeCfg{
