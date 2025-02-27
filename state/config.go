@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+var NodeConfigPath = "./node.yaml"
+var CentralConfigPath = "./central.yaml"
+var CentralKeyPath = "./central.key"
+
 type NodeCfg struct {
 	Id       NodeId
 	PubKey   NyPublicKey
@@ -25,11 +29,12 @@ type ClientCfg struct {
 }
 type CentralCfg struct {
 	// the public key of the root CA
-	RootPubKey NyPublicKey
-	Routers    []RouterCfg
-	Clients    []ClientCfg
-	Graph      []string
-	Version    uint64
+	RootKey   NyPublicKey
+	Repos     []string
+	Routers   []RouterCfg
+	Clients   []ClientCfg
+	Graph     []string
+	Timestamp int64
 }
 
 func (c *CentralCfg) GetNodes() []NodeCfg {

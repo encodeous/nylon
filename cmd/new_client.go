@@ -16,7 +16,7 @@ var clientCmd = &cobra.Command{
 	Short: "Create a new passive WireGuard client",
 	Run: func(cmd *cobra.Command, args []string) {
 		var centralCfg state.CentralCfg
-		file, err := os.ReadFile(centralConfigPath)
+		file, err := os.ReadFile(state.CentralConfigPath)
 		if err != nil {
 			panic(err)
 		}

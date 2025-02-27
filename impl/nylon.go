@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"net"
 	"time"
 )
 
@@ -24,6 +25,7 @@ type Nylon struct {
 	PolySock *device.PolySock
 	PingBuf  *ttlcache.Cache[uint64, EpPing]
 	Device   *device.Device
+	wgUapi   net.Listener
 	env      *state.Env
 	itfName  string
 }
@@ -72,13 +74,21 @@ func (n *Nylon) Init(s *state.State) error {
 	}, state.ProbeDelay)
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, false)
-	}, state.DiscoveryDelay)
+	}, state.ProbeRecoveryDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		return n.probeNew(s)
+	}, state.ProbeDiscoveryDelay)
 
 	err = n.initPassiveClient(s)
 	if err != nil {
 		return err
 	}
 
+	// check for central config updates
+	for _, repo := range s.Repos {
+		s.Log.Info("config source", "repo", repo)
+	}
+	s.Env.RepeatTask(checkForConfigUpdates, state.CentralUpdateDelay)
 	return nil
 }
 

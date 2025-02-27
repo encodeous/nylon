@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"net/netip"
 	"os"
+	"time"
 )
 
 // netCmd represents the net command
@@ -20,7 +21,7 @@ var netCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(nodeConfigPath, ncfg, 0700)
+		err = os.WriteFile(state.NodeConfigPath, ncfg, 0700)
 		if err != nil {
 			panic(err)
 		}
@@ -28,7 +29,7 @@ var netCmd = &cobra.Command{
 		pkey := state.GenerateKey()
 
 		centralConfig := state.CentralCfg{
-			RootPubKey: pkey.XPubkey(),
+			RootKey: pkey.XPubkey(),
 			Routers: []state.RouterCfg{
 				{
 					NodeCfg: state.NodeCfg{
@@ -61,18 +62,18 @@ var netCmd = &cobra.Command{
 				"Group2 = node5, node6",
 				"Group1, Group2, node7",
 			},
-			Version: 0,
+			Timestamp: time.Now().UnixNano(),
 		}
 
 		fmt.Println("Where should the central config be saved?:")
-		centralConfigPath = safeSaveFile(centralConfigPath, "Central Config")
+		state.CentralConfigPath = safeSaveFile(state.CentralConfigPath, "Central Config")
 		fmt.Println("Where should the central key be saved?:")
-		centralKeyPath = safeSaveFile(centralKeyPath, "Central Key")
+		state.CentralKeyPath = safeSaveFile(state.CentralKeyPath, "Central Key")
 		ccfg, err := yaml.Marshal(&centralConfig)
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(centralConfigPath, ccfg, 0700)
+		err = os.WriteFile(state.CentralConfigPath, ccfg, 0700)
 		if err != nil {
 			panic(err)
 		}
@@ -81,7 +82,7 @@ var netCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(centralKeyPath, key, 0700)
+		err = os.WriteFile(state.CentralKeyPath, key, 0700)
 		if err != nil {
 			panic(err)
 		}

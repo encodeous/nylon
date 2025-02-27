@@ -28,6 +28,7 @@ nylon
 central.key
 central.yaml
 node.yaml
+central.nybundle
 
 distribute.sh
 distribute-conf.sh

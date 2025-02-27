@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -102,6 +103,14 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 				}
 			}
 			prefixes = append(prefixes, prefix)
+		}
+	}
+
+	// validate repos
+	for _, repo := range cfg.Repos {
+		_, err := url.Parse(repo)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

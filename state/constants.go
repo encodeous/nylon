@@ -7,7 +7,8 @@ const (
 	HopCost                        = (uint16)(5) // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
 	RouteUpdateDelay               = time.Second * 5
 	ProbeDelay                     = time.Millisecond * 500
-	DiscoveryDelay                 = time.Millisecond * 1500
+	ProbeRecoveryDelay             = time.Millisecond * 1500
+	ProbeDiscoveryDelay            = time.Second * 10
 	LinkSwitchMetricCostMultiplier = 1.10
 	StarvationDelay                = time.Millisecond * 100
 	SeqnoDedupTTL                  = time.Second * 3
@@ -25,4 +26,7 @@ const (
 	// client configuration
 	ClientKeepaliveInterval = 25 * time.Second
 	ClientDeadThreshold     = 3 * ClientKeepaliveInterval
+
+	// central updates
+	CentralUpdateDelay = time.Second * 10
 )

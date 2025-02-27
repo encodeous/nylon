@@ -16,14 +16,14 @@ import (
 	"time"
 )
 
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) error {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	// create otel environment variables
 	if _, ok := os.LookupEnv("OTEL_SERVICE_NAME"); !ok {
 		err := os.Setenv("OTEL_SERVICE_NAME", "nylon")
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
@@ -40,13 +40,14 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) erro
 	dispatch := make(chan func(env *state.State) error)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level: logLevel,
-		//AddSource:    true,
-
-		AddSource:  false,
-		TimeFormat: "",
-
-		CustomPrefix: string(ncfg.Id),
+		Level:     logLevel,
+		AddSource: false,
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if attr.Key == "time" {
+				return slog.Attr{}
+			}
+			return attr
+		},
 	}))
 
 	s := state.State{
@@ -69,7 +70,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) erro
 	s.Log.Info("init modules")
 	err := initModules(&s)
 	if err != nil {
-		return err
+		return false, err
 	}
 	s.Log.Info("init modules complete")
 
@@ -84,7 +85,15 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) erro
 		}
 	}()
 
-	return MainLoop(&s, dispatch)
+	err = MainLoop(&s, dispatch)
+	if err != nil {
+		return false, err
+	}
+	if s.Updating.Load() {
+		s.Log.Info("Restarting Nylon...")
+		return true, nil
+	}
+	return false, nil
 }
 
 func initModules(s *state.State) error {

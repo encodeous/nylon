@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/encodeous/nylon/state"
 	"gopkg.in/yaml.v3"
 	"os"
 
@@ -18,7 +19,7 @@ var joinCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(nodeConfigPath, ncfg, 0700)
+		err = os.WriteFile(state.NodeConfigPath, ncfg, 0700)
 		if err != nil {
 			panic(err)
 		}

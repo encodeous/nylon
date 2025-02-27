@@ -131,7 +131,7 @@ func promptCreateNode() state.LocalCfg {
 	fmt.Printf("Your node public key is: %s. Add this to the central config on every node\n", string(pkStr))
 
 	fmt.Println("Where should the node config be saved?:")
-	nodeConfigPath = safeSaveFile(nodeConfigPath, "Node Config")
+	state.NodeConfigPath = safeSaveFile(state.NodeConfigPath, "Node Config")
 	return nodeCfg
 }
 

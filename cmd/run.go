@@ -15,8 +15,9 @@ var runCmd = &cobra.Command{
 	Short: "Run nylon",
 	Long:  `This will run nylon on the current host. Ensure it has enough permissions to interact with in-kernel WireGuard.`,
 	Run: func(cmd *cobra.Command, args []string) {
+	start:
 		var centralCfg state.CentralCfg
-		file, err := os.ReadFile(centralConfigPath)
+		file, err := os.ReadFile(state.CentralConfigPath)
 		if err != nil {
 			panic(err)
 		}
@@ -26,7 +27,7 @@ var runCmd = &cobra.Command{
 		}
 
 		var nodeCfg state.LocalCfg
-		file, err = os.ReadFile(nodeConfigPath)
+		file, err = os.ReadFile(state.NodeConfigPath)
 		if err != nil {
 			panic(err)
 		}
@@ -49,9 +50,12 @@ var runCmd = &cobra.Command{
 			level = slog.LevelDebug
 		}
 
-		err = core.Start(centralCfg, nodeCfg, level)
+		restart, err := core.Start(centralCfg, nodeCfg, level)
 		if err != nil {
 			panic(err)
+		}
+		if restart {
+			goto start
 		}
 	},
 	GroupID: "ny",
@@ -77,4 +81,5 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "lwg", "w", false, "Outputs wireguard logs to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "lrepo", "", false, "Outputs repo updates to the console")
 }

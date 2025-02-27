@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"log/slog"
+	"sync/atomic"
 )
 
 type NyModule interface {
@@ -24,7 +25,8 @@ type Env struct {
 	DispatchChannel chan<- func(s *State) error
 	CentralCfg
 	LocalCfg
-	Context context.Context
-	Cancel  context.CancelCauseFunc
-	Log     *slog.Logger
+	Context  context.Context
+	Cancel   context.CancelCauseFunc
+	Log      *slog.Logger
+	Updating atomic.Bool
 }

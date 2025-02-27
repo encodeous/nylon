@@ -136,7 +136,7 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 }
 
 func (n *Nylon) probeLinks(s *state.State, active bool) error {
-	// probe active links
+	// probe links
 	for _, neigh := range s.Neighbours {
 		for _, dpLink := range neigh.Eps {
 			if dpLink.IsActive() == active {

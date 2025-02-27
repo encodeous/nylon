@@ -39,7 +39,7 @@ import (
 //	mockPubNode := mockNode.NewRouterCfg()
 //
 //	mockCentralCfg := state.CentralCfg{
-//		RootPubKey: ss,
+//		RootKey: ss,
 //		Routers: []state.PubNodeCfg{
 //			mockPubNode,
 //		},

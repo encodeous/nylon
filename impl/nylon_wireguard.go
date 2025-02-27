@@ -105,12 +105,14 @@ allow_inbound=true
 	if err != nil {
 		return err
 	}
+	n.wgUapi = uapi
 
 	go func() {
-		for {
+		for s.Context.Err() == nil {
 			accept, err := uapi.Accept()
 			if err != nil {
-				s.Env.Log.Error(err.Error())
+				s.Env.Log.Debug(err.Error())
+				continue
 			}
 			go dev.IpcHandle(accept)
 		}
@@ -172,6 +174,10 @@ allow_inbound=true
 
 func (n *Nylon) cleanupWireGuard(s *state.State) error {
 	n.Device.Close()
+	err := n.wgUapi.Close()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

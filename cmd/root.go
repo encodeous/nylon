@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -15,10 +16,6 @@ At its core, nylon ensures nodes are reachable even under the most difficult net
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
 }
-
-var nodeConfigPath = "./node.yaml"
-var centralConfigPath = "./central.yaml"
-var centralKeyPath = "./central.key"
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
@@ -42,9 +39,9 @@ func init() {
 		ID:    "ny",
 		Title: "Nylon Commands",
 	})
-	rootCmd.PersistentFlags().StringVarP(&nodeConfigPath, "node-config", "n", nodeConfigPath, "node-specific config")
-	rootCmd.PersistentFlags().StringVarP(&centralConfigPath, "central-config", "c", centralConfigPath, "network-global config")
-	rootCmd.PersistentFlags().StringVarP(&centralKeyPath, "central-key", "k", centralKeyPath, "network-global administration key")
+	rootCmd.PersistentFlags().StringVarP(&state.NodeConfigPath, "node-config", "n", state.NodeConfigPath, "node-specific config")
+	rootCmd.PersistentFlags().StringVarP(&state.CentralConfigPath, "central-config", "c", state.CentralConfigPath, "network-global config")
+	rootCmd.PersistentFlags().StringVarP(&state.CentralKeyPath, "central-key", "k", state.CentralKeyPath, "network-global administration key")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
