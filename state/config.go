@@ -180,7 +180,7 @@ func makeSortedPair(a NodeId, b NodeId) Pair[NodeId, NodeId] {
 	}
 }
 
-func (e Env) FindNodeBy(pkey NyPublicKey) *NodeId {
+func (e *Env) FindNodeBy(pkey NyPublicKey) *NodeId {
 	for _, n := range e.Routers {
 		if n.PubKey == pkey {
 			return &n.Id
@@ -194,7 +194,7 @@ func (e Env) FindNodeBy(pkey NyPublicKey) *NodeId {
 	return nil
 }
 
-func (e Env) GetPeers() []NodeId {
+func (e *Env) GetPeers() []NodeId {
 	allNodes := make([]string, 0)
 	for _, node := range e.Routers {
 		allNodes = append(allNodes, string(node.Id))
@@ -222,25 +222,25 @@ func (e Env) GetPeers() []NodeId {
 	return nodes
 }
 
-func (e Env) IsRouter(node NodeId) bool {
+func (e *Env) IsRouter(node NodeId) bool {
 	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
 	return idx != -1
 }
 
-func (e Env) IsClient(node NodeId) bool {
+func (e *Env) IsClient(node NodeId) bool {
 	idx := slices.IndexFunc(e.Clients, func(cfg ClientCfg) bool {
 		return cfg.Id == node
 	})
 	return idx != -1
 }
 
-func (e Env) IsNode(node NodeId) bool {
+func (e *Env) IsNode(node NodeId) bool {
 	return e.IsRouter(node) || e.IsClient(node)
 }
 
-func (e Env) GetNode(node NodeId) NodeCfg {
+func (e *Env) GetNode(node NodeId) NodeCfg {
 	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
@@ -256,7 +256,7 @@ func (e Env) GetNode(node NodeId) NodeCfg {
 	return e.Routers[idx].NodeCfg
 }
 
-func (e Env) GetRouter(node NodeId) RouterCfg {
+func (e *Env) GetRouter(node NodeId) RouterCfg {
 	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
@@ -267,7 +267,7 @@ func (e Env) GetRouter(node NodeId) RouterCfg {
 	return e.Routers[idx]
 }
 
-func (e Env) GetClient(node NodeId) ClientCfg {
+func (e *Env) GetClient(node NodeId) ClientCfg {
 	idx := slices.IndexFunc(e.Clients, func(cfg ClientCfg) bool {
 		return cfg.Id == node
 	})

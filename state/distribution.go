@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// BundleConfig first signs the config with the root private key, ensuring the authenticity, then encrypts the message using the root public key, offering some level of privacy. (assuming the root public key is not shared widely)
+// BundleConfig first signs the config with the root private key, ensuring the authenticity, then encrypts the message using the bytes of the root public key as the shared key, offering some level of privacy. (assuming the root public key is not shared widely)
 func BundleConfig(config string, rootKey NyPrivateKey) (string, error) {
 	cfg := CentralCfg{}
 	err := yaml.Unmarshal([]byte(config), &cfg)
