@@ -9,7 +9,6 @@ import (
 
 var bundlePath string
 
-// joinCmd represents the node command
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Bundles provided bundle against the public key",

@@ -10,7 +10,6 @@ import (
 	"strings"
 )
 
-// netCmd represents the net command
 var clientCmd = &cobra.Command{
 	Use:   "new-client",
 	Short: "Create a new passive WireGuard client",

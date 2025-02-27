@@ -7,7 +7,6 @@ import (
 	"os"
 )
 
-// joinCmd represents the node command
 var bundleCmd = &cobra.Command{
 	Use:   "bundle",
 	Short: "Bundles the current central configuration, ready for distribution across nodes",

@@ -224,7 +224,7 @@ func UpdateWireGuard(s *state.State) error {
 	}
 
 	// configure endpoints
-	for _, peer := range s.GetPeers() {
+	for _, peer := range slices.Sorted(slices.Values(s.GetPeers())) {
 		if s.IsClient(peer) {
 			continue
 		}
