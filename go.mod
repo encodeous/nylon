@@ -1,8 +1,6 @@
 module github.com/encodeous/nylon
 
-go 1.23.1
-
-toolchain go1.23.4
+go 1.24
 
 require (
 	github.com/encodeous/polyamide v0.0.0-20250226093539-92089e31ccf8
