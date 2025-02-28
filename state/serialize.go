@@ -30,7 +30,7 @@ func (k *NyPublicKey) UnmarshalText(text []byte) error {
 }
 
 func (p Pair[N, M]) MarshalText() ([]byte, error) {
-	return []byte(fmt.Sprintf("%s, %s", p.V1, p.V2)), nil
+	return []byte(fmt.Sprintf("%v, %v", p.V1, p.V2)), nil
 }
 func (p *Pair[N, M]) UnmarshalText(text []byte) error {
 	str := string(text)

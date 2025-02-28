@@ -149,7 +149,7 @@ func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
 
 	if DBG_write_metric_history {
 		writeHeader := false
-		fname := fmt.Sprintf("log/latlog-%s.csv", u.NetworkEndpoint())
+		fname := fmt.Sprintf("log/latlog-%s.csv", u.NetworkEndpoint().Ep.String())
 		if _, err := os.Stat(fname); errors.Is(err, os.ErrNotExist) {
 			writeHeader = true
 		}

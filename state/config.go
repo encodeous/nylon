@@ -1,11 +1,10 @@
 package state
 
 import (
+	"cmp"
 	"fmt"
-	"maps"
 	"net/netip"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -87,6 +86,9 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 	line := make([]string, 0)
 	for _, s := range spl {
 		x := strings.TrimSpace(s)
+		if x == "" {
+			continue
+		}
 		if !slices.Contains(validSymbols, x) {
 			return nil, fmt.Errorf(`%s is not a valid node/group`, x)
 		}
@@ -111,13 +113,20 @@ Group1, Group2, OtherNode // Group1, Group2, OtherNode will all be interconnecte
 Group1, Group1 // every node is connected to every other node
 
 node8, node9 // node8 and node9 will be connected
+
+graph represents the above graph
+nodes represents a set of unique terminal nodes that the graph will evaluate down to
 */
 func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) {
 	// why can't we just have unordered_set<Pair<NodeId, NodeId>> :(
 
-	pairings := make([]Pair[NodeId, NodeId], 0)
+	parsedPairings := make([]Pair[string, string], 0)
 
 	groups := make(map[string][]string)
+
+	symbols := nodes
+
+	// pass 0, collect all symbols
 
 	for _, line := range graph {
 		line = strings.ToLower(strings.TrimSpace(line))
@@ -131,57 +140,147 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 			if slices.Contains(nodes, grp) {
 				return nil, fmt.Errorf("group name must not be a node name: %s", grp)
 			}
+			symbols = append(symbols, grp)
+		}
+	}
+	slices.Sort(symbols)
+	symbols = slices.Compact(symbols)
+
+	// used for topological sorting
+	// map: group -> []<groups that the node depends on>
+	topo := make(map[string][]string)
+	expansion := make(map[string][]string)
+
+	// pass 1, parse graph
+	for _, line := range graph {
+		line = strings.ToLower(strings.TrimSpace(line))
+		if strings.Contains(line, "=") {
+			spl := strings.Split(line, "=")
+			grp := strings.TrimSpace(spl[0])
 			if _, ok := groups[grp]; ok {
 				return nil, fmt.Errorf("duplicate group name: %s", grp)
 			}
-			lst, err := parseSymbolList(spl[1], append(nodes, slices.Collect(maps.Keys(groups))...))
+			lst, err := parseSymbolList(spl[1], symbols)
 			if err != nil {
 				return nil, err
 			}
+			// track dependencies
+			deps := make([]string, 0)
+			for _, l := range lst {
+				if !slices.Contains(nodes, l) {
+					// depends on a group
+					deps = append(deps, l)
+				} else {
+					expansion[grp] = append(expansion[grp], l)
+				}
+			}
+			slices.Sort(deps)
+			deps = slices.Compact(deps)
+
+			topo[grp] = deps
 			groups[grp] = lst
 		} else {
-			names, err := parseSymbolList(line, append(nodes, slices.Collect(maps.Keys(groups))...))
+			names, err := parseSymbolList(line, symbols)
 			if err != nil {
 				return nil, err
+			}
+			if len(names) < 2 {
+				return nil, fmt.Errorf("invalid pairing, %v", names)
 			}
 			interconnectNodes := make([]NodeId, 0)
 			for _, name := range names {
-				if slices.Contains(nodes, name) {
-					for _, node := range interconnectNodes {
-						if node != NodeId(name) {
-							pairings = append(pairings, makeSortedPair(node, NodeId(name)))
-						}
-					}
-					interconnectNodes = append(interconnectNodes, NodeId(name))
-				} else {
-					for _, node := range interconnectNodes {
-						for _, grpNode := range groups[name] {
-							if node != NodeId(grpNode) {
-								pairings = append(pairings, makeSortedPair(node, NodeId(grpNode)))
-							}
-						}
-					}
-					for _, grpNode := range groups[name] {
-						interconnectNodes = append(interconnectNodes, NodeId(grpNode))
+				for _, node := range interconnectNodes {
+					parsedPairings = append(parsedPairings, makeSortedPair(string(node), name))
+				}
+				interconnectNodes = append(interconnectNodes, NodeId(name))
+			}
+			SortPairs(parsedPairings)
+			parsedPairings = slices.Compact(parsedPairings)
+		}
+	}
+
+	// pass 2, expand group names
+	// just topological sorting
+	for len(topo) > 0 {
+		// find free group
+		var group string
+		for k, v := range topo {
+			if len(v) == 0 {
+				group = k
+				break
+			}
+		}
+		if group == "" {
+			cycleNodes := make([]string, 0)
+			for node := range topo {
+				cycleNodes = append(cycleNodes, node)
+			}
+			slices.Sort(cycleNodes)
+			return nil, fmt.Errorf("cycle detected in graph: %v", cycleNodes)
+		}
+		delete(topo, group)
+
+		// remove and expand the group for every dependent
+		for k, deps := range topo {
+			if slices.Contains(deps, group) {
+				// remove it from the group and copy the value to the expansion
+				expansion[k] = append(expansion[k], expansion[group]...)
+				slices.Sort(expansion[k])
+				expansion[k] = slices.Compact(expansion[k])
+
+				// remove group from deps
+				x := 0
+				for _, dep := range deps {
+					if dep == group {
+						// remove
+					} else {
+						deps[x] = dep
+						x++
 					}
 				}
+				deps = deps[:x]
+				topo[k] = deps
 			}
-			sort.Slice(pairings, func(i, j int) bool {
-				x := strings.Compare(string(pairings[i].V1), string(pairings[j].V1))
-				y := strings.Compare(string(pairings[i].V2), string(pairings[j].V2))
-				return x < 0 || x == 0 && y < 0
-			})
-			pairings = slices.Compact(pairings)
 		}
+	}
+
+	// pass 3, rewrite pairings
+	pairings := make([]Pair[NodeId, NodeId], 0)
+	for _, pair := range parsedPairings {
+		x := make([]NodeId, 0)
+		if slices.Contains(nodes, pair.V1) {
+			x = append(x, NodeId(pair.V1))
+		} else {
+			for _, exp := range expansion[pair.V1] {
+				x = append(x, NodeId(exp))
+			}
+		}
+		y := make([]NodeId, 0)
+		if slices.Contains(nodes, pair.V2) {
+			y = append(y, NodeId(pair.V2))
+		} else {
+			for _, exp := range expansion[pair.V2] {
+				y = append(y, NodeId(exp))
+			}
+		}
+		for _, x1 := range x {
+			for _, y1 := range y {
+				if x1 != y1 {
+					pairings = append(pairings, makeSortedPair(x1, y1))
+				}
+			}
+		}
+		SortPairs(pairings)
+		pairings = slices.Compact(pairings)
 	}
 	return pairings, nil
 }
 
-func makeSortedPair(a NodeId, b NodeId) Pair[NodeId, NodeId] {
-	if strings.Compare(string(a), string(b)) < 0 {
-		return Pair[NodeId, NodeId]{a, b}
+func makeSortedPair[T cmp.Ordered](a T, b T) Pair[T, T] {
+	if a < b {
+		return Pair[T, T]{a, b}
 	} else {
-		return Pair[NodeId, NodeId]{b, a}
+		return Pair[T, T]{b, a}
 	}
 }
 

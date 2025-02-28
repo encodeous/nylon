@@ -51,15 +51,15 @@ func checkForConfigUpdates(s *state.State) error {
 					return err
 				}
 				if config.Timestamp > e.Timestamp && !s.Updating.Swap(true) {
-					e.Log.Info("Found a new config update in repo: %s", repo.String())
-					yaml, err := yaml.Marshal(config)
+					e.Log.Info("Found a new config update in repo", "repo", repo.String())
+					bytes, err := yaml.Marshal(config)
 					if err != nil {
-						e.Log.Error("Error marshalling new config: %s", err.Error())
+						e.Log.Error("Error marshalling new config", "err", err.Error())
 						goto err
 					}
-					err = os.WriteFile(state.CentralConfigPath, yaml, 0700)
+					err = os.WriteFile(state.CentralConfigPath, bytes, 0700)
 					if err != nil {
-						e.Log.Error("Error writing new config: %s", err.Error())
+						e.Log.Error("Error writing new config", "err", err.Error())
 						goto err
 					}
 					e.Cancel(errors.New("shutting down for config update"))
