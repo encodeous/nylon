@@ -108,7 +108,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 
 	for domain, node := range cfg.Hosts {
 		if !slices.Contains(nodes, node) {
-			return fmt.Errorf("destination node %s not found for %s", node, domain)
+			return fmt.Errorf("destination node %s not found for %s. nodes: %v", node, domain, nodes)
 		}
 		if slices.Contains(nodes, domain) {
 			return fmt.Errorf("domain name %s cannot be the same name as node %s", domain, node)

@@ -89,5 +89,5 @@ func init() {
 	hostsCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 
 	rootCmd.AddCommand(keyCmd)
-	keyCmd.Flags().BoolVarP(&genKey, "gen", "g", true, "generate a new keypair")
+	keyCmd.Flags().BoolVarP(&genKey, "gen", "g", false, "generate a new keypair")
 }

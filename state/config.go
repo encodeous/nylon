@@ -120,7 +120,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 
 	groups := make(map[string][]string)
 
-	symbols := nodes
+	symbols := slices.Clone(nodes)
 
 	// pass 0, collect all symbols
 
