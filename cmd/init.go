@@ -14,7 +14,7 @@ import (
 
 var newCmd = &cobra.Command{
 	Use:   "new [name]",
-	Short: "Create a node configuration",
+	Short: "Create a node configuration. Outputs the public key to Stdout.",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) != 1 {
 			_ = cmd.Usage()
@@ -35,6 +35,12 @@ var newCmd = &cobra.Command{
 			Port: uint16(port),
 		}
 
+		pubKey, err := nodeCfg.Key.Pubkey().MarshalText()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(pubKey))
+
 		ncfg, err := yaml.Marshal(&nodeCfg)
 		if err != nil {
 			panic(err)
@@ -51,7 +57,7 @@ var newCmd = &cobra.Command{
 
 var clientCmd = &cobra.Command{
 	Use:   "client [gateway-router id]",
-	Short: "Create a new passive WireGuard client",
+	Short: "Create a new passive WireGuard client. Outputs the WireGuard configuration to Stdout, and the Public Key to Stderr.",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) != 1 {
 			_ = cmd.Usage()
@@ -60,8 +66,8 @@ var clientCmd = &cobra.Command{
 		router := state.NodeId(args[0])
 
 		var centralCfg state.CentralCfg
-		inPath := cmd.Flag("input").Value.String()
-		file, err := os.ReadFile(inPath)
+		cfgPath := cmd.Flag("config").Value.String()
+		file, err := os.ReadFile(cfgPath)
 		if err != nil {
 			panic(err)
 		}
@@ -114,8 +120,6 @@ var clientCmd = &cobra.Command{
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
 
 		fmt.Println(sb.String())
-
-		fmt.Println("---")
 
 		out, _ = pkey.Pubkey().MarshalText()
 		_, err = fmt.Fprint(os.Stderr, string(out))

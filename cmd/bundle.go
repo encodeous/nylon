@@ -44,7 +44,7 @@ var sealCmd = &cobra.Command{
 
 var openCmd = &cobra.Command{
 	Use:   "open [central public key]",
-	Short: "Bundles provided bundle against the public key",
+	Short: "Bundles provided bundle against the public key. Outputs the parsed configuration",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) != 1 {
 			_ = cmd.Usage()

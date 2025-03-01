@@ -16,7 +16,7 @@ var genKey = false
 
 var keyCmd = &cobra.Command{
 	Use:   "key",
-	Short: "Generates a new Nylon Keypair",
+	Short: "Generates a new Nylon Keypair. Outputs Private Key to stdout, Public Key to Stderr.",
 	Run: func(cmd *cobra.Command, args []string) {
 		privKey := state.NyPrivateKey{}
 		if !genKey {
@@ -36,11 +36,11 @@ var keyCmd = &cobra.Command{
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println(privKeyStr)
+			fmt.Println(string(privKeyStr))
 		}
 
 		pubKeyStr, err := privKey.Pubkey().MarshalText()
-		_, err = fmt.Fprintln(os.Stderr, pubKeyStr)
+		_, err = fmt.Fprintln(os.Stderr, string(pubKeyStr))
 		if err != nil {
 			panic(err)
 		}
