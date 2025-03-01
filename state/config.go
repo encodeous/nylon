@@ -8,10 +8,6 @@ import (
 	"strings"
 )
 
-var NodeConfigPath = "./node.yaml"
-var CentralConfigPath = "./central.yaml"
-var CentralKeyPath = "./central.key"
-
 type NodeCfg struct {
 	Id       NodeId
 	PubKey   NyPublicKey

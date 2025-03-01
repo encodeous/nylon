@@ -1,19 +1,26 @@
 package state
 
 import (
+	"crypto/rand"
 	"github.com/encodeous/polyamide/device"
 	"go.step.sm/crypto/x25519"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type NyPrivateKey [device.NoisePrivateKeySize]byte
 type NyPublicKey [device.NoisePublicKeySize]byte
 
 func GenerateKey() NyPrivateKey {
-	key, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
+	key := make([]byte, device.NoisePrivateKeySize)
+
+	if _, err := rand.Read(key); err != nil {
 		panic(err)
 	}
+
+	// Modify random bytes using algorithm described at:
+	// https://cr.yp.to/ecdh.html.
+	key[0] &= 248
+	key[31] &= 127
+	key[31] |= 64
 	return NyPrivateKey(key)
 }
 

@@ -16,26 +16,8 @@ import (
 	"time"
 )
 
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) (bool, error) {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
-
-	// create otel environment variables
-	if _, ok := os.LookupEnv("OTEL_SERVICE_NAME"); !ok {
-		err := os.Setenv("OTEL_SERVICE_NAME", "nylon")
-		if err != nil {
-			return false, err
-		}
-	}
-
-	state.OtelEnabled = false
-	//Set up OpenTelemetry.
-	//go func() {
-	//	_, err := SetupOTelSDK(context.Background())
-	//	if err != nil {
-	//		slog.Error("opentelemetry setup failed", "err", err)
-	//		state.OtelEnabled = false
-	//	}
-	//}()
 
 	dispatch := make(chan func(env *state.State) error)
 
@@ -60,6 +42,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level) (boo
 			CentralCfg:      ccfg,
 			LocalCfg:        ncfg,
 			Log:             logger,
+			ConfigPath:      configPath,
 		},
 	}
 

@@ -4,21 +4,18 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/device"
 	"github.com/jellydator/ttlcache/v3"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
 	"net"
 	"time"
 )
 
-var (
-	otelMet = otel.Meter("encodeous.ca/nylon/metric")
-	otelLog = otelslog.NewLogger("encodeous.ca/nylon/route")
-
-	linkMet, _ = otelMet.Int64Gauge("link.metric",
-		metric.WithDescription("The adjusted metric for each link"),
-		metric.WithUnit("{met}"))
-)
+//var (
+//	otelMet = otel.Meter("encodeous.ca/nylon/metric")
+//	otelLog = otelslog.NewLogger("encodeous.ca/nylon/route")
+//
+//	linkMet, _ = otelMet.Int64Gauge("link.metric",
+//		metric.WithDescription("The adjusted metric for each link"),
+//		metric.WithUnit("{met}"))
+//)
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
@@ -60,7 +57,7 @@ func (n *Nylon) Init(s *state.State) error {
 	go n.PingBuf.Start()
 
 	s.Env.RepeatTask(nylonGc, state.GcDelay)
-	s.Env.RepeatTask(otelUpdate, state.OtelDelay)
+	//s.Env.RepeatTask(otelUpdate, state.OtelDelay)
 
 	// wireguard configuration
 	err := n.initWireGuard(s)

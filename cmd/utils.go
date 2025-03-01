@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
@@ -11,11 +12,47 @@ import (
 	"strings"
 )
 
+var genKey = false
+
+var keyCmd = &cobra.Command{
+	Use:   "key",
+	Short: "Generates a new Nylon Keypair",
+	Run: func(cmd *cobra.Command, args []string) {
+		privKey := state.NyPrivateKey{}
+		if !genKey {
+			in := bufio.NewReader(os.Stdin)
+			ln, err := in.ReadString('\n')
+			if err != nil {
+				panic(err)
+			}
+
+			err = privKey.UnmarshalText([]byte(ln))
+			if err != nil {
+				return
+			}
+		} else {
+			privKey = state.GenerateKey()
+			privKeyStr, err := privKey.MarshalText()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println(privKeyStr)
+		}
+
+		pubKeyStr, err := privKey.Pubkey().MarshalText()
+		_, err = fmt.Fprintln(os.Stderr, pubKeyStr)
+		if err != nil {
+			panic(err)
+		}
+	},
+	GroupID: "init",
+}
+
 var hostsCmd = &cobra.Command{
 	Use:   "hosts",
 	Short: "Generates a static hosts override for hosts on the network",
 	Run: func(cmd *cobra.Command, args []string) {
-		cfgFile, err := os.ReadFile(state.CentralConfigPath)
+		cfgFile, err := os.ReadFile(cmd.Flag("config").Value.String())
 		if err != nil {
 			panic(err)
 		}
@@ -42,11 +79,15 @@ var hostsCmd = &cobra.Command{
 			}
 			sb.WriteString("\n")
 		}
-		fmt.Println(sb.String())
+		fmt.Print(sb.String())
 	},
-	GroupID: "ny",
+	GroupID: "cfg",
 }
 
 func init() {
 	rootCmd.AddCommand(hostsCmd)
+	hostsCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
+
+	rootCmd.AddCommand(keyCmd)
+	keyCmd.Flags().BoolVarP(&genKey, "gen", "g", true, "generate a new keypair")
 }

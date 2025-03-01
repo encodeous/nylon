@@ -62,12 +62,6 @@ func dbgPrintRouteTable(s *state.State) {
 			s.Log.Debug(fmt.Sprintf("%s(%d) -> %s", route.Src.Id, route.Src.Seqno, route.Nh), "met", route.PubMetric, "fd", route.Fd, "ret", route.Retracted)
 		}
 	}
-
-	if state.OtelEnabled {
-		for _, route := range r.Routes {
-			otelLog.Info("nylon.route.selected", "router", string(s.Id), "src", string(route.Src.Id), "nh", string(route.Nh), "ret", route.Retracted, "fd", route.Fd, "met", route.PubMetric, "seqno", route.Src.Seqno)
-		}
-	}
 }
 
 func dbgPrintRouteChanges(s *state.State, curRoute *state.Route, newRoute *state.PubRoute, via state.NodeId, metric uint16) {

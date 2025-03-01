@@ -5,17 +5,63 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	"log/slog"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 )
 
+var newCmd = &cobra.Command{
+	Use:   "new [name]",
+	Short: "Create a node configuration",
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) != 1 {
+			_ = cmd.Usage()
+			return
+		}
+		port, _ := strconv.Atoi(cmd.Flag("port").Value.String())
+
+		name := args[0]
+		err := state.NameValidator(name)
+		if err != nil {
+			fmt.Printf("Invalid name: %s\n", name)
+			os.Exit(-1)
+		}
+
+		nodeCfg := state.LocalCfg{
+			Key:  state.GenerateKey(),
+			Id:   state.NodeId(name),
+			Port: uint16(port),
+		}
+
+		ncfg, err := yaml.Marshal(&nodeCfg)
+		if err != nil {
+			panic(err)
+		}
+
+		outPath := cmd.Flag("output").Value.String()
+		err = os.WriteFile(outPath, ncfg, 0700)
+		if err != nil {
+			panic(err)
+		}
+	},
+	GroupID: "init",
+}
+
 var clientCmd = &cobra.Command{
-	Use:   "new-client",
+	Use:   "client [gateway-router id]",
 	Short: "Create a new passive WireGuard client",
 	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) != 1 {
+			_ = cmd.Usage()
+			return
+		}
+		router := state.NodeId(args[0])
+
 		var centralCfg state.CentralCfg
-		file, err := os.ReadFile(state.CentralConfigPath)
+		inPath := cmd.Flag("input").Value.String()
+		file, err := os.ReadFile(inPath)
 		if err != nil {
 			panic(err)
 		}
@@ -26,16 +72,20 @@ var clientCmd = &cobra.Command{
 
 		err = state.CentralConfigValidator(&centralCfg)
 		if err != nil {
-			panic(err)
+			slog.Warn("Central Config is not valid!", "err", err)
 		}
 
 		pkey := state.GenerateKey()
 
-		println("Please select a gateway router for this client to connect to:")
-		router := promptSelectRouter(centralCfg)
 		rIdx := slices.IndexFunc(centralCfg.Routers, func(cfg state.RouterCfg) bool {
 			return cfg.Id == router
 		})
+
+		if rIdx == -1 {
+			slog.Error("Router not found for this client", "router", router)
+			os.Exit(-1)
+		}
+
 		rCfg := centralCfg.Routers[rIdx]
 
 		sb := strings.Builder{}
@@ -63,21 +113,24 @@ var clientCmd = &cobra.Command{
 		}
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
 
-		fmt.Println("WireGuard Client Configuration:")
 		fmt.Println(sb.String())
-		fmt.Println("Please add this client's public key to the central config.")
-		out, _ = pkey.Pubkey().MarshalText()
-		fmt.Printf(`clients:
-  - id: your-client
-    pubkey: %s
-    prefixes:
-      - <your prefix>
 
-`, string(out))
+		fmt.Println("---")
+
+		out, _ = pkey.Pubkey().MarshalText()
+		_, err = fmt.Fprint(os.Stderr, string(out))
+		if err != nil {
+			return
+		}
 	},
 	GroupID: "init",
 }
 
 func init() {
+	rootCmd.AddCommand(newCmd)
+	newCmd.Flags().StringP("output", "o", DefaultNodeConfigPath, "node config output file path")
+	newCmd.Flags().Uint16P("port", "p", 57175, "UDP port to use")
+
 	rootCmd.AddCommand(clientCmd)
+	clientCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 }

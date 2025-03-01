@@ -57,7 +57,7 @@ func checkForConfigUpdates(s *state.State) error {
 						e.Log.Error("Error marshalling new config", "err", err.Error())
 						goto err
 					}
-					err = os.WriteFile(state.CentralConfigPath, bytes, 0700)
+					err = os.WriteFile(e.ConfigPath, bytes, 0700)
 					if err != nil {
 						e.Log.Error("Error writing new config", "err", err.Error())
 						goto err
