@@ -13,7 +13,7 @@ var keyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		key := state.GenerateKey()
 		privKey, err := key.MarshalText()
-		pubKey, err := key.XPubkey().MarshalText()
+		pubKey, err := key.Pubkey().MarshalText()
 		if err != nil {
 			panic(err)
 		}

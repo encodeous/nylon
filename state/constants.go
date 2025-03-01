@@ -15,7 +15,8 @@ const (
 
 	// WindowSamples is the sliding window size
 	WindowSamples     = int(time.Second * 60 * 5 / ProbeDelay) // approx last 5 min
-	OutlierPercentage = 0.95
+	OutlierPercentage = 0.99
+	MinChangePercent  = 0.05
 	// minimum number of samples before we lower the ping
 	MinimumConfidenceWindow = int(time.Second * 15 / ProbeDelay)
 

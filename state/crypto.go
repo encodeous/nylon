@@ -17,30 +17,10 @@ func GenerateKey() NyPrivateKey {
 	return NyPrivateKey(key)
 }
 
-func (k NyPrivateKey) XPubkey() NyPublicKey {
+func (k NyPrivateKey) Pubkey() NyPublicKey {
 	val, err := x25519.PrivateKey(k[:]).PublicKey()
 	if err != nil {
 		panic(err)
 	}
 	return NyPublicKey(val)
-}
-
-func (k NyPrivateKey) EdPubkey() []byte {
-	val, err := x25519.PrivateKey(k[:]).PublicKey()
-	if err != nil {
-		panic(err)
-	}
-	val2, err := val.ToEd25519()
-	if err != nil {
-		panic(err)
-	}
-	return val2
-}
-
-func (k NyPublicKey) EdPubkey() []byte {
-	val, err := (x25519.PublicKey(k[:])).ToEd25519()
-	if err != nil {
-		panic(err)
-	}
-	return val
 }

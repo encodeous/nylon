@@ -124,7 +124,7 @@ func promptCreateNode() state.LocalCfg {
 	fmt.Println("What port should nylon listen on?:")
 	nodeCfg.Port = promptDefaultPort("[UDP] port", "57175", state.PortValidator)
 
-	pkStr, err := nodeCfg.Key.XPubkey().MarshalText()
+	pkStr, err := nodeCfg.Key.Pubkey().MarshalText()
 	if err != nil {
 		panic(err)
 	}

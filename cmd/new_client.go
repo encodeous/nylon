@@ -64,9 +64,9 @@ var clientCmd = &cobra.Command{
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
 
 		fmt.Println("WireGuard Client Configuration:")
-		fmt.Printf(sb.String())
+		fmt.Println(sb.String())
 		fmt.Println("Please add this client's public key to the central config.")
-		out, _ = pkey.XPubkey().MarshalText()
+		out, _ = pkey.Pubkey().MarshalText()
 		fmt.Printf(`clients:
   - id: your-client
     pubkey: %s

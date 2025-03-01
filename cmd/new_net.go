@@ -30,7 +30,7 @@ var netCmd = &cobra.Command{
 
 		centralConfig := state.CentralCfg{
 			Dist: &state.DistributionCfg{
-				Key: pkey.XPubkey(),
+				Key: pkey.Pubkey(),
 				Repos: []string{
 					"file:~/.nylon/central.nybundle",
 					"https://127.0.0.1:8000/example/central.nybundle",

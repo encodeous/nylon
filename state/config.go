@@ -60,8 +60,8 @@ type LocalCfg struct {
 	Id  NodeId
 	// Address that the data plane can be accessed by
 	Port            uint16
-	NoNetConfigure  bool
-	AllowedPrefixes []netip.Prefix
+	NoNetConfigure  bool           `yaml:",omitempty"`
+	AllowedPrefixes []netip.Prefix `yaml:",omitempty"`
 }
 
 func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) RouterCfg {
@@ -77,7 +77,7 @@ func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Pref
 			extDp,
 		},
 	}
-	cfg.PubKey = n.Key.XPubkey()
+	cfg.PubKey = n.Key.Pubkey()
 	return cfg
 }
 

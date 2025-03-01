@@ -33,18 +33,8 @@ func NameValidator(s string) error {
 	return nil
 }
 
-func BindValidator(s string) error {
-	_, err := netip.ParseAddrPort(s)
-	return err
-}
-
 func PortValidator(s string) error {
 	_, err := strconv.ParseUint(s, 10, 16)
-	return err
-}
-
-func AddrValidator(s string) error {
-	_, err := netip.ParseAddr(s)
 	return err
 }
 
