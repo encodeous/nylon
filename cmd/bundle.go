@@ -71,7 +71,7 @@ var openCmd = &cobra.Command{
 			panic(err)
 		}
 
-		_, err = fmt.Fprintf(os.Stderr, string(cfgYaml))
+		_, err = fmt.Fprint(os.Stderr, string(cfgYaml))
 		if err != nil {
 			return
 		}
