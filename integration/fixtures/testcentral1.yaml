@@ -1,0 +1,22 @@
+dist:
+    key: YjlOIfTaJVGZ+j638l/j4KKHl26MPwyfmjIoKiIWhHs=
+    repos:
+        - file:~/.nylon/central.nybundle
+        - https://127.0.0.1:8000/example/central.nybundle
+routers:
+    - id: sample_node1
+      pubkey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      prefixes:
+        - 10.0.0.1/32
+        - 10.0.0.2/32
+        - 10.1.0.0/16
+      endpoints:
+        - 8.8.8.8:57175
+clients:
+    - id: external-client
+      pubkey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      prefixes:
+        - 10.2.0.1/32
+graph:
+    - Group1 = sample_node1, sample_node1
+timestamp: 1740879895918834978
