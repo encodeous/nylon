@@ -23,9 +23,10 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 		itfName = "utun"
 	}
 
-	err := sys.VerifyPreconditions()
+	err := sys.VerifyForwarding()
 	if err != nil {
-		return err
+		println(err.Error())
+		s.IPForwardOff = true
 	}
 
 	// setup TUN

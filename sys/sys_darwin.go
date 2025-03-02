@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func VerifyPreconditions() error {
+func VerifyForwarding() error {
 	res, err := exec.Command("/usr/sbin/sysctl", "net.inet.ip.forwarding").CombinedOutput()
 	if err != nil {
 		return err

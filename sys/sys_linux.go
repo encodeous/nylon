@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func VerifyPreconditions() error {
+func VerifyForwarding() error {
 	forward, err := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
 	if err != nil {
 		return err

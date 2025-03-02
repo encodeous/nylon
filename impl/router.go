@@ -60,11 +60,13 @@ func fullRouteUpdate(s *state.State) error {
 	})
 
 	// write route table
-	for _, route := range r.Routes {
-		updates = append(updates, &protocol.Ny_Update{
-			Source: mapToPktSource(&route.Src),
-			Metric: uint32(route.PubMetric),
-		})
+	if !s.IPForwardOff {
+		for _, route := range r.Routes {
+			updates = append(updates, &protocol.Ny_Update{
+				Source: mapToPktSource(&route.Src),
+				Metric: uint32(route.PubMetric),
+			})
+		}
 	}
 
 	broadcastUpdates(s, updates, false)
@@ -87,7 +89,7 @@ func pushSeqnoUpdate(s *state.State, sources []state.NodeId) error {
 				Source: mapToPktSource(r.Self),
 				Metric: 0,
 			})
-		} else {
+		} else if !s.IPForwardOff {
 			route, ok := r.Routes[source]
 			if ok {
 				updates = append(updates, &protocol.Ny_Update{
@@ -372,22 +374,25 @@ func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.
 
 	var fSrc *state.Source
 
-	froute, ok := r.Routes[src.Id]
-
-	if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
-		fSrc = &froute.Src
-	} else if s.Id == src.Id {
+	if s.Id == src.Id {
+		// we are the node in question!
 		if SeqnoLe(r.Self.Seqno, src.Seqno) {
 			r.Self.Seqno = src.Seqno + 1
 		}
 		fSrc = r.Self
-	} else if slices.Contains(r.Clients, src.Id) {
-		// client is directly connected to us!
-		clientSrc := &r.Routes[src.Id].Src
-		if SeqnoLe(clientSrc.Seqno, src.Seqno) {
-			clientSrc.Seqno = src.Seqno + 1
+	} else if !s.IPForwardOff {
+		froute, ok := r.Routes[src.Id]
+
+		if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
+			fSrc = &froute.Src
+		} else if slices.Contains(r.Clients, src.Id) {
+			// client is directly connected to us!
+			clientSrc := &r.Routes[src.Id].Src
+			if SeqnoLe(clientSrc.Seqno, src.Seqno) {
+				clientSrc.Seqno = src.Seqno + 1
+			}
+			fSrc = clientSrc
 		}
-		fSrc = clientSrc
 	}
 
 	if fSrc != nil {
