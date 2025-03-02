@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ca.encodeous.nylon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/nylon</string>
+        <string>run</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/folder</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/nylon.stdout</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/nylon.stderr</string>
+</dict>
+</plist>

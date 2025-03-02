@@ -3,9 +3,8 @@ Description=Nylon Service
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/nylon run -vgt
+ExecStart=/usr/bin/nylon run
 WorkingDirectory=/home/encodeous
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.0.4:4317
 
 [Install]
 WantedBy=multi-user.target
