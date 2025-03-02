@@ -341,6 +341,14 @@ func (e *CentralCfg) IsNode(node NodeId) bool {
 }
 
 func (e *CentralCfg) GetNode(node NodeId) NodeCfg {
+	val := e.TryGetNode(node)
+	if val == nil {
+		panic("node " + string(node) + " not found")
+	}
+	return *val
+}
+
+func (e *CentralCfg) TryGetNode(node NodeId) *NodeCfg {
 	idx := slices.IndexFunc(e.Routers, func(cfg RouterCfg) bool {
 		return cfg.Id == node
 	})
@@ -349,11 +357,11 @@ func (e *CentralCfg) GetNode(node NodeId) NodeCfg {
 			return cfg.Id == node
 		})
 		if idx == -1 {
-			panic("node " + string(node) + " not found")
+			return nil
 		}
-		return e.Clients[idx].NodeCfg
+		return &e.Clients[idx].NodeCfg
 	}
-	return e.Routers[idx].NodeCfg
+	return &e.Routers[idx].NodeCfg
 }
 
 func (e *CentralCfg) GetRouter(node NodeId) RouterCfg {

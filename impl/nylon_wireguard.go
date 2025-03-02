@@ -210,7 +210,10 @@ func UpdateWireGuard(s *state.State) error {
 			allowedIps := make([]string, 0)
 			pcfg := s.GetNode(neigh)
 			for _, route := range routes {
-				cfg := s.GetNode(route.Src.Id)
+				cfg := s.TryGetNode(route.Src.Id)
+				if cfg == nil {
+					continue // config might not always be synced
+				}
 				for _, prefix := range cfg.Prefixes {
 					allowedIps = append(allowedIps, prefix.String())
 				}
