@@ -24,5 +24,8 @@ jobs:
       - name: Build
         run: go build
 
-      - name: Run Tests With Coverage
-        run: bash coverage.sh
+      - name: Run unit tests with coverage
+        run: bash unit-test-coverage.sh
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./integration/...

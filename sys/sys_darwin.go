@@ -9,7 +9,7 @@ import (
 )
 
 func VerifyForwarding() error {
-	res, err := exec.Command("/usr/sbin/sysctl", "net.inet.ip.forwarding").CombinedOutput()
+	res, err := exec.Command("sysctl", "net.inet.ip.forwarding").CombinedOutput()
 	if err != nil {
 		return err
 	}
