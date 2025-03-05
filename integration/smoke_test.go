@@ -1,7 +1,11 @@
+//go:build integration
+// +build integration
+
 package integration
 
 import (
 	"context"
+	"github.com/docker/docker/api/types/container"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -29,8 +33,10 @@ func createContainer(ctx context.Context, t *testing.T, command []string, waitFo
 
 	return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:  "ubuntu:24.04",
-			CapAdd: []string{"NET_ADMIN"},
+			Image: "busybox:1.37-glibc",
+			HostConfigModifier: func(config *container.HostConfig) {
+				config.CapAdd = []string{"NET_ADMIN"}
+			},
 			Files: []testcontainers.ContainerFile{
 				{
 					Reader:            r,
@@ -70,7 +76,7 @@ func TestNylonExecutes(t *testing.T) {
 func TestNylonRuns(t *testing.T) {
 	ctx := context.Background()
 	// this is very bad
-	_, err := createContainer(ctx, t, []string{"bash", "-c", "apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install iproute2 -y && mkdir /dev/net && mknod /dev/net/tun c 10 200 && /nylon -c /central.yaml -n /node.yaml run"}, "Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
+	_, err := createContainer(ctx, t, []string{"sh", "-c", "mkdir /dev/net && mknod /dev/net/tun c 10 200 && /nylon -c /central.yaml -n /node.yaml run"}, "Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
 	require.NoError(t, err)
 	if err != nil {
 		t.Fatalf("failed to start container: %v", err)

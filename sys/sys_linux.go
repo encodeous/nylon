@@ -19,12 +19,7 @@ func VerifyForwarding() error {
 }
 
 func InitInterface(ifName string) error {
-	err := Exec("/usr/bin/ip", "link", "set", ifName, "up")
-	if err != nil {
-		return err
-	}
-	// disable icmp redirect for ipv4
-	err = Exec("/usr/sbin/sysctl", fmt.Sprintf("net.ipv4.conf.%s.send_redirects=0", ifName))
+	err := Exec("ip", "link", "set", ifName, "up")
 	if err != nil {
 		return err
 	}
@@ -32,13 +27,13 @@ func InitInterface(ifName string) error {
 }
 
 func ConfigureAlias(ifName string, prefix netip.Prefix) error {
-	return Exec("/usr/bin/ip", "addr", "add", "dev", ifName, prefix.String())
+	return Exec("ip", "addr", "add", "dev", ifName, prefix.String())
 }
 
 func ConfigureRoute(ifName string, route netip.Prefix, via netip.Addr) error {
-	err := Exec("/usr/bin/ip", "route", "flush", route.String())
+	err := Exec("ip", "route", "flush", route.String())
 	if err != nil {
 		return err
 	}
-	return Exec("/usr/bin/ip", "route", "add", route.String(), "via", via.String(), "dev", ifName)
+	return Exec("ip", "route", "add", route.String(), "via", via.String(), "dev", ifName)
 }
