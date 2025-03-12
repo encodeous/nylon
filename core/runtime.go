@@ -19,7 +19,7 @@ import (
 func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
-	dispatch := make(chan func(env *state.State) error)
+	dispatch := make(chan func(env *state.State) error, 512)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
 		Level:     logLevel,
