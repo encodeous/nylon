@@ -46,6 +46,12 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/encodeous/polyamide v0.0.0-20250316180008-29b1a65690f3 h1:mi6wwE/NaOXgHwTn8NYSAvGSXBKC/BoAI+oR+cAqlwU=
 github.com/encodeous/polyamide v0.0.0-20250316180008-29b1a65690f3/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250316225512-049131069f22 h1:BNx2Mqug7eAMWI5q4BQizRb+5wlrIIrH9qlT657Q53U=
+github.com/encodeous/polyamide v0.0.0-20250316225512-049131069f22/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250316225813-fa12bfd292a6 h1:gdtxbTcP4NaMLkCcLOVLX3arWXfUvdIIsjll7selW7Y=
+github.com/encodeous/polyamide v0.0.0-20250316225813-fa12bfd292a6/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250316230343-168b7b86d052 h1:VMMiW6ASv/9C99NqQras0T4k7na3X84isu2u7GE5WiU=
+github.com/encodeous/polyamide v0.0.0-20250316230343-168b7b86d052/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=

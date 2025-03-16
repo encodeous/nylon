@@ -49,7 +49,7 @@ func (v *VirtualLink) simulate(pkt []byte, len int, from, to bindtest.ChannelEnd
 			case <-time.After(simLat):
 				//fmt.Printf("delay sent: %s -> %s\n", from.DstToString(), to.DstToString())
 				err := i.binds[toIdx].Send([][]byte{pkt[:len]}, from)
-				if err != nil {
+				if err != nil && !errors.Is(err, net.ErrClosed) {
 					panic(err)
 				}
 			}
@@ -57,7 +57,7 @@ func (v *VirtualLink) simulate(pkt []byte, len int, from, to bindtest.ChannelEnd
 	} else {
 		//fmt.Printf("sent: %s -> %s\n", from.DstToString(), to.DstToString())
 		err := i.binds[toIdx].Send([][]byte{pkt[:len]}, from)
-		if err != nil {
+		if err != nil && !errors.Is(err, net.ErrClosed) {
 			panic(err)
 		}
 	}
@@ -198,7 +198,7 @@ type InMemoryNetwork struct {
 	EpOutMapping   OutMapping
 }
 
-func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte) bool {
+func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
 	selfPrefix := i.cfg.Central.GetNode(node).Prefixes
 	for _, p := range selfPrefix {
 		if p.Contains(dst) {
@@ -220,7 +220,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 				return prefix.Contains(dst)
 			}) {
 				select {
-				case i.virtTun[curIdx].Outbound <- data: // send back into our tun to get routed by WireGuard/Polyamide
+				case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
 				default:
 					panic(fmt.Sprintf("node %s's tun is not ready to accept data", n.Id))
 				}
@@ -321,7 +321,7 @@ func (i *InMemoryNetwork) Tun(node state.NodeId) tun.Device {
 				if err != nil {
 					panic(err)
 				}
-				if !i.virtualRouteTable(node, src, dst, pkt[ipv4Size:]) {
+				if !i.virtualRouteTable(node, src, dst, pkt[ipv4Size:], pkt) {
 					panic(fmt.Sprintf("unhandled packet src: %v, dst: %v", src, dst))
 				}
 			}
