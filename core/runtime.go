@@ -47,7 +47,9 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 			AuxConfig:       aux,
 		},
 	}
-	*initState = &s
+	if initState != nil {
+		*initState = &s
+	}
 
 	for _, node := range ccfg.Routers {
 		s.TrustedNodes[node.Id] = node.PubKey[:]

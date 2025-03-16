@@ -52,8 +52,7 @@ var runCmd = &cobra.Command{
 			level = slog.LevelDebug
 		}
 
-		var initState **state.State
-		restart, err := core.Start(centralCfg, nodeCfg, level, centralPath, nil, initState)
+		restart, err := core.Start(centralCfg, nodeCfg, level, centralPath, nil, nil)
 		if err != nil {
 			panic(err)
 		}

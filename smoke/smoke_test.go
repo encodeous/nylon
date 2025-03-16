@@ -1,6 +1,6 @@
 //go:build smoke
 
-package integration
+package smoke
 
 import (
 	"context"
