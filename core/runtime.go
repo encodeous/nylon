@@ -16,14 +16,15 @@ import (
 	"time"
 )
 
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string) (bool, error) {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initState **state.State) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	dispatch := make(chan func(env *state.State) error, 512)
 
 	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level:     logLevel,
-		AddSource: false,
+		Level:        logLevel,
+		AddSource:    false,
+		CustomPrefix: string(ncfg.Id),
 		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
 			if attr.Key == "time" {
 				return slog.Attr{}
@@ -43,8 +44,10 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 			LocalCfg:        ncfg,
 			Log:             logger,
 			ConfigPath:      configPath,
+			AuxConfig:       aux,
 		},
 	}
+	*initState = &s
 
 	for _, node := range ccfg.Routers {
 		s.TrustedNodes[node.Id] = node.PubKey[:]
@@ -62,9 +65,11 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		for _ = range c {
+		select {
+		case _ = <-c:
 			s.Cancel(errors.New("received shutdown signal"))
-			break
+		case <-ctx.Done():
+			return
 		}
 	}()
 
@@ -80,10 +85,9 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 }
 
 func initModules(s *state.State) error {
-	modules := []state.NyModule{
-		&impl.Nylon{}, // nylon must start before router
-		&impl.Router{},
-	}
+	var modules []state.NyModule
+	modules = append(modules, &impl.Nylon{}) // nylon must start before router
+	modules = append(modules, &impl.Router{})
 
 	for _, module := range modules {
 		s.Modules[reflect.TypeOf(module).String()] = module
@@ -99,6 +103,9 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 	for {
 		select {
 		case fun := <-dispatch:
+			if fun == nil {
+				goto endLoop
+			}
 			//s.Log.Debug("start")
 			start := time.Now()
 			err := fun(s)
@@ -117,20 +124,25 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 	}
 endLoop:
 	s.Log.Info("stopped main loop", "reason", context.Cause(s.Context).Error())
-	cleanup(s)
+	Stop(s)
 	return nil
 }
 
-func cleanup(s *state.State) {
+func Stop(s *state.State) {
+	if s.Stopping.Swap(true) {
+		return // don't stop twice
+	}
+	s.Cancel(context.Canceled)
 	if s.DispatchChannel != nil {
 		close(s.DispatchChannel)
+		s.DispatchChannel = nil
 	}
 	s.Log.Info("cleaning up modules")
 	for moduleName, module := range s.Modules {
 		err := module.Cleanup(s)
 		if err != nil {
-			s.Log.Error("error occurred during cleanup: ", "module", moduleName, "error", err)
+			s.Log.Error("error occurred during Stop: ", "module", moduleName, "error", err)
 		}
 	}
-	s.Cancel(context.Canceled)
+	s.Log.Info("stopped")
 }

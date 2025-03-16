@@ -9,20 +9,25 @@ import (
 func (e *Env) Dispatch(fun func(*State) error) {
 	defer func() {
 		if r := recover(); r != nil {
-			e.Cancel(fmt.Errorf("panic: %v", r))
+			e.Cancel(fmt.Errorf("dispatch panic: %v", r))
 		}
 	}()
-	e.DispatchChannel <- fun
+	select {
+	case e.DispatchChannel <- fun:
+	default:
+		e.Cancel(fmt.Errorf("dispatch channel is full"))
+	}
+
 }
 
 // DispatchWait Dispatches the function to run on the main thread and wait for it to complete
 func (e *Env) DispatchWait(fun func(*State) (any, error)) (any, error) {
 	ret := make(chan Pair[any, error])
-	e.DispatchChannel <- func(s *State) error {
+	e.Dispatch(func(s *State) error {
 		res, err := fun(s)
 		ret <- Pair[any, error]{res, err}
 		return err
-	}
+	})
 	select {
 	case res := <-ret:
 		return res.V1, res.V2
@@ -40,8 +45,12 @@ func (e *Env) ScheduleTask(fun func(*State) error, delay time.Duration) {
 
 func (e *Env) repeatedTask(fun func(*State) error, delay time.Duration) {
 	for e.Context.Err() == nil {
-		e.Dispatch(fun)
-		time.Sleep(delay)
+		select {
+		case <-e.Context.Done():
+			return
+		case <-time.After(delay):
+			e.Dispatch(fun)
+		}
 	}
 }
 

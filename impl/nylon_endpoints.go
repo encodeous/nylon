@@ -40,11 +40,11 @@ func (n *Nylon) Probe(e *state.Env, ep *state.DynamicEndpoint) error {
 
 func (n *Nylon) Send(packet []byte, ep *state.DynamicEndpoint) {
 	neigh := n.env.GetRouter(ep.Node())
-	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(), n.Device.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
+	dev := n.Device
+	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(dev), dev.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
 }
 
 func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.NodeId) {
-
 	if pkt.ResponseToken == nil {
 		// ping
 		// build pong response
@@ -60,8 +60,7 @@ func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, en
 		sock.Send(pktBytes, endpoint, peer)
 
 		e.Dispatch(func(s *state.State) error {
-			handleProbePing(s, node, endpoint)
-			return nil
+			return handleProbePing(s, node, endpoint)
 		})
 	} else {
 		// pong
@@ -72,24 +71,31 @@ func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, en
 	}
 }
 
-func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
+func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error {
 	if node == s.Id {
-		return
+		return nil
 	}
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
 			if dep.NetworkEndpoint().Ep == ep.DstIPPort() && neigh.Id == node {
 				// we have a link
-				dep.Renew()
 
 				// refresh wireguard ep
 				dep.NetworkEndpoint().WgEndpoint = ep
 
+				if !dep.IsActive() {
+					err := pushRouteTable(s, &node)
+					if err != nil {
+						return err
+					}
+				}
+				dep.Renew()
+
 				if state.DBG_log_probe {
 					s.Log.Debug("probe from", "addr", dep.NetworkEndpoint().Ep)
 				}
-				return
+				return nil
 			}
 		}
 	}
@@ -97,10 +103,11 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	for _, neigh := range s.Neighbours {
 		if neigh.Id == node {
 			neigh.Eps = append(neigh.Eps, state.NewEndpoint(ep.DstIPPort(), neigh.Id, true, ep))
-			return
+			// push route update to improve convergence time
+			return pushRouteTable(s, &node)
 		}
 	}
-	return
+	return nil
 }
 
 func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.Endpoint) {

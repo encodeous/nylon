@@ -186,7 +186,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 			interconnectNodes := make([]NodeId, 0)
 			for _, name := range names {
 				for _, node := range interconnectNodes {
-					parsedPairings = append(parsedPairings, makeSortedPair(string(node), name))
+					parsedPairings = append(parsedPairings, MakeSortedPair(string(node), name))
 				}
 				interconnectNodes = append(interconnectNodes, NodeId(name))
 			}
@@ -262,7 +262,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 		for _, x1 := range x {
 			for _, y1 := range y {
 				if x1 != y1 {
-					pairings = append(pairings, makeSortedPair(x1, y1))
+					pairings = append(pairings, MakeSortedPair(x1, y1))
 				}
 			}
 		}
@@ -272,7 +272,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 	return pairings, nil
 }
 
-func makeSortedPair[T cmp.Ordered](a T, b T) Pair[T, T] {
+func MakeSortedPair[T cmp.Ordered](a, b T) Pair[T, T] {
 	if a < b {
 		return Pair[T, T]{a, b}
 	} else {

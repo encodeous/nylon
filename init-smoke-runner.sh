@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-INSTANCE_NAME="nylon-integration-runner"
+INSTANCE_NAME="nylon-smoke-runner"
 DISTRO="ubuntu:22.04"
 
 if lxc info "$INSTANCE_NAME" &> /dev/null; then
@@ -31,4 +31,4 @@ lxc exec "$INSTANCE_NAME" -- bash -c "mkdir -p /etc/systemd/system/docker.servic
 lxc exec "$INSTANCE_NAME" -- systemctl daemon-reload
 lxc exec "$INSTANCE_NAME" -- systemctl restart docker.service
 
-echo "Integration runner initialization complete."
+echo "Smoke test runner initialization complete."

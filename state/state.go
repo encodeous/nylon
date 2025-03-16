@@ -28,7 +28,9 @@ type Env struct {
 	Context      context.Context
 	Cancel       context.CancelCauseFunc
 	Log          *slog.Logger
+	AuxConfig    map[string]any
 	Updating     atomic.Bool
+	Stopping     atomic.Bool
 	ConfigPath   string
 	IPForwardOff bool
 }

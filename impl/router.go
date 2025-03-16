@@ -25,7 +25,9 @@ func (r *Router) Cleanup(s *state.State) error {
 
 func (r *Router) Init(s *state.State) error {
 	s.Log.Debug("init router")
-	s.Env.RepeatTask(fullRouteUpdate, state.RouteUpdateDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		return pushRouteTable(s, nil)
+	}, state.RouteUpdateDelay)
 	s.Env.RepeatTask(checkStarvation, state.StarvationDelay)
 	r.Self = &state.Source{
 		Id:    s.Id,
@@ -40,7 +42,7 @@ func (r *Router) Init(s *state.State) error {
 	return nil
 }
 
-func fullRouteUpdate(s *state.State) error {
+func pushRouteTable(s *state.State, to *state.NodeId) error {
 	r := Get[*Router](s)
 	err := updateRoutes(s)
 	if err != nil {
@@ -50,7 +52,6 @@ func fullRouteUpdate(s *state.State) error {
 	dbgPrintRouteTable(s)
 
 	// broadcast routes
-
 	updates := make([]*protocol.Ny_Update, 0)
 
 	// make self update
@@ -69,7 +70,14 @@ func fullRouteUpdate(s *state.State) error {
 		}
 	}
 
-	broadcastUpdates(s, updates, false)
+	if to == nil {
+		broadcastUpdates(s, updates, false, s.Neighbours)
+	} else {
+		broadcastUpdates(s, updates, false, []*state.Neighbour{
+			s.GetNeighbour(*to),
+		})
+	}
+
 	return nil
 }
 
@@ -100,7 +108,7 @@ func pushSeqnoUpdate(s *state.State, sources []state.NodeId) error {
 		}
 	}
 
-	broadcastUpdates(s, updates, true)
+	broadcastUpdates(s, updates, true, s.Neighbours)
 	return nil
 }
 
@@ -281,7 +289,7 @@ func updateRoutes(s *state.State) error {
 	}
 
 	if len(retractions) > 0 {
-		broadcastUpdates(s, retractions, true)
+		broadcastUpdates(s, retractions, true, s.Neighbours)
 	}
 
 	return checkStarvation(s)
@@ -315,7 +323,7 @@ func checkStarvation(s *state.State) error {
 				}
 				r.SeqnoDedup.Set(node, route.Src, ttlcache.DefaultTTL)
 
-				broadcastSeqnoRequest(s, mapToPktSource(&route.Src))
+				broadcastSeqnoRequest(s, mapToPktSource(&route.Src), s.Neighbours)
 			}
 		}
 	}
@@ -404,7 +412,7 @@ func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.
 			return nil // we have already sent such a request before
 		}
 		r.SeqnoDedup.Set(src.Id, src, ttlcache.DefaultTTL)
-		broadcastSeqnoRequest(s, pkt)
+		broadcastSeqnoRequest(s, pkt, s.Neighbours)
 	}
 	return nil
 }

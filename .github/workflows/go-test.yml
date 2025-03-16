@@ -26,6 +26,7 @@ jobs:
 
       - name: Run unit tests with coverage
         run: bash unit-test-coverage.sh
-
       - name: Run integration tests
-        run: go test -v -tags=integration ./integration/...
+        run: go test -v -tags=integration ./...
+      - name: Run smoke tests
+        run: go test -v -tags=smoke ./integration/...

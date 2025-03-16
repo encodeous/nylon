@@ -7,11 +7,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func broadcast(s *state.State, message proto.Message) {
-	r := s.Neighbours
+func broadcast(s *state.State, message proto.Message, neighs []*state.Neighbour) {
 	n := Get[*Nylon](s)
 	go func() {
-		for _, neigh := range r {
+		for _, neigh := range neighs {
 			// TODO, investigate effect of packet loss on control messages
 			best := neigh.BestEndpoint()
 			if best != nil && best.IsActive() {
@@ -25,18 +24,18 @@ func broadcast(s *state.State, message proto.Message) {
 	}()
 }
 
-func broadcastUpdates(s *state.State, updates []*protocol.Ny_Update, push bool) {
+func broadcastUpdates(s *state.State, updates []*protocol.Ny_Update, push bool, neighs []*state.Neighbour) {
 	pkt := protocol.Ny_UpdateBundle{
 		SeqnoPush: push,
 		Updates:   updates,
 	}
-	broadcast(s, &protocol.Ny{Type: &protocol.Ny_RouteOp{RouteOp: &pkt}})
+	broadcast(s, &protocol.Ny{Type: &protocol.Ny_RouteOp{RouteOp: &pkt}}, neighs)
 }
 
-func broadcastSeqnoRequest(s *state.State, src *protocol.Ny_Source) {
+func broadcastSeqnoRequest(s *state.State, src *protocol.Ny_Source, neighs []*state.Neighbour) {
 	broadcast(s, &protocol.Ny{Type: &protocol.Ny_SeqnoRequestOp{
 		SeqnoRequestOp: src,
-	}})
+	}}, neighs)
 }
 
 func mapToPktSource(source *state.Source) *protocol.Ny_Source {

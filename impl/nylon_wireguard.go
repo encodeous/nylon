@@ -4,55 +4,21 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/nylon/sys"
 	"github.com/encodeous/polyamide/conn"
 	"github.com/encodeous/polyamide/device"
-	"github.com/encodeous/polyamide/ipc"
-	"github.com/encodeous/polyamide/tun"
 	"net/netip"
-	"runtime"
 	"slices"
 	"sort"
-	"strings"
 )
 
 func (n *Nylon) initWireGuard(s *state.State) error {
-	itfName := "nylon"
-
-	if runtime.GOOS == "darwin" {
-		itfName = "utun"
-	}
-
-	err := sys.VerifyForwarding()
+	dev, itfName, err := NewWireGuardDevice(s, n)
 	if err != nil {
-		println(err.Error())
-		s.IPForwardOff = true
+		return err
 	}
 
-	// setup TUN
-	tdev, err := tun.CreateTUN(itfName, device.DefaultMTU)
-	if err != nil {
-		return fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
-	}
-	realInterfaceName, err := tdev.Name()
-	if err == nil {
-		itfName = realInterfaceName
-	}
-
-	// setup WireGuard
-	dev := device.NewDevice(tdev, conn.NewStdNetBind(), &device.Logger{
-		Verbosef: func(format string, args ...any) {
-			if state.DBG_log_wireguard {
-				s.Log.Debug(fmt.Sprintf(format, args...))
-			}
-		},
-		Errorf: func(format string, args ...any) {
-			if strings.Contains(format, "Failed to send PolySock packets") {
-				return
-			}
-			s.Log.Error(fmt.Sprintf(format, args...))
-		},
-	})
+	n.PolySock = dev.PolyListen(n)
+	s.Log.Info("started polysock listener")
 
 	n.Device = dev
 	n.itfName = itfName
@@ -84,7 +50,6 @@ allow_inbound=true
 		if s.IsClient(peer) {
 			wgPeer.SetPreferRoaming(true)
 		}
-		wgPeer.Start()
 
 		// seed initial endpoints
 		if s.IsClient(peer) {
@@ -93,39 +58,22 @@ allow_inbound=true
 		rcfg := s.GetRouter(peer)
 		endpoints := make([]conn.Endpoint, 0)
 		for _, nep := range rcfg.Endpoints {
-			endpoints = append(endpoints, &conn.StdNetEndpoint{AddrPort: nep})
+			endpoint, err := n.Device.Bind().ParseEndpoint(nep.String())
+			if err != nil {
+				return err
+			}
+			endpoints = append(endpoints, endpoint)
 		}
 		wgPeer.SetEndpoints(endpoints)
+
+		wgPeer.Start()
 	}
-
-	// start uapi for wg command
-
-	fileUAPI, err := ipc.UAPIOpen(itfName)
-
-	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
-	if err != nil {
-		return err
-	}
-	n.wgUapi = uapi
-
-	go func() {
-		for s.Context.Err() == nil {
-			accept, err := uapi.Accept()
-			if err != nil {
-				s.Env.Log.Debug(err.Error())
-				continue
-			}
-			go dev.IpcHandle(accept)
-		}
-	}()
-
-	s.Log.Info("Created WireGuard interface", "name", itfName)
 
 	// configure system networking
 
 	if !s.LocalCfg.NoNetConfigure {
 		selfPrefixes := s.GetRouter(s.Id).Prefixes
-		err = sys.InitInterface(itfName)
+		err = InitInterface(itfName)
 		if err != nil {
 			return err
 		}
@@ -134,7 +82,7 @@ allow_inbound=true
 			// configure system
 			// assign ip
 			for _, prefix := range selfPrefixes {
-				err = sys.ConfigureAlias(itfName, prefix)
+				err = ConfigureAlias(itfName, prefix)
 				if err != nil {
 					return err
 				}
@@ -146,7 +94,7 @@ allow_inbound=true
 						continue
 					}
 					for _, prefix := range peer.Prefixes {
-						err = sys.ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+						err = ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
 						if err != nil {
 							return err
 						}
@@ -154,7 +102,7 @@ allow_inbound=true
 				}
 			} else {
 				for _, prefix := range s.LocalCfg.AllowedPrefixes {
-					err = sys.ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+					err = ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
 					if err != nil {
 						return err
 					}
@@ -165,21 +113,13 @@ allow_inbound=true
 
 	// init wireguard related tasks
 
-	n.PolySock = dev.PolyListen(n)
-	s.Log.Info("started polysock listener")
-
 	s.RepeatTask(UpdateWireGuard, state.ProbeDelay)
 
 	return nil
 }
 
 func (n *Nylon) cleanupWireGuard(s *state.State) error {
-	n.Device.Close()
-	err := n.wgUapi.Close()
-	if err != nil {
-		return err
-	}
-	return nil
+	return CleanupWireGuardDevice(s, n)
 }
 
 func UpdateWireGuard(s *state.State) error {
@@ -242,7 +182,7 @@ func UpdateWireGuard(s *state.State) error {
 				return -int(a.Metric() - b.Metric())
 			})
 			for _, ep := range links {
-				eps = append(eps, ep.NetworkEndpoint().GetWgEndpoint())
+				eps = append(eps, ep.NetworkEndpoint().GetWgEndpoint(n.Device))
 			}
 		}
 
@@ -251,7 +191,11 @@ func UpdateWireGuard(s *state.State) error {
 			if !slices.ContainsFunc(eps, func(endpoint conn.Endpoint) bool {
 				return endpoint.DstIPPort() == ep
 			}) {
-				eps = append(eps, &conn.StdNetEndpoint{AddrPort: ep})
+				endpoint, err := n.Device.Bind().ParseEndpoint(ep.String())
+				if err != nil {
+					return err
+				}
+				eps = append(eps, endpoint)
 			}
 		}
 

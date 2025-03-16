@@ -1,7 +1,9 @@
 package state
 
 import (
+	"fmt"
 	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/polyamide/device"
 	"math"
 	"net/netip"
 	"slices"
@@ -28,9 +30,13 @@ type NetworkEndpoint struct {
 	Ep         netip.AddrPort
 }
 
-func (ep *NetworkEndpoint) GetWgEndpoint() conn.Endpoint {
+func (ep *NetworkEndpoint) GetWgEndpoint(device *device.Device) conn.Endpoint {
 	if ep.WgEndpoint == nil || ep.WgEndpoint.DstToString() != ep.Ep.String() {
-		ep.WgEndpoint = &conn.StdNetEndpoint{AddrPort: ep.Ep}
+		wgEp, err := device.Bind().ParseEndpoint(ep.Ep.String())
+		if err != nil {
+			panic(fmt.Sprintf("Failed to parse endpoint: %s, %v", ep.Ep.String(), err))
+		}
+		ep.WgEndpoint = wgEp
 	}
 	return ep.WgEndpoint
 }
