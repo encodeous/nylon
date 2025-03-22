@@ -11,6 +11,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
 	state.DBG_log_wireguard = true
 	state.DBG_log_route_table = true
 	state.DBG_log_route_changes = true
@@ -19,7 +20,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestStartStop(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
 	vh.NewNode("node1", "10.0.0.1/32")
 	vh.NewNode("node2", "10.0.0.2/32")
@@ -37,7 +37,7 @@ func TestStartStop(t *testing.T) {
 }
 
 func TestSimplePing(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	t.Parallel()
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
@@ -79,7 +79,7 @@ func TestSimplePing(t *testing.T) {
 	select {
 	case <-cc:
 		t.Log("Got ping!")
-	case <-time.After(100 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Error("Timed out waiting for ping")
 	case err := <-errs:
 		t.Error(err)
@@ -88,7 +88,7 @@ func TestSimplePing(t *testing.T) {
 }
 
 func TestSimpleRoutedPing(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	t.Parallel()
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
@@ -136,7 +136,7 @@ func TestSimpleRoutedPing(t *testing.T) {
 	select {
 	case <-cc:
 		t.Log("Got ping!")
-	case <-time.After(100 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Error("Timed out waiting for ping")
 	case err := <-errs:
 		t.Error(err)

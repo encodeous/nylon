@@ -23,6 +23,30 @@ import (
 	"time"
 )
 
+type Signal chan bool
+
+func NewSignal() Signal {
+	return make(chan bool)
+}
+func (s Signal) Trigger() {
+	select {
+	case <-s:
+	default:
+		close(s)
+	}
+}
+func (s Signal) Triggered() bool {
+	select {
+	case <-s:
+		return true
+	default:
+		return false
+	}
+}
+func (s Signal) Wait() {
+	<-s
+}
+
 type VirtualLink struct {
 	Edge       state.Pair[bindtest.ChannelEndpoint2, bindtest.ChannelEndpoint2]
 	Latency    time.Duration
@@ -163,7 +187,27 @@ func (v *VirtualHarness) Start() chan error {
 				panic(fmt.Sprintf("node restart is not implemented"))
 			}
 		}()
-		startDelay += time.Millisecond * 10 // add a tiny delay so they don't try to handshake at the exact same time
+		startDelay += time.Millisecond * 500 // add a tiny delay so they don't try to handshake at the exact same time
+	}
+	// wait for all routers to start
+	for {
+		started := true
+		for idx, _ := range v.Central.Routers {
+			if v.States[idx] == nil || !v.States[idx].Started.Load() {
+				started = false
+				break
+			}
+		}
+		if started {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return errChan
+		case <-time.After(time.Millisecond * 50):
+		case <-errChan:
+			return errChan
+		}
 	}
 	return errChan
 }

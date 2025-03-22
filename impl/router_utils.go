@@ -5,6 +5,7 @@ import (
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/proto"
+	"strings"
 )
 
 func broadcast(s *state.State, message proto.Message, neighs []*state.Neighbour) {
@@ -54,11 +55,15 @@ func mapFromPktSource(source *protocol.Ny_Source) state.Source {
 func dbgPrintRouteTable(s *state.State) {
 	r := Get[*Router](s)
 	if state.DBG_log_route_table {
+		buf := strings.Builder{}
 		if len(r.Routes) != 0 {
-			s.Log.Debug("--- route table ---")
+			buf.WriteString("--- route table ---\n")
 		}
 		for _, route := range r.Routes {
-			s.Log.Debug(fmt.Sprintf("%s(%d) -> %s", route.Src.Id, route.Src.Seqno, route.Nh), "met", route.PubMetric, "fd", route.Fd, "ret", route.Retracted)
+			buf.WriteString(fmt.Sprintf("%s(%d) -> %s m=%d, fd=%d, ret=%v\n", route.Src.Id, route.Src.Seqno, route.Nh, route.PubMetric, route.Fd, route.Retracted))
+		}
+		if buf.Len() > 0 {
+			s.Log.Debug(buf.String())
 		}
 	}
 }

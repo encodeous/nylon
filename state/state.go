@@ -31,6 +31,7 @@ type Env struct {
 	AuxConfig    map[string]any
 	Updating     atomic.Bool
 	Stopping     atomic.Bool
+	Started      atomic.Bool
 	ConfigPath   string
 	IPForwardOff bool
 }

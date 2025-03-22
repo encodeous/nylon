@@ -102,6 +102,7 @@ func initModules(s *state.State) error {
 
 func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 	s.Log.Debug("started main loop")
+	s.Started.Store(true)
 	for {
 		select {
 		case fun := <-dispatch:

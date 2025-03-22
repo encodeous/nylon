@@ -3,7 +3,10 @@ package state
 import "time"
 
 const (
-	INF                            = (uint16)(65535)
+	INF = (uint16)(65535)
+)
+
+var (
 	HopCost                        = (uint16)(5) // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
 	RouteUpdateDelay               = time.Second * 5
 	ProbeDelay                     = time.Millisecond * 500
@@ -21,7 +24,6 @@ const (
 	MinimumConfidenceWindow = int(time.Second * 15 / ProbeDelay)
 
 	GcDelay           = time.Millisecond * 1000
-	OtelDelay         = time.Second * 1
 	LinkDeadThreshold = 5 * ProbeDelay
 
 	// client configuration
