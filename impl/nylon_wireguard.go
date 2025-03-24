@@ -54,6 +54,7 @@ listen_port=%d
 
 		// seed initial endpoints
 		if s.IsClient(peer) {
+			wgPeer.Start()
 			continue
 		}
 		rcfg := s.GetRouter(peer)
