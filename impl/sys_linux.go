@@ -12,7 +12,7 @@ func VerifyForwarding() error {
 		return err
 	}
 	if string(forward) != "1\n" {
-		return fmt.Errorf("expected /proc/sys/net/ipv4/ip_forward = 1 got %s", string(res))
+		return fmt.Errorf("expected /proc/sys/net/ipv4/ip_forward = 1 got %s", string(forward))
 	}
 	// TODO: IPv6 forwarding
 	return nil
