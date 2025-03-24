@@ -17,6 +17,8 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 		return err
 	}
 
+	dev.AllowAllInbound = true
+	dev.UseSystemRouting = s.UseSystemRouting
 	n.PolySock = dev.PolyListen(n)
 	s.Log.Info("started polysock listener")
 
@@ -28,7 +30,6 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 		fmt.Sprintf(
 			`private_key=%s
 listen_port=%d
-allow_inbound=true
 `,
 			hex.EncodeToString(s.Key[:]),
 			s.Port,
@@ -71,7 +72,7 @@ allow_inbound=true
 
 	// configure system networking
 
-	if !s.LocalCfg.NoNetConfigure {
+	if !s.NoNetConfigure {
 		selfPrefixes := s.GetRouter(s.Id).Prefixes
 		err = InitInterface(itfName)
 		if err != nil {
@@ -88,7 +89,7 @@ allow_inbound=true
 				}
 			}
 
-			if len(s.LocalCfg.AllowedPrefixes) == 0 {
+			if len(s.AllowedPrefixes) == 0 {
 				for _, peer := range s.CentralCfg.GetNodes() {
 					if peer.Id == s.Id {
 						continue
@@ -101,7 +102,7 @@ allow_inbound=true
 					}
 				}
 			} else {
-				for _, prefix := range s.LocalCfg.AllowedPrefixes {
+				for _, prefix := range s.AllowedPrefixes {
 					err = ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
 					if err != nil {
 						return err

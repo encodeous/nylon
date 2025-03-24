@@ -99,14 +99,15 @@ func (v *VirtualLink) WithPacketLoss(loss float64) *VirtualLink {
 }
 
 type VirtualHarness struct {
-	Central   state.CentralCfg
-	Context   context.Context
-	Cancel    context.CancelCauseFunc
-	Local     []state.LocalCfg
-	Net       *InMemoryNetwork
-	States    []*state.State
-	Links     []*VirtualLink
-	Endpoints map[string]state.NodeId
+	Central          state.CentralCfg
+	Context          context.Context
+	Cancel           context.CancelCauseFunc
+	Local            []state.LocalCfg
+	Net              *InMemoryNetwork
+	States           []*state.State
+	Links            []*VirtualLink
+	Endpoints        map[string]state.NodeId
+	UntrackedRouting bool
 }
 
 func (v *VirtualHarness) IndexOf(id state.NodeId) int {
@@ -118,10 +119,11 @@ func (v *VirtualHarness) IndexOf(id state.NodeId) int {
 func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	privKey := state.GenerateKey()
 	locCfg := state.LocalCfg{
-		Key:            privKey,
-		Id:             id,
-		Port:           25565,
-		NoNetConfigure: true,
+		Key:              privKey,
+		Id:               id,
+		Port:             25565,
+		NoNetConfigure:   true,
+		UseSystemRouting: !v.UntrackedRouting,
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
@@ -151,7 +153,7 @@ func (v *VirtualHarness) Start() chan error {
 	v.Context = ctx
 	v.Cancel = cancel
 	v.States = make([]*state.State, len(v.Central.Routers))
-	errChan := make(chan error, 128)
+	errChan := make(chan error, 128) // a large number so we dont get blocked
 	vn := &InMemoryNetwork{}
 	v.Net = vn
 	vn.cfg = v
@@ -205,7 +207,8 @@ func (v *VirtualHarness) Start() chan error {
 		case <-ctx.Done():
 			return errChan
 		case <-time.After(time.Millisecond * 50):
-		case <-errChan:
+		case err := <-errChan:
+			errChan <- err
 			return errChan
 		}
 	}

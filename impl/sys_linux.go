@@ -12,7 +12,7 @@ func VerifyForwarding() error {
 		return err
 	}
 	if string(forward) != "1\n" {
-		return fmt.Errorf("IP forwarding is not enabled. Please enable IP forwarding to use Nylon as a router")
+		return fmt.Errorf("expected /proc/sys/net/ipv4/ip_forward = 1 got %s", string(res))
 	}
 	// TODO: IPv6 forwarding
 	return nil

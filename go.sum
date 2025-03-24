@@ -52,6 +52,8 @@ github.com/encodeous/polyamide v0.0.0-20250316225813-fa12bfd292a6 h1:gdtxbTcP4Na
 github.com/encodeous/polyamide v0.0.0-20250316225813-fa12bfd292a6/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/polyamide v0.0.0-20250316230343-168b7b86d052 h1:VMMiW6ASv/9C99NqQras0T4k7na3X84isu2u7GE5WiU=
 github.com/encodeous/polyamide v0.0.0-20250316230343-168b7b86d052/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
+github.com/encodeous/polyamide v0.0.0-20250324172151-d34a606e4a36 h1:haXLhDF5LD3Xg1pdgxYf/CroKRfUAVycVgXSU+FrYIQ=
+github.com/encodeous/polyamide v0.0.0-20250324172151-d34a606e4a36/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=

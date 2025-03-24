@@ -14,10 +14,12 @@ import (
 )
 
 func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf string, err error) {
-	err = VerifyForwarding()
-	if err != nil {
-		s.Log.Warn("IP Forwarding is not enabled", "err", err.Error())
-		s.IPForwardOff = true
+	if s.UseSystemRouting {
+		err = VerifyForwarding()
+		if err != nil {
+			s.Log.Warn("IP Forwarding is not enabled, routing disabled", "err", err.Error())
+			s.DisableRouting = true
+		}
 	}
 
 	itfName := "nylon" // attempt to name the interface

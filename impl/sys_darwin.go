@@ -14,7 +14,7 @@ func VerifyForwarding() error {
 		return err
 	}
 	if !strings.Contains(string(res), "1") {
-		return fmt.Errorf("IP forwarding is not enabled. Please enable IP forwarding to use Nylon as a router")
+		return fmt.Errorf("expected net.inet.ip.forwarding = 1 got %s", string(res))
 	}
 	return nil
 }

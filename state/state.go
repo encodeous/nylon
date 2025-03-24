@@ -25,13 +25,12 @@ type Env struct {
 	DispatchChannel chan<- func(s *State) error
 	CentralCfg
 	LocalCfg
-	Context      context.Context
-	Cancel       context.CancelCauseFunc
-	Log          *slog.Logger
-	AuxConfig    map[string]any
-	Updating     atomic.Bool
-	Stopping     atomic.Bool
-	Started      atomic.Bool
-	ConfigPath   string
-	IPForwardOff bool
+	Context    context.Context
+	Cancel     context.CancelCauseFunc
+	Log        *slog.Logger
+	AuxConfig  map[string]any
+	Updating   atomic.Bool
+	Stopping   atomic.Bool
+	Started    atomic.Bool
+	ConfigPath string
 }

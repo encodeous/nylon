@@ -61,7 +61,7 @@ func pushRouteTable(s *state.State, to *state.NodeId) error {
 	})
 
 	// write route table
-	if !s.IPForwardOff {
+	if !s.DisableRouting {
 		for _, route := range r.Routes {
 			updates = append(updates, &protocol.Ny_Update{
 				Source: mapToPktSource(&route.Src),
@@ -97,7 +97,7 @@ func pushSeqnoUpdate(s *state.State, sources []state.NodeId) error {
 				Source: mapToPktSource(r.Self),
 				Metric: 0,
 			})
-		} else if !s.IPForwardOff {
+		} else if !s.DisableRouting {
 			route, ok := r.Routes[source]
 			if ok {
 				updates = append(updates, &protocol.Ny_Update{
@@ -388,7 +388,7 @@ func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.
 			r.Self.Seqno = src.Seqno + 1
 		}
 		fSrc = r.Self
-	} else if !s.IPForwardOff {
+	} else if !s.DisableRouting {
 		froute, ok := r.Routes[src.Id]
 
 		if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
