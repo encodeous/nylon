@@ -11,7 +11,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
 	state.DBG_log_wireguard = true
 	state.DBG_log_route_table = true
 	state.DBG_log_route_changes = true
@@ -20,6 +19,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestStartStop(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
 	vh.NewNode("node1", "10.0.0.1/32")
 	vh.NewNode("node2", "10.0.0.2/32")
@@ -37,6 +37,7 @@ func TestStartStop(t *testing.T) {
 }
 
 func TestSimplePing(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
@@ -87,6 +88,7 @@ func TestSimplePing(t *testing.T) {
 }
 
 func TestSimpleRoutedPing(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")

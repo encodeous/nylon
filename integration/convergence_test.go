@@ -4,14 +4,14 @@ package integration
 
 import (
 	"github.com/encodeous/nylon/state"
+	"go.uber.org/goleak"
 	"net/netip"
 	"testing"
 	"time"
 )
 
 func TestOptimalConvergence(t *testing.T) {
-	state.ProbeDelay /= 10 // 10x faster
-	state.RouteUpdateDelay /= 10
+	defer goleak.VerifyNone(t)
 
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"

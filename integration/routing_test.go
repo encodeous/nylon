@@ -4,12 +4,14 @@ package integration
 
 import (
 	"github.com/encodeous/nylon/state"
+	"go.uber.org/goleak"
 	"net/netip"
 	"testing"
 	"time"
 )
 
 func TestInProcessRouting(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
 	vh.UntrackedRouting = true
 	a1 := "192.168.1.1:1234"
