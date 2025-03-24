@@ -10,8 +10,6 @@ import (
 )
 
 func TestOptimalConvergence(t *testing.T) {
-	t.Parallel()
-
 	state.ProbeDelay /= 10 // 10x faster
 	state.RouteUpdateDelay /= 10
 
