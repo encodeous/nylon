@@ -72,9 +72,11 @@ func TestBundleTamper(t *testing.T) {
 	assert.NoError(t, err)
 
 	buf := []byte(bundle)
-	buf[0] = 0
-	buf[1] = 0
-	buf[2] = 0
+	if buf[0] == 'a' {
+		buf[0] = 'b'
+	} else {
+		buf[0] = 'a'
+	}
 	bundle = string(buf)
 
 	_, err = UnbundleConfig(bundle, root.Pubkey())
