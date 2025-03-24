@@ -37,7 +37,6 @@ func TestStartStop(t *testing.T) {
 }
 
 func TestSimplePing(t *testing.T) {
-	t.Parallel()
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
@@ -88,7 +87,6 @@ func TestSimplePing(t *testing.T) {
 }
 
 func TestSimpleRoutedPing(t *testing.T) {
-	t.Parallel()
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")

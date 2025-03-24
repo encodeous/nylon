@@ -10,7 +10,6 @@ import (
 )
 
 func TestInProcessRouting(t *testing.T) {
-	t.Parallel()
 	vh := &VirtualHarness{}
 	vh.UntrackedRouting = true
 	a1 := "192.168.1.1:1234"
