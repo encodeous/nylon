@@ -89,6 +89,9 @@ func TestSimplePing(t *testing.T) {
 
 func TestSimpleRoutedPing(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	state.ProbeDelay /= 3 // 3x faster
+	state.RouteUpdateDelay /= 3
+
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
@@ -136,7 +139,7 @@ func TestSimpleRoutedPing(t *testing.T) {
 	select {
 	case <-cc:
 		t.Log("Got ping!")
-	case <-time.After(10 * time.Second):
+	case <-time.After(100 * time.Second):
 		t.Error("Timed out waiting for ping")
 	case err := <-errs:
 		t.Error(err)

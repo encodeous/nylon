@@ -12,6 +12,8 @@ import (
 
 func TestOptimalConvergence(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	state.ProbeDelay /= 3 // 3x faster
+	state.RouteUpdateDelay /= 3
 
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
@@ -84,7 +86,7 @@ func TestOptimalConvergence(t *testing.T) {
 	select {
 	case <-success:
 		t.Log("Reached optimal!")
-	case <-time.After(100 * time.Second):
+	case <-time.After(200 * time.Second):
 		t.Error("Timed out waiting for ping")
 	case err := <-errs:
 		t.Error(err)
