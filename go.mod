@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/docker/docker v27.1.1+incompatible
-	github.com/encodeous/polyamide v0.0.0-20250324224108-65944b56f3ea
+	github.com/encodeous/polyamide v0.0.0-20250325212812-2382132a13c5
 	github.com/encodeous/tint v1.2.0
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/spf13/cobra v1.8.1
