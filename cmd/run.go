@@ -17,6 +17,7 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		centralPath := cmd.Flag("config").Value.String()
 		nodePath := cmd.Flag("node").Value.String()
+		logPath := cmd.Flag("log").Value.String()
 	start:
 		var centralCfg state.CentralCfg
 		file, err := os.ReadFile(centralPath)
@@ -36,6 +37,10 @@ var runCmd = &cobra.Command{
 		err = yaml.Unmarshal(file, &nodeCfg)
 		if err != nil {
 			panic(err)
+		}
+
+		if logPath != "" {
+			nodeCfg.LogPath = logPath
 		}
 
 		err = state.CentralConfigValidator(&centralCfg)
@@ -73,6 +78,7 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "lrepo", "", false, "Outputs repo updates to the console")
+	runCmd.Flags().String("log", DefaultLogPath, "Log file path")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")
 }

@@ -61,6 +61,7 @@ type LocalCfg struct {
 	NoNetConfigure   bool           `yaml:",omitempty"`
 	AllowedPrefixes  []netip.Prefix `yaml:",omitempty"`
 	InterfaceName    string
+	LogPath          string
 }
 
 func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) RouterCfg {

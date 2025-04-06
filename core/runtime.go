@@ -7,9 +7,11 @@ import (
 	"github.com/encodeous/nylon/impl"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
+	slogmulti "github.com/samber/slog-multi"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path"
 	"reflect"
 	"runtime"
 	"syscall"
@@ -21,17 +23,34 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 	dispatch := make(chan func(env *state.State) error, 512)
 
-	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level:        logLevel,
-		AddSource:    false,
-		CustomPrefix: string(ncfg.Id),
-		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-			if attr.Key == "time" {
-				return slog.Attr{}
-			}
-			return attr
-		},
-	}))
+	handlers := make([]slog.Handler, 0)
+	handlers = append(handlers,
+		tint.NewHandler(os.Stderr, &tint.Options{
+			Level:        logLevel,
+			AddSource:    false,
+			CustomPrefix: string(ncfg.Id),
+			ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+				if attr.Key == "time" {
+					return slog.Attr{}
+				}
+				return attr
+			},
+		}))
+
+	if ncfg.LogPath != "" {
+		err := os.MkdirAll(path.Dir(ncfg.LogPath), 0700)
+		if err != nil {
+			return false, err
+		}
+		f, err := os.OpenFile(ncfg.LogPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0700)
+		if err != nil {
+			return false, err
+		}
+		handlers = append(handlers, slog.NewTextHandler(f, &slog.HandlerOptions{Level: logLevel}))
+	}
+
+	logger := slog.New(
+		slogmulti.Fanout(handlers...))
 
 	if ncfg.InterfaceName == "" {
 		ncfg.InterfaceName = "nylon"

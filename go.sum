@@ -44,10 +44,6 @@ github.com/docker/go-connections v0.5.0 h1:USnMq7hx7gwdVZq1L49hLXaFtUdTADjXGp+uj
 github.com/docker/go-connections v0.5.0/go.mod h1:ov60Kzw0kKElRwhNs9UlUHAE/F9Fe6GLaXnqyDdmEXc=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/encodeous/polyamide v0.0.0-20250324172151-d34a606e4a36 h1:haXLhDF5LD3Xg1pdgxYf/CroKRfUAVycVgXSU+FrYIQ=
-github.com/encodeous/polyamide v0.0.0-20250324172151-d34a606e4a36/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
-github.com/encodeous/polyamide v0.0.0-20250324224108-65944b56f3ea h1:/fhScFF1Nr79tex42vS/G0DfPMHdkmhTtyFoJ6MNMJ4=
-github.com/encodeous/polyamide v0.0.0-20250324224108-65944b56f3ea/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/polyamide v0.0.0-20250325212812-2382132a13c5 h1:BEyORAGBFEJf6e6FKjqhmVgNji5fvJLLuK4QbbfOCAA=
 github.com/encodeous/polyamide v0.0.0-20250325212812-2382132a13c5/go.mod h1:pR/i4nBhkQVSUxvUOgtK4p5lXmbYWlj2myPkfdSiGtc=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
@@ -132,6 +128,10 @@ github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/f
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
+github.com/samber/lo v1.49.1 h1:4BIFyVfuQSEpluc7Fua+j1NolZHiEHEpaSEKdsH0tew=
+github.com/samber/lo v1.49.1/go.mod h1:dO6KHFzUKXgP8LDhU0oI8d2hekjXnGOu0DB8Jecxd6o=
+github.com/samber/slog-multi v1.4.0 h1:pwlPMIE7PrbTHQyKWDU+RIoxP1+HKTNOujk3/kdkbdg=
+github.com/samber/slog-multi v1.4.0/go.mod h1:FsQ4Uv2L+E/8TZt+/BVgYZ1LoDWCbfCU21wVIoMMrO8=
 github.com/shirou/gopsutil/v3 v3.23.12 h1:z90NtUkp3bMtmICZKpC4+WaknU1eXtp5vtbQ11DgpE4=
 github.com/shirou/gopsutil/v3 v3.23.12/go.mod h1:1FrWgea594Jp7qmjHUUPlJDTPgcsb9mGnXDxavtikzM=
 github.com/shoenig/go-m1cpu v0.1.6 h1:nxdKQNcEB6vzgA2E2bvzKIYRuNj7XNJ4S/aRSwKzFtM=
