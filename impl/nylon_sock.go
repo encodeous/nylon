@@ -37,4 +37,10 @@ func (n *Nylon) Receive(packet []byte, endpoint conn.Endpoint, peer *device.Peer
 	case *protocol.Ny_ProbeOp:
 		HandleProbe(e, n.PolySock, pkt.GetProbeOp(), endpoint, peer, *neigh)
 	}
+	defer func() {
+		err := recover()
+		if err != nil {
+			n.env.Log.Error("panic while handling poly socket: %v", err)
+		}
+	}()
 }
