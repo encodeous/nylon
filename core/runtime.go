@@ -33,6 +33,10 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 		},
 	}))
 
+	if ncfg.InterfaceName == "" {
+		ncfg.InterfaceName = "nylon"
+	}
+
 	s := state.State{
 		TrustedNodes: make(map[state.NodeId]ed25519.PublicKey),
 		Modules:      make(map[string]state.NyModule),
