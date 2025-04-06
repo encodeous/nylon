@@ -30,9 +30,10 @@ var newCmd = &cobra.Command{
 		}
 
 		nodeCfg := state.LocalCfg{
-			Key:  state.GenerateKey(),
-			Id:   state.NodeId(name),
-			Port: uint16(port),
+			Key:           state.GenerateKey(),
+			Id:            state.NodeId(name),
+			Port:          uint16(port),
+			InterfaceName: "nylon",
 		}
 
 		pubKey, err := nodeCfg.Key.Pubkey().MarshalText()

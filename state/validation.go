@@ -52,6 +52,12 @@ func NodeConfigValidator(node *LocalCfg) error {
 	if node.NoNetConfigure && len(node.AllowedPrefixes) != 0 {
 		return fmt.Errorf("cannot configure allowed prefixes if nonetconfigure is enabled")
 	}
+	if node.InterfaceName != "" {
+		err = NameValidator(node.InterfaceName)
+		if err != nil {
+			return fmt.Errorf("interface name is invalid: %v", err)
+		}
+	}
 	return nil
 }
 
