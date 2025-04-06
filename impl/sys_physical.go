@@ -22,7 +22,7 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 		}
 	}
 
-	itfName := "nylon" // attempt to name the interface
+	itfName := s.InterfaceName // attempt to name the interface
 
 	if runtime.GOOS == "darwin" {
 		itfName = "utun"
