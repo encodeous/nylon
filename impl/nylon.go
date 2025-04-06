@@ -3,6 +3,7 @@ package impl
 import (
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/polyamide/tun"
 	"github.com/jellydator/ttlcache/v3"
 	"net"
 	"time"
@@ -22,6 +23,7 @@ type Nylon struct {
 	PolySock *device.PolySock
 	PingBuf  *ttlcache.Cache[uint64, EpPing]
 	Device   *device.Device
+	Tun      tun.Device
 	wgUapi   net.Listener
 	env      *state.Env
 	itfName  string

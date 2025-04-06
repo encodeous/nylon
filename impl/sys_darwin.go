@@ -2,6 +2,9 @@ package impl
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide/ipc"
+	"github.com/encodeous/polyamide/tun"
 	"net"
 	"net/netip"
 	"os/exec"
@@ -19,6 +22,16 @@ func VerifyForwarding() error {
 	return nil
 }
 
+func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
+	fileUAPI, err := ipc.UAPIOpen(itfName)
+
+	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
+	if err != nil {
+		return nil, err
+	}
+	return uapi, nil
+}
+
 func InitInterface(ifName string) error {
 	return nil
 }
@@ -33,6 +46,6 @@ func ConfigureAlias(ifName string, prefix netip.Prefix) error {
 	}
 }
 
-func ConfigureRoute(ifName string, route netip.Prefix, via netip.Addr) error {
+func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix, via netip.Addr) error {
 	return Exec("/sbin/route", "-n", "add", "-net", route.String(), via.String())
 }

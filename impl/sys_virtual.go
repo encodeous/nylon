@@ -16,10 +16,10 @@ type VirtualNet interface {
 	Tun(node state.NodeId) tun.Device
 }
 
-func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf string, err error) {
+func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
 	x := s.AuxConfig["vnet"]
 	if x == nil {
-		return nil, "", fmt.Errorf("expected aux config \"vnet\", but it was not present")
+		return nil, nil, "", fmt.Errorf("expected aux config \"vnet\", but it was not present")
 	}
 	vn := x.(VirtualNet)
 
@@ -44,7 +44,7 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 	})
 
 	s.Log.Info("Created WireGuard interface", "name", itfName)
-	return dev, itfName, nil
+	return dev, tdev, itfName, nil
 }
 
 func CleanupWireGuardDevice(s *state.State, n *Nylon) error {
