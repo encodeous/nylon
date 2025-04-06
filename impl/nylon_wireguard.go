@@ -12,7 +12,12 @@ import (
 )
 
 func (n *Nylon) initWireGuard(s *state.State) error {
-	dev, itfName, err := NewWireGuardDevice(s, n)
+	dev, tdev, itfName, err := NewWireGuardDevice(s, n)
+	if err != nil {
+		return err
+	}
+
+	err = dev.Up()
 	if err != nil {
 		return err
 	}
@@ -23,6 +28,7 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	s.Log.Info("started polysock listener")
 
 	n.Device = dev
+	n.Tun = tdev
 	n.itfName = itfName
 
 	// TODO: fully convert to code-based api
@@ -96,7 +102,7 @@ listen_port=%d
 						continue
 					}
 					for _, prefix := range peer.Prefixes {
-						err = ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+						err = ConfigureRoute(n.Tun, itfName, prefix, selfPrefixes[0].Addr())
 						if err != nil {
 							return err
 						}
@@ -104,7 +110,7 @@ listen_port=%d
 				}
 			} else {
 				for _, prefix := range s.AllowedPrefixes {
-					err = ConfigureRoute(itfName, prefix, selfPrefixes[0].Addr())
+					err = ConfigureRoute(n.Tun, itfName, prefix, selfPrefixes[0].Addr())
 					if err != nil {
 						return err
 					}

@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf string, err error) {
+func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
 	if s.UseSystemRouting {
 		err = VerifyForwarding()
 		if err != nil {
@@ -29,7 +29,7 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 
 	tdev, err := tun.CreateTUN(itfName, device.DefaultMTU)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
+		return nil, nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
 	}
 	realInterfaceName, err := tdev.Name()
 	if err == nil {
@@ -37,7 +37,7 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 	}
 
 	// setup WireGuard
-	dev = device.NewDevice(tdev, conn.NewStdNetBind(), &device.Logger{
+	dev = device.NewDevice(tdev, conn.NewDefaultBind(), &device.Logger{
 		Verbosef: func(format string, args ...any) {
 			if state.DBG_log_wireguard {
 				s.Log.Debug(fmt.Sprintf(format, args...))
@@ -52,28 +52,35 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 	})
 
 	// start uapi for wg command
-	n.wgUapi, err = InitUAPI(itfName)
+	n.wgUapi, err = InitUAPI(s.Env, itfName)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
-	go func() {
-		for s.Context.Err() == nil {
-			accept, err := n.wgUapi.Accept()
-			if err != nil {
-				s.Env.Log.Debug(err.Error())
-				continue
+	if n.wgUapi != nil {
+		go func() {
+			for s.Context.Err() == nil {
+				accept, err := n.wgUapi.Accept()
+				if err != nil {
+					s.Env.Log.Debug(err.Error())
+					continue
+				}
+				go dev.IpcHandle(accept)
 			}
-			go dev.IpcHandle(accept)
-		}
-	}()
+		}()
+	}
 
 	s.Log.Info("Created WireGuard interface", "name", itfName)
-	return dev, itfName, nil
+	return dev, tdev, itfName, nil
 }
 
 func CleanupWireGuardDevice(s *state.State, n *Nylon) error {
 	n.Device.Close()
-	err := n.wgUapi.Close()
-	return err
+	if n.wgUapi != nil {
+		err := n.wgUapi.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
