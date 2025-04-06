@@ -7,7 +7,6 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/polyamide/conn"
 	"github.com/encodeous/polyamide/device"
-	"github.com/encodeous/polyamide/ipc"
 	"github.com/encodeous/polyamide/tun"
 	"runtime"
 	"strings"
@@ -53,18 +52,14 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, realItf s
 	})
 
 	// start uapi for wg command
-
-	fileUAPI, err := ipc.UAPIOpen(itfName)
-
-	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
+	n.wgUapi, err = InitUAPI(itfName)
 	if err != nil {
 		return nil, "", err
 	}
-	n.wgUapi = uapi
 
 	go func() {
 		for s.Context.Err() == nil {
-			accept, err := uapi.Accept()
+			accept, err := n.wgUapi.Accept()
 			if err != nil {
 				s.Env.Log.Debug(err.Error())
 				continue

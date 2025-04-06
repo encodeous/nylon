@@ -2,6 +2,7 @@ package impl
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 )
@@ -16,6 +17,16 @@ func VerifyForwarding() error {
 	}
 	// TODO: IPv6 forwarding
 	return nil
+}
+
+func InitUAPI(itfName string) (net.Listener, error) {
+	fileUAPI, err := ipc.UAPIOpen(itfName)
+
+	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
+	if err != nil {
+		return nil, err
+	}
+	return uapi, nil
 }
 
 func InitInterface(ifName string) error {

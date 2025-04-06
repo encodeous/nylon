@@ -19,6 +19,16 @@ func VerifyForwarding() error {
 	return nil
 }
 
+func InitUAPI(itfName string) (net.Listener, error) {
+	fileUAPI, err := ipc.UAPIOpen(itfName)
+
+	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
+	if err != nil {
+		return nil, err
+	}
+	return uapi, nil
+}
+
 func InitInterface(ifName string) error {
 	return nil
 }
