@@ -5,7 +5,7 @@
 
 package device
 
-import "github.com/encodeous/polyamide/conn"
+import "github.com/encodeous/nylon/polyamide/conn"
 
 /* Reduce memory consumption for Android */
 

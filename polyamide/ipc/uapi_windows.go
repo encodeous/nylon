@@ -8,7 +8,7 @@ package ipc
 import (
 	"net"
 
-	"github.com/encodeous/polyamide/ipc/namedpipe"
+	"github.com/encodeous/nylon/polyamide/ipc/namedpipe"
 	"golang.org/x/sys/windows"
 )
 

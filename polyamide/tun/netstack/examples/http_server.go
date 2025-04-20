@@ -14,9 +14,9 @@ import (
 	"net/http"
 	"net/netip"
 
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/device"
-	"github.com/encodeous/polyamide/tun/netstack"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/tun/netstack"
 )
 
 func main() {

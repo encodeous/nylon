@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/encodeous/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/tun"
 
 	"golang.org/x/net/dns/dnsmessage"
 	"gvisor.dev/gvisor/pkg/buffer"

@@ -4,7 +4,6 @@ go 1.24.0
 
 require (
 	github.com/docker/docker v27.1.1+incompatible
-	github.com/encodeous/polyamide v0.0.0-20250325212812-2382132a13c5
 	github.com/encodeous/tint v1.2.0
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/kmahyyg/go-network-compo v0.2.10
@@ -15,9 +14,13 @@ require (
 	go.step.sm/crypto v0.57.1
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.35.0
+	golang.org/x/net v0.36.0
+	golang.org/x/sys v0.30.0
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 	gonum.org/v1/plot v0.15.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v3 v3.0.1
+	gvisor.dev/gvisor v0.0.0-20230927004350-cbd86285d259
 )
 
 require (
@@ -46,6 +49,7 @@ require (
 	github.com/go-pdf/fpdf v0.9.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+	github.com/google/btree v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
@@ -79,9 +83,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.32.0 // indirect
 	go.opentelemetry.io/otel/trace v1.32.0 // indirect
 	golang.org/x/image v0.21.0 // indirect
-	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
-	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
+	golang.org/x/time v0.9.0 // indirect
 )

@@ -17,8 +17,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/rwcancel"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/rwcancel"
 	"golang.org/x/sys/unix"
 )
 

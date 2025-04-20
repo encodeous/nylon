@@ -7,7 +7,7 @@
 
 package device
 
-import "github.com/encodeous/polyamide/conn"
+import "github.com/encodeous/nylon/polyamide/conn"
 
 const (
 	QueueStagedSize            = conn.IdealBatchSize + 64 // for poly sockets

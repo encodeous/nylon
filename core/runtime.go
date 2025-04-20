@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"github.com/encodeous/nylon/impl"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	slogmulti "github.com/samber/slog-multi"
@@ -111,8 +110,8 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 func initModules(s *state.State) error {
 	var modules []state.NyModule
-	modules = append(modules, &impl.Nylon{}) // nylon must start before router
-	modules = append(modules, &impl.Router{})
+	modules = append(modules, &Nylon{}) // nylon must start before router
+	modules = append(modules, &Router{})
 
 	for _, module := range modules {
 		s.Modules[reflect.TypeOf(module).String()] = module

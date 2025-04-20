@@ -8,7 +8,7 @@ package device
 import (
 	"fmt"
 
-	"github.com/encodeous/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/tun"
 )
 
 const DefaultMTU = 1420

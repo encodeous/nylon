@@ -1,11 +1,11 @@
-package impl
+package core
 
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/device"
 	"net/netip"
 	"slices"
 	"sort"

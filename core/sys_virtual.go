@@ -1,13 +1,13 @@
 //go:build integration
 
-package impl
+package core
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/device"
-	"github.com/encodeous/polyamide/tun"
 	"strings"
 )
 

@@ -1,10 +1,10 @@
-package impl
+package core
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/polyamide/ipc"
+	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/ipc"
-	"github.com/encodeous/polyamide/tun"
 	"net"
 	"net/netip"
 	"os"

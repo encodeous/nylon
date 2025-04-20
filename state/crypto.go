@@ -2,7 +2,7 @@ package state
 
 import (
 	"crypto/rand"
-	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/device"
 	"go.step.sm/crypto/x25519"
 )
 

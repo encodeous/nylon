@@ -1,10 +1,10 @@
-package impl
+package core
 
 import (
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/device"
 	"google.golang.org/protobuf/proto"
 )
 

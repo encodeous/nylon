@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/encodeous/polyamide/replay"
+	"github.com/encodeous/nylon/polyamide/replay"
 )
 
 /* Due to limitations in Go and /x/crypto there is currently
