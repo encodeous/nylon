@@ -1,8 +1,8 @@
-package impl
+package core
 
 import (
+	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/device"
 	"slices"
 	"time"
 )

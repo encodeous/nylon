@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/conn"
 	"io"
 	"net"
 	"net/netip"
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/encodeous/polyamide/ipc"
+	"github.com/encodeous/nylon/polyamide/ipc"
 )
 
 type IPCError struct {

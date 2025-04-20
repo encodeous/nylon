@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/ratelimiter"
-	"github.com/encodeous/polyamide/rwcancel"
-	"github.com/encodeous/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/ratelimiter"
+	"github.com/encodeous/nylon/polyamide/rwcancel"
+	"github.com/encodeous/nylon/polyamide/tun"
 )
 
 type Device struct {

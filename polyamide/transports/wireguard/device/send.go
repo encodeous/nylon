@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/tun"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"

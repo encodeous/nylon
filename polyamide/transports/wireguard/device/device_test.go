@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/conn/bindtest"
-	"github.com/encodeous/polyamide/tun"
-	"github.com/encodeous/polyamide/tun/tuntest"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/conn/bindtest"
+	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/tun/tuntest"
 )
 
 // uapiCfg returns a string that contains cfg formatted use with IpcSet.

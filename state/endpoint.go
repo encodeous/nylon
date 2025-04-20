@@ -2,8 +2,8 @@ package state
 
 import (
 	"fmt"
-	"github.com/encodeous/polyamide/conn"
-	"github.com/encodeous/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
 	"math"
 	"net/netip"
 	"slices"

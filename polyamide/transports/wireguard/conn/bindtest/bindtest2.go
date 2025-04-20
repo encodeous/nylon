@@ -6,7 +6,7 @@
 package bindtest
 
 import (
-	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/conn"
 	"net"
 	"net/netip"
 )

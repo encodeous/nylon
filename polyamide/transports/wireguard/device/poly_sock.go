@@ -2,7 +2,7 @@ package device
 
 import (
 	"encoding/binary"
-	"github.com/encodeous/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/conn"
 	"time"
 )
 

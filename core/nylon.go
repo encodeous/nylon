@@ -1,9 +1,9 @@
-package impl
+package core
 
 import (
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/polyamide/device"
-	"github.com/encodeous/polyamide/tun"
 	"github.com/jellydator/ttlcache/v3"
 	"net"
 	"time"

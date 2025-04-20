@@ -9,7 +9,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/encodeous/polyamide/rwcancel"
+	"github.com/encodeous/nylon/polyamide/rwcancel"
 	"golang.org/x/sys/unix"
 )
 
