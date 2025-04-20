@@ -11,7 +11,7 @@ import (
 	"net/netip"
 	"os"
 
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/encodeous/polyamide/tun"
 )
 
 func Ping(dst, src netip.Addr) []byte {
@@ -90,8 +90,8 @@ type ChannelTUN struct {
 
 func NewChannelTUN() *ChannelTUN {
 	c := &ChannelTUN{
-		Inbound:  make(chan []byte),
-		Outbound: make(chan []byte),
+		Inbound:  make(chan []byte, 128),
+		Outbound: make(chan []byte, 128),
 		closed:   make(chan struct{}),
 		events:   make(chan tun.Event, 1),
 	}
