@@ -412,6 +412,9 @@ retry:
 		goto retry
 	}
 	if results[0].Status != 0 {
+		if windows.Errno(results[0].Status) == windows.WSAECONNRESET {
+			goto retry
+		}
 		return 0, nil, windows.Errno(results[0].Status)
 	}
 	packet := (*ringPacket)(unsafe.Pointer(uintptr(results[0].RequestContext)))
