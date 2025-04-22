@@ -26,6 +26,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
+          asset_name: nylon-${{ matrix.goos }}-${{ matrix.goarch }}
   release-windows:
     name: Release Go Binary (Windows) # Windows requires the wintun driver, so we use a separate action
     runs-on: ubuntu-latest
@@ -48,3 +49,4 @@ jobs:
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
           extra_files: 'wintun/bin/${{ matrix.goarch }}/wintun.dll'
+          asset_name: nylon-${{ matrix.goos }}-${{ matrix.goarch }}
