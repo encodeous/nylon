@@ -36,10 +36,15 @@ jobs:
         wintun_version: [ 0.14.1 ]
     steps:
       - uses: actions/checkout@v4
+      - name: Install unzip
+        run: sudo apt install -y unzip
+      - name: Fetch wintun
+        run: |
+          wget https://www.wintun.net/builds/wintun-${{ matrix.wintun_version }}.zip
+          unzip wintun-${{ matrix.wintun_version }}.zip
       - uses: wangyoucao577/go-release-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
-          pre_command: 'wget https://www.wintun.net/builds/wintun-${{ matrix.wintun_version }}.zip && unzip wintun-${{ matrix.wintun_version }}.zip'
           extra_files: 'wintun/bin/${{ matrix.goarch }}/wintun.dll'
