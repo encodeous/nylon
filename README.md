@@ -1,27 +1,27 @@
 # Nylon
 
-Nylon is a utility used to build durable, fault-tolerant and performant mesh networks. It employs a specially tuned distance-vector routing algorithm, derived from [Babel](https://datatracker.ietf.org/doc/html/rfc8966). Nylon is built as an extension to WireGuard, and remains backwards compatible with existing clients.
+Nylon is a utility used to build durable, fault-tolerant and performant mesh networks built on top of WireGuard. Unlike other overlay networks, (Tailscale, Nebula, etc.) nylon is capable of actively routing data through nodes. It employs a specially tuned distance-vector routing algorithm, derived from [Babel](https://datatracker.ietf.org/doc/html/rfc8966) to ensure links have the optimal metric. Nylon will always remain backwards compatible with WireGuard, meaning that vanilla WireGuard clients can connect to the core network.
 
 # Getting Started
 
-Nylon is deployed as a single binary, it is up to you how you want to run it.
+Nylon is deployed as a single binary, it is up to you how you want to run it. You can refer to the sample config files under `sample-node.yaml` and `sample-central.yaml`. Nylon keypairs are the same as WireGuard keypairs, meaning you can use `wg genkey` or `./nylon key -g`.
 
 ## Simple Network
 
-Here, we will set up a simple network consisting of 5 nodes. This will be a guided set up process. You can also choose to set up the network manually using writing the config file manually, and generating key pairs using `./nylon key -g` or `wg genkey`. You can see the configuration file template in this repo, under `sample-node.yaml` and `sample-central.yaml`
+Here, we will set up a simple network consisting of 5 nodes.
 
 ```mermaid
-graph RL
-    public --- |2| charlie
-    public --- |2| alice
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
     eve --- |1| bob
-    public --- |5| eve
+    vps --- |5| eve
     alice --- |1| bob
 ```
 
 *Here, the number on the edges represent some network Metric, usually latency.*
 
-Notice that the network does not need to be fully connected for Nylon function!
+Notice that the network does not need to be fully connected for Nylon function! Each nylon node is capable of forwarding packets to its neighbours (can also be disabled in config).
 
 ### Installing
 
@@ -31,7 +31,7 @@ Notice that the network does not need to be fully connected for Nylon function!
 
 On every node, run `./nylon new <node-name>`. This will create the file `node.yaml`. The output of this command is the public key of the node. Take note of this, as we will need paste it into the `pubkey` field of every node.
 
-Now, on any node, create the file `central.yaml`. It should look like this:
+Now, on every node, copy the same `central.yaml` file. It should look similar to this:
 ```yaml
 routers:
   - id: alice
@@ -61,25 +61,68 @@ routers:
       - 10.0.0.5/32
 graph:
   - InternetAccess = charlie, eve, alice # groups charlie, eve, and alice which all have internet access together
-  - public, InternetAccess # connects the group InternetAccess with the node public
+  - vps, InternetAccess # connects the group InternetAccess with the node vps
   - bob, eve
   - bob, alice
 ```
 
-You can now sync this file across all the nodes using `rsync` or any other method you prefer. Nylon comes with a built-in way to distribute config automatically, but you will need to set the network up first.
+You can now sync this file across all the nodes using `rsync` or any other method you prefer. Nylon comes with a built-in way to update the central config automatically, but you will need to set up the network first.
 
-Notice that we didn't need to specify the endpoints for every node, and that is because we are using one of the key features of Nylon, Dynamic Endpoints. Sometimes a computer doesn't have an accessible IP, but it can still reach a computer that does. Nylon will still try to reach out and connect, picking the best and most reliable path. As long as there exists a valid path between two nodes, Nylon will take the optimal one.
+Notice nodes can have 0 or more accessible endpoints, and that is due to one of the key features of nylon: `Dynamic Endpoint`. Nylon will regularly try to reach out to neighbours with published endpoints, and pick the most optimal endpoint (e.g we might have a public ip and a LAN ip).
 
 ### Running the network
 
-Before running Nylon, make sure to open UDP port `57175` so that Nylon can communicate, and enable IP Forwarding on your respective platform.
+Before running Nylon, make sure to open UDP port `57175` so that Nylon can communicate. Without further to do, simply run `./nylon run` (more privileges may be required).
 
-Without further to do, simply run `./nylon run` (more privileges may be required).
+After a while, you will notice that the network has converged!
+
+For our toy example, if we observe from node `alice`, our packet forwarding graph will look like this:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    bob --> |1| eve
+    alice --> |1| bob
+```
+
+Nylon will ensure packets get delivered through the path of least metric, currently, this means latency.
+
+### Fault recovery
+
+What happens if one of our links go down? Nylon can handle it!
+
+For example, we will disconnect `alice` and `bob`:
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice -.- bob
+```
+
+After a few moments, the network will automatically reconfigure itself. If we observe from `alice` again, our forwarding graph will look like:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    vps --> |5| eve
+    eve --> |1| bob
+```
+
+Currently, Nylon is tuned to react quickly to network degradation, but converge comparably slower. This is to reduce potential fluctuations in the network.
 
 Happy Networking!
 
-### Mobile Clients
+### Vanilla (WireGuard) Clients
 
 Nylon is designed to run on a computer or server. To connect your Phone or Tablet to your Nylon network, you can use any vanilla WireGuard client. To add a client to your network, run `./nylon client <gateway-id>`. Make sure the gateway's endpoint(s) can be reached by the Mobile Client you are configuring this for.
 
 This command will generate a WireGuard configuration file and a Public Key. Make sure to add the Public Key and desired client address to the Central Configuration file.
+
+Vanilla clients rely on the nylon gateway/router to advertise their presence on the network, but this relies on the passive keepalive sent by WireGuard. They also have limited functionality, including not being able to:
+- Act as a router / forward packets
+- Dynamically switch between routes to the Gateway server
