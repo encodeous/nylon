@@ -9,20 +9,16 @@ permissions:
   packages: write
 
 jobs:
-  releases-matrix:
-    name: Release Go Binary
+  release-unix:
+    name: Release Go Binary (Unix)
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # build and publish in parallel: linux/386, linux/amd64, linux/arm64, windows/386, windows/amd64, darwin/amd64, darwin/arm64
-#        goos: [linux, windows, darwin]
         goos: [linux, darwin]
         goarch: ["386", amd64, arm64]
         exclude:
           - goarch: "386"
             goos: darwin
-          - goarch: arm64
-            goos: windows
     steps:
       - uses: actions/checkout@v4
       - uses: wangyoucao577/go-release-action@v1
@@ -30,3 +26,20 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
+  release-windows:
+    name: Release Go Binary (Windows) # Windows requires the wintun driver, so we use a separate action
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [ windows ]
+        goarch: [ amd64, arm64 ]
+        wintun_version: [ 0.14.1 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wangyoucao577/go-release-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          pre_command: 'wget https://www.wintun.net/builds/wintun-${{ matrix.wintun_version }}.zip && unzip wintun-${{ matrix.wintun_version }}.zip'
+          extra_files: 'wintun/bin/${{ matrix.goarch }}/wintun.dll'
