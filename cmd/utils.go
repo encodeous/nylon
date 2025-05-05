@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"maps"
 	"os"
+	"runtime/debug"
 	"slices"
 	"strings"
 )
@@ -84,10 +85,26 @@ var hostsCmd = &cobra.Command{
 	GroupID: "cfg",
 }
 
+var versionCmd = &cobra.Command{
+	Use:     "version",
+	Aliases: []string{"v"},
+	Short:   "Gets the nylon release version",
+	Run: func(cmd *cobra.Command, args []string) {
+		val, ok := debug.ReadBuildInfo()
+		if !ok {
+			fmt.Println("unable to find version")
+		}
+		fmt.Printf("Version: %s\n", val.Main.Version)
+	},
+	GroupID: "ny",
+}
+
 func init() {
 	rootCmd.AddCommand(hostsCmd)
 	hostsCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 
 	rootCmd.AddCommand(keyCmd)
 	keyCmd.Flags().BoolVarP(&genKey, "gen", "g", false, "generate a new keypair")
+
+	rootCmd.AddCommand(versionCmd)
 }
