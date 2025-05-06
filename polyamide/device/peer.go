@@ -151,23 +151,13 @@ func (peer *Peer) SendBuffers(buffers [][]byte, eps []conn.Endpoint) error {
 		if ep == nil {
 			ep = endpoints[0] // default endpoint
 		}
-		// don't send too many buffers at once
-		for remain := true; remain; remain = len(bufs) != 0 {
-			sbuf := bufs
-			if len(bufs) > conn.IdealBatchSize {
-				sbuf = bufs[:conn.IdealBatchSize]
-				bufs = bufs[conn.IdealBatchSize:]
-			} else {
-				bufs = bufs[:0]
+		err := peer.device.net.bind.Send(bufs, ep)
+		if err == nil {
+			for _, b := range bufs {
+				totalLen += uint64(len(b))
 			}
-			err := peer.device.net.bind.Send(sbuf, ep)
-			if err == nil {
-				for _, b := range sbuf {
-					totalLen += uint64(len(b))
-				}
-			} else {
-				anyError = err
-			}
+		} else {
+			anyError = err
 		}
 	}
 	peer.txBytes.Add(totalLen)

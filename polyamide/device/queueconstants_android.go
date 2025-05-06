@@ -10,7 +10,7 @@ import "github.com/encodeous/nylon/polyamide/conn"
 /* Reduce memory consumption for Android */
 
 const (
-	QueueStagedSize            = conn.IdealBatchSize + 64 // for poly sockets
+	QueueStagedSize            = conn.IdealBatchSize
 	QueueOutboundSize          = 1024
 	QueueInboundSize           = 1024
 	QueueHandshakeSize         = 1024

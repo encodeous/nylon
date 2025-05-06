@@ -537,6 +537,10 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		dataSent := false
 		elemsContainer.Lock()
 		for _, elem := range elemsContainer.elems {
+			if len(bufs) >= maxBatchSize {
+				// drop packet
+				continue
+			}
 			if len(elem.packet) != MessageKeepaliveSize {
 				dataSent = true
 			}
