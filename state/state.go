@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"crypto/ed25519"
+	"golang.org/x/sync/semaphore"
 	"log/slog"
 	"sync/atomic"
 )
@@ -22,6 +23,7 @@ type State struct {
 
 // Env can be read from any Goroutine
 type Env struct {
+	Semaphore       *semaphore.Weighted
 	DispatchChannel chan<- func(s *State) error
 	CentralCfg
 	LocalCfg

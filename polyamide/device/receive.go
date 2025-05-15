@@ -439,26 +439,28 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	device.log.Verbosef("%v - Routine: sequential receiver - started", peer)
 
 	bufs := make([][]byte, 0, maxBatchSize)
-
-	elemsByPeer := make(map[*Peer]*QueueOutboundElementsContainer, maxBatchSize)
-	conts := make([]*QueueInboundElementsContainer, 1)
+	batch := make([]*QueueInboundElementsContainer, 0)
 
 	for {
-		conts = conts[:1]
-		conts[0] = <-peer.queue.inbound.c
-		if conts[0] == nil {
+		elemsByPeer := make(map[*Peer]*QueueOutboundElementsContainer)
+		// block the first chan recv so we don't infinitely spin
+		batch = append(batch, <-peer.queue.inbound.c)
+		if batch[0] == nil {
 			return
 		}
 	readBatch:
 		for {
 			select {
 			case elemsContainer := <-peer.queue.inbound.c:
-				conts = append(conts, elemsContainer)
+				if elemsContainer == nil {
+					return
+				}
+				batch = append(batch, elemsContainer)
 			default:
 				break readBatch
 			}
 		}
-		for _, elemsContainer := range conts {
+		for _, elemsContainer := range batch {
 			if elemsContainer == nil {
 				return
 			}
@@ -599,9 +601,20 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			bufs = bufs[:0]
 			device.PutInboundElementsContainer(elemsContainer)
 		}
+		batch = batch[:0]
 		for p, elemsForPeer := range elemsByPeer {
 			if p.isRunning.Load() {
-				p.StagePackets(elemsForPeer)
+				for len(elemsForPeer.elems) > maxBatchSize {
+					subBatch := device.GetOutboundElementsContainer()
+					subBatch.elems = elemsForPeer.elems[:maxBatchSize]
+					elemsForPeer.elems = elemsForPeer.elems[maxBatchSize:]
+					p.StagePackets(subBatch)
+				}
+				if len(elemsForPeer.elems) > 0 {
+					p.StagePackets(elemsForPeer)
+				} else {
+					device.PutOutboundElementsContainer(elemsForPeer)
+				}
 				p.SendStagedPackets()
 			} else {
 				for _, elem := range elemsForPeer.elems {
@@ -610,7 +623,6 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				}
 				device.PutOutboundElementsContainer(elemsForPeer)
 			}
-			delete(elemsByPeer, p)
 		}
 	}
 }

@@ -9,7 +9,7 @@ const (
 var (
 	HopCost                        = (uint16)(5) // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
 	RouteUpdateDelay               = time.Second * 5
-	ProbeDelay                     = time.Millisecond * 500
+	ProbeDelay                     = time.Millisecond * 1000
 	ProbeRecoveryDelay             = time.Millisecond * 1500
 	ProbeDiscoveryDelay            = time.Second * 10
 	LinkSwitchMetricCostMultiplier = 1.10
