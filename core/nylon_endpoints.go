@@ -102,7 +102,9 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 	// create a new link if we dont have a link
 	for _, neigh := range s.Neighbours {
 		if neigh.Id == node {
-			neigh.Eps = append(neigh.Eps, state.NewEndpoint(ep.DstIPPort(), neigh.Id, true, ep))
+			newEp := state.NewEndpoint(ep.DstIPPort(), neigh.Id, true, ep)
+			newEp.Renew()
+			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
 			return pushRouteTable(s, &node)
 		}
