@@ -604,25 +604,21 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		batch = batch[:0]
 		for p, elemsForPeer := range elemsByPeer {
 			if p.isRunning.Load() {
-				for len(elemsForPeer.elems) > maxBatchSize {
-					subBatch := device.GetOutboundElementsContainer()
-					subBatch.elems = elemsForPeer.elems[:maxBatchSize]
-					elemsForPeer.elems = elemsForPeer.elems[maxBatchSize:]
-					p.StagePackets(subBatch)
+				// truncate elems
+				if len(elemsForPeer.elems) > maxBatchSize {
+					elemsForPeer.elems = elemsForPeer.elems[:maxBatchSize]
 				}
 				if len(elemsForPeer.elems) > 0 {
 					p.StagePackets(elemsForPeer)
-				} else {
-					device.PutOutboundElementsContainer(elemsForPeer)
+					p.SendStagedPackets()
+					continue
 				}
-				p.SendStagedPackets()
-			} else {
-				for _, elem := range elemsForPeer.elems {
-					device.PutMessageBuffer(elem.buffer)
-					device.PutOutboundElement(elem)
-				}
-				device.PutOutboundElementsContainer(elemsForPeer)
 			}
+			for _, elem := range elemsForPeer.elems {
+				device.PutMessageBuffer(elem.buffer)
+				device.PutOutboundElement(elem)
+			}
+			device.PutOutboundElementsContainer(elemsForPeer)
 		}
 	}
 }
