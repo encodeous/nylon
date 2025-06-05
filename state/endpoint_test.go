@@ -2,9 +2,11 @@ package state
 
 import (
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/vg"
 	"math"
 	"math/rand/v2"
 	"net/netip"
@@ -57,7 +59,7 @@ func generateMultiLinePlot(dataSources []DataSource, title string) (*plot.Plot, 
 	return p, nil
 }
 
-func runTests(t *testing.T, ping func(i int) float64, dura time.Duration) (DataSource, DataSource, DataSource) {
+func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
 	dep := NewEndpoint(netip.AddrPort{}, "dummy", false, nil)
 
@@ -66,18 +68,23 @@ func runTests(t *testing.T, ping func(i int) float64, dura time.Duration) (DataS
 		Data: []time.Duration{},
 	}
 
-	boxFilter := DataSource{
+	low := DataSource{
+		Name: "Low",
+		Data: []time.Duration{},
+	}
+
+	high := DataSource{
+		Name: "High",
+		Data: []time.Duration{},
+	}
+
+	filtered := DataSource{
 		Name: "Filtered",
 		Data: []time.Duration{},
 	}
 
-	windowRange := DataSource{
-		Name: "Range",
-		Data: []time.Duration{},
-	}
-
-	finalFiltered := DataSource{
-		Name: "Final Filtered",
+	stabilized := DataSource{
+		Name: "Stabilized",
 		Data: []time.Duration{},
 	}
 
@@ -87,27 +94,29 @@ func runTests(t *testing.T, ping func(i int) float64, dura time.Duration) (DataS
 		dep.UpdatePing(nping)
 		if i > MinimumConfidenceWindow {
 			truth.Data = append(truth.Data, nping)
-			boxFilter.Data = append(boxFilter.Data, dep.filtered)
-			windowRange.Data = append(windowRange.Data, dep.computeRange())
-			finalFiltered.Data = append(finalFiltered.Data, dep.lastFilteredValue)
+			high.Data = append(high.Data, dep.HighRange())
+			low.Data = append(low.Data, dep.LowRange())
+			filtered.Data = append(filtered.Data, dep.FilteredPing())
+			stabilized.Data = append(stabilized.Data, dep.StabilizedPing())
 		}
 	}
-	//dataSources := []DataSource{truth, windowRange, boxFilter, finalFiltered}
-	//
-	//p, err := generateMultiLinePlot(dataSources, "Comparison of ping and fltered ping")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//if err := p.Save(8*vg.Inch, 6*vg.Inch, "method_comparison.png"); err != nil {
-	//	t.Fatalf("Failed to save plot: %v", err)
-	//}
 
-	return truth, boxFilter, finalFiltered
+	dataSources := []DataSource{truth, high, low, filtered, stabilized}
+
+	p, err := generateMultiLinePlot(dataSources, "Comparison of ping and stabilized ping")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Save(8*vg.Inch, 6*vg.Inch, spew.Sprintf("method_comparison_%s.png", fn)); err != nil {
+		t.Fatalf("Failed to save plot: %v", err)
+	}
+
+	return truth, stabilized
 }
 
 func TestEndpointSin(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 0))
-	truth, _, finalFiltered := runTests(t, func(i int) float64 {
+	truth, finalFiltered := runTests(t, func(i int) float64 {
 		val := math.Cos(float64(i)/1000.0-math.Pi/2) * 10
 		if rng.Int()%30 == 0 {
 			val += float64(rng.Int() % 20)
@@ -115,7 +124,7 @@ func TestEndpointSin(t *testing.T) {
 		val2 := math.Sin(float64(i+400)/50.0)*2 + rng.Float64()
 		val3 := math.Abs(rng.NormFloat64()) * 5
 		return val + val2 + val3 + 75
-	}, time.Hour*2)
+	}, time.Hour*2, "sin")
 
 	distinctValues := make(map[uint64]struct{})
 
@@ -128,14 +137,13 @@ func TestEndpointSin(t *testing.T) {
 	// deviation from pingY should be 10 + 5 + 2 = 17ms
 	stdev := math.Sqrt(variance / float64(len(finalFiltered.Data)))
 	assert.Less(t, time.Duration(stdev), time.Millisecond*20)
-	// once per minute is acceptable
-	assert.Less(t, len(distinctValues), int(time.Hour*2/time.Minute))
+	assert.Less(t, len(distinctValues), int((time.Hour*2)/time.Minute))
 }
 
 func TestEndpointPosX(t *testing.T) {
 	// absolute worst case scenario for number of metric changes
 	rng := rand.New(rand.NewPCG(0, 0))
-	truth, _, finalFiltered := runTests(t, func(i int) float64 {
+	truth, finalFiltered := runTests(t, func(i int) float64 {
 		val := float64(i) / 50.0
 		if rng.Int()%30 == 0 {
 			val += float64(rng.Int() % 20)
@@ -143,7 +151,7 @@ func TestEndpointPosX(t *testing.T) {
 		val2 := math.Sin(float64(i+400)/50.0)*2 + rng.Float64()
 		val3 := math.Abs(rng.NormFloat64()) * 5
 		return val + val2 + val3 + 75
-	}, time.Hour*2)
+	}, time.Hour*2, "PosX")
 
 	distinctValues := make(map[uint64]struct{})
 
@@ -162,7 +170,7 @@ func TestEndpointPosX(t *testing.T) {
 func TestEndpointNegX(t *testing.T) {
 	// absolute worst case scenario for number of metric changes
 	rng := rand.New(rand.NewPCG(0, 0))
-	truth, _, finalFiltered := runTests(t, func(i int) float64 {
+	truth, finalFiltered := runTests(t, func(i int) float64 {
 		val := -float64(i) / 50.0
 		if rng.Int()%30 == 0 {
 			val += float64(rng.Int() % 20)
@@ -170,7 +178,7 @@ func TestEndpointNegX(t *testing.T) {
 		val2 := math.Sin(float64(i+400)/50.0)*2 + rng.Float64()
 		val3 := math.Abs(rng.NormFloat64()) * 5
 		return val + val2 + val3 + 500
-	}, time.Hour*2)
+	}, time.Hour*2, "NegX")
 
 	distinctValues := make(map[uint64]struct{})
 
@@ -189,9 +197,9 @@ func TestEndpointNegX(t *testing.T) {
 func TestEndpointNormal(t *testing.T) {
 	// absolute worst case scenario for number of metric changes
 	rng := rand.New(rand.NewPCG(0, 0))
-	truth, _, finalFiltered := runTests(t, func(i int) float64 {
+	truth, finalFiltered := runTests(t, func(i int) float64 {
 		return 50 + rng.NormFloat64()*10
-	}, time.Hour*2)
+	}, time.Hour*2, "normal")
 
 	distinctValues := make(map[uint64]struct{})
 

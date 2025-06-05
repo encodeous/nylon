@@ -9,15 +9,6 @@ import (
 	"time"
 )
 
-//var (
-//	otelMet = otel.Meter("encodeous.ca/nylon/metric")
-//	otelLog = otelslog.NewLogger("encodeous.ca/nylon/route")
-//
-//	linkMet, _ = otelMet.Int64Gauge("link.metric",
-//		metric.WithDescription("The adjusted metric for each link"),
-//		metric.WithUnit("{met}"))
-//)
-
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
 	PolySock *device.PolySock
