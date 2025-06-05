@@ -61,6 +61,7 @@ func (u *DynamicEndpoint) Renew() {
 	if !u.IsActive() {
 		u.history = u.history[:0]
 		u.expRTT = math.Inf(1)
+		u.dirty = true
 	}
 	u.lastHeardBack = time.Now()
 }
@@ -136,6 +137,11 @@ func SwitchHeuristic(curRoute *Route, newRoute PubRoute, metric uint16, via *Dyn
 }
 
 func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
+	// sometimes our system clock is not fast enough, so ping is 0
+	if ping == 0 {
+		ping = time.Microsecond * 100
+	}
+
 	f := float64(ping)
 	alpha := 0.0836
 	if u.expRTT == math.Inf(1) {
