@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
@@ -56,8 +55,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	}
 
 	s := state.State{
-		TrustedNodes: make(map[state.NodeId]ed25519.PublicKey),
-		Modules:      make(map[string]state.NyModule),
+		Modules: make(map[string]state.NyModule),
 		Env: &state.Env{
 			Context:         ctx,
 			Cancel:          cancel,
@@ -71,10 +69,6 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	}
 	if initState != nil {
 		*initState = &s
-	}
-
-	for _, node := range ccfg.Routers {
-		s.TrustedNodes[node.Id] = node.PubKey[:]
 	}
 
 	s.Log.Info("init modules")
