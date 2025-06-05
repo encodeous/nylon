@@ -11,17 +11,14 @@ import (
 )
 
 type DynamicEndpoint struct {
-	node               NodeId
-	metric             uint16
-	metricRange        uint16
-	realLatency        time.Duration
-	history            []time.Duration
-	windowShiftHistory []bool
-	filtered           time.Duration
-	lastFilteredValue  time.Duration
-	sameSampleCount    int
-	lastHeardBack      time.Time
-	endpoint           *NetworkEndpoint
+	node          NodeId
+	history       []time.Duration
+	histSort      []time.Duration
+	dirty         bool
+	prevMedian    time.Duration
+	lastHeardBack time.Time
+	expRTT        float64
+	endpoint      *NetworkEndpoint
 }
 
 type NetworkEndpoint struct {
@@ -60,11 +57,12 @@ func (u *DynamicEndpoint) IsActive() bool {
 	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold
 }
 
-func (u *DynamicEndpoint) MetricRange() uint16 {
-	return u.metricRange
-}
-
 func (u *DynamicEndpoint) Renew() {
+	if !u.IsActive() {
+		u.history = u.history[:0]
+		u.expRTT = math.Inf(1)
+		u.dirty = true
+	}
 	u.lastHeardBack = time.Now()
 }
 
@@ -74,15 +72,14 @@ func (u *DynamicEndpoint) IsAlive() bool {
 
 func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoint conn.Endpoint) *DynamicEndpoint {
 	return &DynamicEndpoint{
-		metric:      INF,
-		metricRange: 5000,
 		endpoint: &NetworkEndpoint{
 			RemoteInit: remoteInit,
 			WgEndpoint: wgEndpoint,
 			Ep:         endpoint,
 		},
-		node:     node,
-		filtered: time.Millisecond * 1000, // start with a relatively high latency so we don't disrupt existing connections before we are sure
+		history: make([]time.Duration, 0),
+		node:    node,
+		expRTT:  math.Inf(1),
 	}
 }
 
@@ -90,94 +87,72 @@ func (u *DynamicEndpoint) NetworkEndpoint() *NetworkEndpoint {
 	return u.endpoint
 }
 
-func (u *DynamicEndpoint) computeRange() time.Duration {
-	tmp := make([]time.Duration, len(u.history))
-	copy(tmp, u.history)
-	slices.Sort(tmp)
-	// median := tmp[len(tmp)/2]
-	top := tmp[int(float64(len(tmp))*(1-OutlierPercentage))]
-	bottom := tmp[int(float64(len(tmp))*OutlierPercentage)]
-	return bottom - top
+func (u *DynamicEndpoint) calcR() (time.Duration, time.Duration, time.Duration) {
+	if len(u.history) < MinimumConfidenceWindow {
+		return time.Second * 10, time.Second * 10, time.Second * 10
+	}
+	if u.dirty {
+		u.histSort = slices.Clone(u.history)
+		slices.Sort(u.histSort)
+		u.dirty = false
+	}
+	le := len(u.histSort)
+	low := u.histSort[int(float64(le)*OutlierPercentage)]
+	high := u.histSort[int(float64(le)*(1-OutlierPercentage))]
+	med := u.histSort[le/2]
+	return low, med, high
 }
 
-func (u *DynamicEndpoint) computeTopP(p float64) time.Duration {
-	tmp := make([]time.Duration, len(u.history))
-	copy(tmp, u.history)
-	slices.Sort(tmp)
-	// median := tmp[len(tmp)/2]
-	top := tmp[int(float64(len(tmp))*p)]
-	return top
+func (u *DynamicEndpoint) LowRange() time.Duration {
+	l, _, _ := u.calcR()
+	return l
+}
+
+func (u *DynamicEndpoint) HighRange() time.Duration {
+	_, _, h := u.calcR()
+	return h
+}
+
+func (u *DynamicEndpoint) FilteredPing() time.Duration {
+	return time.Duration(int64(u.expRTT))
+}
+
+func (u *DynamicEndpoint) StabilizedPing() time.Duration {
+	l, m, h := u.calcR()
+	// don't change median unless it is out of the range of l <= h
+	if l > u.prevMedian || h < u.prevMedian {
+		u.prevMedian = m
+	}
+	return u.prevMedian
+}
+
+func SwitchHeuristic(curRoute *Route, newRoute PubRoute, metric uint16, via *DynamicEndpoint) bool {
+	// prevent oscillation
+	curMetric := float64(curRoute.PubMetric)
+	newMetric := float64(metric)
+	if (newMetric+float64(via.StabilizedPing()))*LinkSwitchMetricCostMultiplier > curMetric {
+		return false
+	}
+	return true
 }
 
 func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
-	// TODO: We don't have numbers of actual packets being lost.
+	// sometimes our system clock is not fast enough, so ping is 0
+	if ping == 0 {
+		ping = time.Microsecond * 100
+	}
 
-	u.realLatency = ping
-
-	// not sure if this is a great algorithm, but it is one...
-	// We determine a window based on Range
-	// outliers will be dealt separately
-	// When the latency gets updated, the box will be moved up or down so that it fits the new datapoint.
-	// We will use the median of the box as the latency
-
-	// tldr; if the ping fluctuates within +/- 1.5*Range, we don't change it. note, if the ping is very stable, Range will decrease too!
-
-	u.history = append(u.history, u.realLatency)
-	u.windowShiftHistory = append(u.windowShiftHistory, false)
+	f := float64(ping)
+	alpha := 0.0836
+	if u.expRTT == math.Inf(1) {
+		u.expRTT = f
+	}
+	u.expRTT = alpha*f + (1-alpha)*u.expRTT
+	u.history = append(u.history, u.FilteredPing())
 	if len(u.history) > WindowSamples {
-		u.history = u.history[1:] // discard
+		u.history = u.history[1:]
 	}
-	metRan := time.Millisecond * 5000 // default
-	if len(u.history) > MinimumConfidenceWindow {
-		metRan = u.computeRange()
-		//metRan = u.computeTopP(0.95) - u.computeTopP(0.0)
-	}
-
-	metRanAdj := float64(metRan) * 2
-
-	// check if ping is within box
-	relPosition := 0.7
-	below := time.Duration(metRanAdj * relPosition)
-	above := time.Duration(metRanAdj * (1 - relPosition))
-	shifted := false
-	if u.filtered+above < ping {
-		// box is too low
-		u.filtered = ping - above
-		shifted = true
-	} else if u.filtered-below > ping {
-		// box is too high
-		u.filtered = ping + below
-		shifted = true
-	}
-	if shifted {
-		u.windowShiftHistory[len(u.windowShiftHistory)-1] = true
-	}
-
-	instability := 0
-	for _, h := range u.windowShiftHistory {
-		if h {
-			instability++
-		}
-	}
-
-	stale := u.sameSampleCount > int(time.Minute*5/ProbeDelay)
-	smallChange := math.Abs(float64(u.lastFilteredValue-u.filtered))/float64(u.lastFilteredValue) < MinChangePercent
-	if u.lastFilteredValue != 0 && !stale && (smallChange || instability > 10) {
-		u.sameSampleCount++
-	} else {
-		u.sameSampleCount = 0
-		u.lastFilteredValue = u.filtered
-	}
-
-	// latency in increments of 100 microseconds
-	latencyContrib := u.lastFilteredValue.Microseconds() / 100
-
-	u.metric = uint16(min(max(latencyContrib, 1), int64(INF-1)))
-	u.metric = uint16(min(max(int64(u.metric), 1), int64(INF-1)))
-
-	u.metricRange = uint16(min(max(metRan.Microseconds()/100, 1), int64(INF-1)))
-
-	//slog.Info("lu", "r", u.realLatency, "f", time.Duration(filtered))
+	u.dirty = true
 }
 
 func (u *DynamicEndpoint) Metric() uint16 {
@@ -185,7 +160,7 @@ func (u *DynamicEndpoint) Metric() uint16 {
 	if !u.IsActive() {
 		return INF
 	}
-	return u.metric
+	return uint16(min(u.StabilizedPing().Microseconds()/100, int64(INF)-1))
 }
 
 func (u *DynamicEndpoint) IsRemote() bool {

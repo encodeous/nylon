@@ -44,16 +44,6 @@ func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) b
 	return false
 }
 
-func SwitchHeuristic(curRoute *state.Route, newRoute state.PubRoute, metric uint16, metRange uint16) bool {
-	// prevent oscillation
-	curMetric := float64(curRoute.PubMetric)
-	newMetric := float64(metric)
-	if (newMetric+float64(metRange))*state.LinkSwitchMetricCostMultiplier > curMetric {
-		return false
-	}
-	return true
-}
-
 func Get[T state.NyModule](s *state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)

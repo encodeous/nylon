@@ -5,9 +5,14 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	"log"
 	"log/slog"
+	"net/http"
 	"os"
+	"runtime/trace"
 )
+
+import _ "net/http/pprof" // remove in stable version of nylon
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
@@ -15,6 +20,24 @@ var runCmd = &cobra.Command{
 	Short: "Run nylon",
 	Long:  `This will run nylon on the current host. Ensure it has enough permissions to interact with in-kernel WireGuard.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if state.DBG_trace {
+			f, err := os.Create("trace.out")
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = trace.Start(f)
+			defer trace.Stop()
+			if err != nil {
+				return
+			}
+			log.Println("Started tracing")
+		}
+		if state.DBG_pprof {
+			go func() {
+				log.Println(http.ListenAndServe("localhost:6060", nil))
+			}()
+		}
+
 		centralPath := cmd.Flag("config").Value.String()
 		nodePath := cmd.Flag("node").Value.String()
 		logPath := cmd.Flag("log").Value.String()
@@ -78,6 +101,8 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "lrepo", "", false, "Outputs repo updates to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_pprof, "prof", "", false, "Enables pprof on port 6060")
+	runCmd.Flags().BoolVarP(&state.DBG_trace, "trace", "", false, "Enables trace to trace.out")
 	runCmd.Flags().String("log", DefaultLogPath, "Log file path")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")

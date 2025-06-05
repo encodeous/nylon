@@ -130,8 +130,8 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 					if err != nil {
 						s.Log.Error("Error updating routes: ", "err", err)
 					}
-					dpLink.UpdatePing(latency)
 					dpLink.Renew()
+					dpLink.UpdatePing(latency)
 
 					// update wireguard endpoint
 					dpLink.NetworkEndpoint().WgEndpoint = ep
