@@ -80,41 +80,27 @@ listen_port=%d
 	// configure system networking
 
 	if !s.NoNetConfigure {
-		selfPrefixes := s.GetRouter(s.Id).Prefixes
+		prefixes := make([]netip.Prefix, 0)
+		prefixes = append(prefixes)
+
+		// configure self
+		selfAddr := s.GetRouter(s.Id).Address
+		err = ConfigureAlias(itfName, AddrToPrefix(selfAddr))
+
 		err = InitInterface(itfName)
+
 		if err != nil {
 			return err
 		}
 
-		if len(selfPrefixes) != 0 {
-			// configure system
-			// assign ip
-			for _, prefix := range selfPrefixes {
-				err = ConfigureAlias(itfName, prefix)
-				if err != nil {
-					return err
-				}
+		// configure other nodes
+		for _, peer := range s.CentralCfg.GetNodes() {
+			if peer.Id == s.Id {
+				continue
 			}
-
-			if len(s.AllowedPrefixes) == 0 {
-				for _, peer := range s.CentralCfg.GetNodes() {
-					if peer.Id == s.Id {
-						continue
-					}
-					for _, prefix := range peer.Prefixes {
-						err = ConfigureRoute(n.Tun, itfName, prefix, selfPrefixes[0].Addr())
-						if err != nil {
-							return err
-						}
-					}
-				}
-			} else {
-				for _, prefix := range s.AllowedPrefixes {
-					err = ConfigureRoute(n.Tun, itfName, prefix, selfPrefixes[0].Addr())
-					if err != nil {
-						return err
-					}
-				}
+			err = ConfigureRoute(n.Tun, itfName, AddrToPrefix(peer.Address), selfAddr)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -149,9 +135,7 @@ func UpdateWireGuard(s *state.State) error {
 				if s.IsClient(nid) {
 					ccfg := s.GetClient(nid)
 					peer := dev.LookupPeer(device.NoisePublicKey(ccfg.PubKey))
-					for _, prefix := range ccfg.Prefixes {
-						dev.Allowedips.Insert(prefix, peer)
-					}
+					dev.Allowedips.Insert(AddrToPrefix(ccfg.Address), peer)
 				}
 			}
 		} else {
@@ -162,9 +146,7 @@ func UpdateWireGuard(s *state.State) error {
 				if cfg == nil {
 					continue // config might not always be synced
 				}
-				for _, prefix := range cfg.Prefixes {
-					allowedIps = append(allowedIps, prefix.String())
-				}
+				allowedIps = append(allowedIps, AddrToPrefix(cfg.Address).String())
 			}
 			sort.Strings(allowedIps)
 

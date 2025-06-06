@@ -9,9 +9,9 @@ import (
 )
 
 type NodeCfg struct {
-	Id       NodeId
-	PubKey   NyPublicKey
-	Prefixes []netip.Prefix
+	Id      NodeId
+	PubKey  NyPublicKey
+	Address netip.Addr
 }
 
 // RouterCfg represents a central representation of a node that can route
@@ -58,20 +58,17 @@ type LocalCfg struct {
 	Port             uint16
 	DisableRouting   bool
 	UseSystemRouting bool
-	NoNetConfigure   bool           `yaml:",omitempty"`
-	AllowedPrefixes  []netip.Prefix `yaml:",omitempty"`
+	NoNetConfigure   bool `yaml:",omitempty"`
 	InterfaceName    string
 	LogPath          string
 }
 
-func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Prefix) RouterCfg {
+func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Addr) RouterCfg {
 	extDp := netip.AddrPortFrom(extIp, port)
 	cfg := RouterCfg{
 		NodeCfg: NodeCfg{
-			Id: n.Id,
-			Prefixes: []netip.Prefix{
-				nylonIp,
-			},
+			Id:      n.Id,
+			Address: nylonIp,
 		},
 		Endpoints: []netip.AddrPort{
 			extDp,
