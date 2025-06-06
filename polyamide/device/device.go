@@ -45,7 +45,6 @@ type Device struct {
 		port          uint16 // listening port
 		fwmark        uint32 // mark value (0 = disabled)
 		brokenRoaming bool
-		polySocket    *PolySock
 	}
 
 	staticIdentity struct {
@@ -64,25 +63,26 @@ type Device struct {
 		limiter        ratelimiter.Ratelimiter
 	}
 
-	AllowAllInbound  bool
-	UseSystemRouting bool
-	Allowedips       AllowedIPs
-	indexTable       IndexTable
-	cookieChecker    CookieChecker
+	TCFilters     []TCFilter
+	Allowedips    AllowedIPs
+	indexTable    IndexTable
+	cookieChecker CookieChecker
 
 	pool struct {
 		inboundElementsContainer  *WaitPool
 		outboundElementsContainer *WaitPool
+		tcElementsContainer       *WaitPool
 		messageBuffers            *WaitPool
 		inboundElements           *WaitPool
 		outboundElements          *WaitPool
-		outboundPolyElements      *WaitPool
+		tcElements                *WaitPool
 	}
 
 	queue struct {
 		encryption *outboundQueue
 		decryption *inboundQueue
 		handshake  *handshakeQueue
+		tc         *tcQueue
 	}
 
 	tun struct {
@@ -301,6 +301,8 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
 	device.rate.limiter.Init()
 	device.indexTable.Init()
+	device.TCFilters = append(device.TCFilters, TCFDrop)
+	device.TCFilters = append(device.TCFilters, TCFAllowedip)
 
 	device.PopulatePools()
 
@@ -309,6 +311,7 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.queue.handshake = newHandshakeQueue()
 	device.queue.encryption = newOutboundQueue()
 	device.queue.decryption = newInboundQueue()
+	device.queue.tc = newTCQueue()
 
 	// start workers
 
@@ -321,20 +324,14 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 		go device.RoutineHandshake(i + 1)
 	}
 
-	device.state.stopping.Add(1)      // RoutineReadFromTUN
-	device.queue.encryption.wg.Add(1) // RoutineReadFromTUN
+	device.state.stopping.Add(1)      // RoutineTC
+	device.queue.tc.wg.Add(1)         // RoutineReadFromTUN
+	device.queue.encryption.wg.Add(1) // RoutineTC
 	go device.RoutineReadFromTUN()
 	go device.RoutineTUNEventReader()
-	go device.routineSendPoly()
-
-	device.net.polySocket = newPolySock(device)
+	go device.RoutineTC()
 
 	return device
-}
-
-func (device *Device) PolyListen(recv PolyReceiver) *PolySock {
-	device.net.polySocket.recv = recv
-	return device.net.polySocket
 }
 
 // BatchSize returns the BatchSize for the device as a whole which is the max of
@@ -402,7 +399,6 @@ func (device *Device) Close() {
 	device.log.Verbosef("Device closing")
 
 	device.tun.device.Close()
-	device.net.polySocket.stop()
 	device.downLocked()
 
 	// Remove peers before closing queues,

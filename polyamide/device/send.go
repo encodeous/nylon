@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"net"
 	"os"
 	"sync"
 	"time"
@@ -17,13 +16,12 @@ import (
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 /* Outbound flow
  *
  * 1. TUN queue
+ * 1.5 Traffic Control (sequential)
  * 2. Routing (sequential)
  * 3. Nonce assignment (sequential)
  * 4. Encryption (parallel)
@@ -224,106 +222,40 @@ func (peer *Peer) keepKeyFreshSending() {
 func (device *Device) RoutineReadFromTUN() {
 	defer func() {
 		device.log.Verbosef("Routine: TUN reader - stopped")
-		device.state.stopping.Done()
-		device.queue.encryption.wg.Done()
+		device.queue.tc.wg.Done()
 	}()
 
 	device.log.Verbosef("Routine: TUN reader - started")
 
 	var (
-		batchSize   = device.BatchSize()
-		readErr     error
-		elems       = make([]*QueueOutboundElement, batchSize)
-		bufs        = make([][]byte, batchSize)
-		lpBufs      = make([][]byte, 0)
-		elemsByPeer = make(map[*Peer]*QueueOutboundElementsContainer, batchSize)
-		count       = 0
-		sizes       = make([]int, batchSize)
-		offset      = MessageTransportHeaderSize
+		batchSize = device.BatchSize()
+		readErr   error
+		rBufs     = make([][]byte, batchSize)
+		bufs      = make([]*[MaxMessageSize]byte, batchSize)
+		count     = 0
+		sizes     = make([]int, batchSize)
+		offset    = MessageTransportHeaderSize
 	)
 
-	for i := range elems {
-		elems[i] = device.NewOutboundElement()
-		bufs[i] = elems[i].buffer[:]
-	}
-
-	defer func() {
-		for _, elem := range elems {
-			if elem != nil {
-				device.PutMessageBuffer(elem.buffer)
-				device.PutOutboundElement(elem)
-			}
-		}
-	}()
-
 	for {
-		// read packets
-		count, readErr = device.tun.device.Read(bufs, sizes, offset)
+		for i := range batchSize {
+			bufs[i] = device.GetMessageBuffer()
+			rBufs[i] = bufs[i][:]
+		}
+		count, readErr = device.tun.device.Read(rBufs, sizes, offset)
+		tcec := device.GetTCElementsContainer()
 		for i := 0; i < count; i++ {
 			if sizes[i] < 1 {
 				continue
 			}
-
-			elem := elems[i]
-			elem.packet = bufs[i][offset : offset+sizes[i]]
-
-			// lookup peer
-			var peer *Peer
-			switch elem.packet[0] >> 4 {
-			case 4:
-				if len(elem.packet) < ipv4.HeaderLen {
-					continue
-				}
-				dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
-				peer = device.Allowedips.Lookup(dst)
-
-			case 6:
-				if len(elem.packet) < ipv6.HeaderLen {
-					continue
-				}
-				dst := elem.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
-				peer = device.Allowedips.Lookup(dst)
-
-			default:
-				device.log.Verbosef("Received packet with unknown IP version")
-			}
-
-			if peer == nil {
-				// dont drop, instead loop back to the system.
-				lpBufs = append(lpBufs, elem.buffer[:MessageTransportOffsetContent+len(elem.packet)])
-				continue
-			}
-			elemsForPeer, ok := elemsByPeer[peer]
-			if !ok {
-				elemsForPeer = device.GetOutboundElementsContainer()
-				elemsByPeer[peer] = elemsForPeer
-			}
-			elemsForPeer.elems = append(elemsForPeer.elems, elem)
-			elems[i] = device.NewOutboundElement()
-			bufs[i] = elems[i].buffer[:]
+			tce := device.GetTCElement()
+			tce.Buffer = bufs[i]
+			bufs[i] = nil
+			rBufs[i] = nil
+			tcec.Elems = append(tcec.Elems, tce)
 		}
-
-		if len(lpBufs) > 0 {
-			_, err := device.tun.device.Write(lpBufs, MessageTransportOffsetContent)
-			if err != nil && !device.isClosed() {
-				device.log.Errorf("Failed to loop back packets to TUN device: %v", err)
-			}
-			lpBufs = lpBufs[:0]
-		}
-
-		for peer, elemsForPeer := range elemsByPeer {
-			if peer.isRunning.Load() {
-				peer.StagePackets(elemsForPeer)
-				peer.SendStagedPackets()
-			} else {
-				for _, elem := range elemsForPeer.elems {
-					device.PutMessageBuffer(elem.buffer)
-					device.PutOutboundElement(elem)
-				}
-				device.PutOutboundElementsContainer(elemsForPeer)
-			}
-			delete(elemsByPeer, peer)
-		}
+		// pass to traffic control
+		device.EnqueueTC(tcec)
 
 		if readErr != nil {
 			if errors.Is(readErr, tun.ErrTooManySegments) {
@@ -521,7 +453,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			return
 		}
 		if !peer.isRunning.Load() {
-			// peer has been stopped; return re-usable elems to the shared pool.
+			// peer has been stopped; return re-usable Elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped
 			// immediately after this check, in which case, elem will get processed.
 			// The timers and SendBuffers code are resilient to a few stragglers.

@@ -22,10 +22,8 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 		return err
 	}
 
-	dev.AllowAllInbound = true
-	dev.UseSystemRouting = s.UseSystemRouting
-	n.PolySock = dev.PolyListen(n)
-	s.Log.Info("started polysock listener")
+	n.InstallTC()
+	s.Log.Info("installed nylon traffic control filter for polysock")
 
 	n.Device = dev
 	n.Tun = tdev

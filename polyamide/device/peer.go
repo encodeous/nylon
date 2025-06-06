@@ -229,8 +229,9 @@ func (peer *Peer) Start() {
 	// Use the device batch size, not the bind batch size, as the device size is
 	// the size of the batch pools.
 	batchSize := peer.device.BatchSize()
+	device.queue.tc.wg.Add(1) // RoutineSequentialSender
 	go peer.RoutineSequentialSender(batchSize)
-	go peer.RoutineSequentialReceiver(batchSize)
+	go peer.RoutineSequentialReceiver()
 
 	peer.isRunning.Store(true)
 }
