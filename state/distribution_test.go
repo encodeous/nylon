@@ -8,7 +8,6 @@ import (
 	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/chacha20poly1305"
 	"gopkg.in/yaml.v3"
-	"net/netip"
 	"testing"
 	"time"
 )
@@ -20,9 +19,8 @@ func TestBundleUnbundle(t *testing.T) {
 		Routers: make([]RouterCfg, 0),
 		Clients: []ClientCfg{
 			{NodeCfg{
-				Id:       "blah",
-				PubKey:   NyPublicKey{},
-				Prefixes: make([]netip.Prefix, 0),
+				Id:     "blah",
+				PubKey: NyPublicKey{},
 			}},
 		},
 		Graph: []string{
@@ -52,9 +50,8 @@ func TestBundleTamper(t *testing.T) {
 		Routers: make([]RouterCfg, 0),
 		Clients: []ClientCfg{
 			{NodeCfg{
-				Id:       "blah",
-				PubKey:   NyPublicKey{},
-				Prefixes: make([]netip.Prefix, 0),
+				Id:     "blah",
+				PubKey: NyPublicKey{},
 			}},
 		},
 		Graph: []string{
@@ -91,9 +88,8 @@ func TestBundleInvalidSign(t *testing.T) {
 		Routers: make([]RouterCfg, 0),
 		Clients: []ClientCfg{
 			{NodeCfg{
-				Id:       "blah",
-				PubKey:   NyPublicKey{},
-				Prefixes: make([]netip.Prefix, 0),
+				Id:     "blah",
+				PubKey: NyPublicKey{},
 			}},
 		},
 		Graph: []string{

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -114,9 +115,7 @@ var clientCmd = &cobra.Command{
 		}
 		allowedIps := make([]string, 0)
 		for _, node := range centralCfg.GetNodes() {
-			for _, prefix := range node.Prefixes {
-				allowedIps = append(allowedIps, prefix.String())
-			}
+			allowedIps = append(allowedIps, core.AddrToPrefix(node.Address).String())
 		}
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
 

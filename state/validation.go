@@ -2,7 +2,6 @@ package state
 
 import (
 	"fmt"
-	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -49,9 +48,6 @@ func NodeConfigValidator(node *LocalCfg) error {
 	if node.Key == [32]byte{} {
 		return fmt.Errorf("private key must not be empty")
 	}
-	if node.NoNetConfigure && len(node.AllowedPrefixes) != 0 {
-		return fmt.Errorf("cannot configure allowed prefixes if nonetconfigure is enabled")
-	}
 	if node.InterfaceName != "" {
 		err = NameValidator(node.InterfaceName)
 		if err != nil {
@@ -88,19 +84,19 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		return err
 	}
 
-	prefixes := make([]netip.Prefix, 0)
+	//prefixes := make([]netip.Prefix, 0)
 
 	// ensure prefixes do not overlap
-	for _, node := range cfg.Routers {
-		for _, prefix := range node.Prefixes {
-			for _, oPrefix := range prefixes {
-				if oPrefix.Overlaps(prefix) {
-					return fmt.Errorf("node %s's prefix %s overlaps with existing prefix %s", node, oPrefix.String(), prefix.String())
-				}
-			}
-			prefixes = append(prefixes, prefix)
-		}
-	}
+	//for _, node := range cfg.Routers {
+	//	for _, prefix := range node.Prefixes {
+	//		for _, oPrefix := range prefixes {
+	//			if oPrefix.Overlaps(prefix) {
+	//				return fmt.Errorf("node %s's prefix %s overlaps with existing prefix %s", node, oPrefix.String(), prefix.String())
+	//			}
+	//		}
+	//		prefixes = append(prefixes, prefix)
+	//	}
+	//}
 
 	if cfg.Dist != nil {
 		// validate repos

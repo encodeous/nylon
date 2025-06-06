@@ -8,34 +8,28 @@ dist:
 routers:
   - id: alice
     pubkey: xmfAovAKN4AY5ocK5s+/VsG9I27KrQ13Vzb0HOsLKAs==
-    prefixes:
-      - 10.0.0.1/32
+    address: 10.0.0.1
   - id: bob
     pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
-    prefixes:
-      - 10.0.0.2/32
+    address: 10.0.0.2
     endpoints:
       - '192.168.1.1:57175'
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
-    prefixes:
-      - 10.0.0.3/32
+    address: 10.0.0.3
   - id: public
     pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
-    prefixes:
-      - 10.0.0.4/32
+    address: 10.0.0.4
     endpoints:
       - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
       - '123.123.123.124:57175'
   - id: charlie
     pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
-    prefixes:
-      - 10.0.0.5/32
+    address: 10.0.0.5
 clients:
   - id: client1
     pubkey: SBI+yvF30Ba4xo0GKTtKHSSfbXAnRNFTBwydJyJp6Rk=
-    prefixes:
-      - 10.0.0.7/32
+    address: 10.0.0.7
 graph: # The graph determines which nodes will attempt/can peer with each other. Nodes will only connect to each other once they have been connected directly in the graph.
   - Group1 = alice, bob # Groups are a convenient way to connect many nodes. Nodes within groups are not automatically connected
   - Group1, Group1 # You can emulate that behaviour by connecting a group to its self
