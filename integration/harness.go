@@ -127,11 +127,9 @@ func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
-			Id:     id,
-			PubKey: privKey.Pubkey(),
-			Prefixes: []netip.Prefix{
-				netip.MustParsePrefix(virtPrefix),
-			},
+			Id:      id,
+			PubKey:  privKey.Pubkey(),
+			Address: netip.MustParsePrefix(virtPrefix).Addr(),
 		},
 	}
 	v.Central.Routers = append(v.Central.Routers, ncfg)
@@ -246,13 +244,9 @@ type InMemoryNetwork struct {
 }
 
 func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
-	selfPrefix := i.cfg.Central.GetNode(node).Prefixes
-	for _, p := range selfPrefix {
-		if p.Contains(dst) {
-			if i.SelfHandler.TryApply(node, src, dst, data) {
-				return true
-			}
-			break
+	if i.cfg.Central.GetNode(node).Address == dst {
+		if i.SelfHandler.TryApply(node, src, dst, data) {
+			return true
 		}
 	}
 	curIdx := i.cfg.IndexOf(node)
@@ -263,9 +257,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			if node == n.Id {
 				continue
 			}
-			if slices.ContainsFunc(n.Prefixes, func(prefix netip.Prefix) bool {
-				return prefix.Contains(dst)
-			}) {
+			if n.Address == dst {
 				select {
 				case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
 				default:

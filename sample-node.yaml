@@ -2,5 +2,3 @@ key: 0NcrMcaS1tORCTA88L5ZPE+H6yUMV4e5vRp6iypnPW8=
 id: alice
 port: 57175 # Default: 57175 - UDP port that Nylon listens on
 nonetconfigure: false # Default: false - If enabled, Nylon will not configure the system network settings.
-allowedprefixes: # Default: [] - experimental feature for split-tunneling, cannot be used with nonetconfigure
-  - '10.0.0.1/24'

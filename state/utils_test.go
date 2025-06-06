@@ -30,11 +30,9 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 		clients[idx] = client
 		keyStore[client] = GenerateKey()
 		cfg.Clients = append(cfg.Clients, ClientCfg{NodeCfg{
-			Id:     NodeId(client),
-			PubKey: keyStore[client].Pubkey(),
-			Prefixes: []netip.Prefix{
-				netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx)),
-			},
+			Id:      NodeId(client),
+			PubKey:  keyStore[client].Pubkey(),
+			Address: netip.MustParseAddr(fmt.Sprintf("10.1.0.%d", idx)),
 		}})
 	}
 
@@ -46,11 +44,9 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 		keyStore[router] = GenerateKey()
 		cfg.Routers = append(cfg.Routers, RouterCfg{
 			NodeCfg: NodeCfg{
-				Id:     NodeId(router),
-				PubKey: keyStore[router].Pubkey(),
-				Prefixes: []netip.Prefix{
-					netip.MustParsePrefix(fmt.Sprintf("10.0.0.%d/32", idx)),
-				},
+				Id:      NodeId(router),
+				PubKey:  keyStore[router].Pubkey(),
+				Address: netip.MustParseAddr(fmt.Sprintf("10.0.0.%d", idx)),
 			},
 			Endpoints: []netip.AddrPort{
 				netip.MustParseAddrPort(fmt.Sprintf("192.168.0.%d:25565", idx)),
@@ -79,11 +75,10 @@ func SampleEnv(cfg *CentralCfg, keyStore map[string]NyPrivateKey, node NodeId) *
 		DispatchChannel: nil,
 		CentralCfg:      *cfg,
 		LocalCfg: LocalCfg{
-			Key:             keyStore[string(node)],
-			Id:              node,
-			Port:            5000,
-			NoNetConfigure:  false,
-			AllowedPrefixes: nil,
+			Key:            keyStore[string(node)],
+			Id:             node,
+			Port:           5000,
+			NoNetConfigure: false,
 		},
 		Context:  nil,
 		Cancel:   nil,

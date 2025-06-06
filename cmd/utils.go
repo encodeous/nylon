@@ -64,11 +64,11 @@ var hostsCmd = &cobra.Command{
 		}
 		hosts := make(map[string][]string)
 		for _, node := range cfg.GetNodes() {
-			primaryIp := node.Prefixes[0].Addr().String()
+			primaryIp := node.Address.String()
 			hosts[primaryIp] = append(hosts[primaryIp], string(node.Id))
 		}
 		for domain, node := range cfg.Hosts {
-			primaryIp := cfg.GetNode(state.NodeId(node)).Prefixes[0].Addr().String()
+			primaryIp := cfg.GetNode(state.NodeId(node)).Address.String()
 			hosts[primaryIp] = append(hosts[primaryIp], domain)
 		}
 		sb := strings.Builder{}

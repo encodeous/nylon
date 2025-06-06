@@ -36,29 +36,24 @@ Now, on every node, copy the same `central.yaml` file. It should look similar to
 routers:
   - id: alice
     pubkey: afIhSoe95Fr5plativMyZL3QZslSHOBl8GWIKeqw7kg=
-    prefixes:
-      - 10.0.0.1/32
+    address: 10.0.0.1
   - id: bob
     pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
-    prefixes:
-      - 10.0.0.2/32
+    address: 10.0.0.2
     endpoints:
       - '192.168.1.1:57175'
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
-    prefixes:
-      - 10.0.0.3/32
+    address: 10.0.0.3
   - id: public
     pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
-    prefixes:
-      - 10.0.0.4/32
+    address: 10.0.0.4
     endpoints:
       - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
       - '123.123.123.124:57175'
   - id: charlie
     pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
-    prefixes:
-      - 10.0.0.5/32
+    address: 10.0.0.5
 graph:
   - InternetAccess = charlie, eve, alice # groups charlie, eve, and alice which all have internet access together
   - vps, InternetAccess # connects the group InternetAccess with the node vps

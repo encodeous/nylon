@@ -5,8 +5,17 @@ import (
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/proto"
+	"net/netip"
 	"strings"
 )
+
+func AddrToPrefix(addr netip.Addr) netip.Prefix {
+	res, err := addr.Prefix(addr.BitLen())
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
 
 func broadcast(s *state.State, message proto.Message, neighs []*state.Neighbour) {
 	n := Get[*Nylon](s)
