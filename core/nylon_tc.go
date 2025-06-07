@@ -16,30 +16,47 @@ const (
 // polyamide traffic control for nylon
 
 func (n *Nylon) InstallTC() {
+	// bounce back packets if using system routing
+	if n.env.UseSystemRouting {
+		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
+			if packet.Incoming() {
+				// bounce incoming packets
+				return device.TcBounce, nil
+			}
+			return device.TcPass, nil
+		})
+	}
+
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		// TODO: Depends on spring-clean-25
+		if n.env.GetNode(n.env.Id).Address == packet.GetDst() {
+			return device.TcBounce, nil
+		}
 		return device.TcPass, nil
 	})
 
-	// handle nylon packets
+	// handle incoming nylon packets
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		n.handleNylonPacket(packet.Payload(), packet.FromEp, packet.FromPeer)
-		return device.TcDrop, nil
+		if packet.Incoming() && packet.GetIPVersion() == NyProtoId {
+			n.handleNylonPacket(packet.Payload(), packet.FromEp, packet.FromPeer)
+			return device.TcDrop, nil
+		}
+		return device.TcPass, nil
 	})
 }
 
 func (n *Nylon) SendNylon(pkt proto.Message, endpoint conn.Endpoint, peer *device.Peer) error {
 	tce := n.Device.NewTCElement()
+	offset := device.MessageTransportOffsetContent + device.PolyHeaderSize
 	buf, err := proto.MarshalOptions{
 		Deterministic: true,
-	}.MarshalAppend(tce.Buffer[device.MessageTransportOffsetContent+device.PolyHeaderSize:], pkt)
+	}.MarshalAppend(tce.Buffer[offset:offset], pkt)
 	if err != nil {
 		n.Device.PutMessageBuffer(tce.Buffer)
 		n.Device.PutTCElement(tce)
 		return err
 	}
-	tce.InitPacket(NyProtoId, uint16(len(buf)))
+	tce.InitPacket(NyProtoId, uint16(len(buf)+device.PolyHeaderSize))
 	tce.Priority = device.TcHighPriority
 
 	tce.ToEp = endpoint

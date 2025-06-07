@@ -302,6 +302,7 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.rate.limiter.Init()
 	device.indexTable.Init()
 	device.TCFilters = append(device.TCFilters, TCFDrop)
+	device.TCFilters = append(device.TCFilters, TCFBounce)
 	device.TCFilters = append(device.TCFilters, TCFAllowedip)
 
 	device.PopulatePools()
@@ -411,6 +412,7 @@ func (device *Device) Close() {
 	device.queue.encryption.wg.Done()
 	device.queue.decryption.wg.Done()
 	device.queue.handshake.wg.Done()
+	device.queue.tc.wg.Done()
 	device.state.stopping.Wait()
 
 	device.rate.limiter.Close()

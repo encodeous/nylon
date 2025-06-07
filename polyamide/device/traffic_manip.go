@@ -26,6 +26,10 @@ func (elem *TCElement) ParsePacket() {
 	elem.Packet = elem.Buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+l]
 }
 
+func (elem *TCElement) Incoming() bool {
+	return elem.FromPeer != nil
+}
+
 func (elem *TCElement) GetIPVersion() int {
 	return int(elem.Packet[0] >> 4)
 }
@@ -125,7 +129,7 @@ func (elem *TCElement) Payload() []byte {
 	} else if ver == 6 {
 		return elem.Packet[ipv6.HeaderLen:]
 	} else {
-		return elem.Packet[PolyOffsetPayloadLength:]
+		return elem.Packet[PolyHeaderSize:]
 	}
 }
 

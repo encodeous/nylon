@@ -105,6 +105,9 @@ func (device *Device) GetMessageBuffer() *[MaxMessageSize]byte {
 }
 
 func (device *Device) PutMessageBuffer(msg *[MaxMessageSize]byte) {
+	if msg == nil {
+		return
+	}
 	device.pool.messageBuffers.Put(msg)
 }
 
@@ -115,7 +118,7 @@ func (device *Device) GetTCElement() *TCElement {
 func (device *Device) PutTCElement(elem *TCElement) {
 	elem.clearPointers()
 	elem.Priority = 0
-	device.pool.inboundElements.Put(elem)
+	device.pool.tcElements.Put(elem)
 }
 
 func (device *Device) GetTCElementsContainer() *TCElementsContainer {

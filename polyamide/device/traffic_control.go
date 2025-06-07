@@ -1,7 +1,9 @@
 package device
 
 import (
+	"fmt"
 	"github.com/encodeous/nylon/polyamide/conn"
+	"net/netip"
 	"slices"
 )
 
@@ -32,16 +34,36 @@ const (
 type TCFilter func(dev *Device, packet *TCElement) (TCAction, error)
 
 func TCFAllowedip(dev *Device, packet *TCElement) (TCAction, error) {
+	if packet.ToPeer != nil {
+		return TcForward, nil
+	}
 	peer := dev.Allowedips.Lookup(packet.GetDstBytes())
 	if peer != nil {
 		packet.ToPeer = peer
 		return TcForward, nil
 	}
+	for _, p := range dev.peers.keyMap {
+		dev.Allowedips.EntriesForPeer(p, func(prefix netip.Prefix) bool {
+			fmt.Printf("p: %v, prefix: %v\n", p, prefix)
+			return true
+		})
+	}
+
+	fmt.Printf("nfw addr: %s\n", packet.GetDst().String())
 	return TcPass, nil
 }
 
 func TCFDrop(dev *Device, packet *TCElement) (TCAction, error) {
+	dev.log.Verbosef("TCFDrop packet: %v", packet)
 	return TcDrop, nil
+}
+
+func TCFBounce(dev *Device, packet *TCElement) (TCAction, error) {
+	if packet.FromPeer != nil {
+		dev.log.Verbosef("TCFBounce packet: %v", packet)
+		return TcBounce, nil
+	}
+	return TcPass, nil
 }
 
 type TCElement struct {
@@ -107,8 +129,8 @@ func (device *Device) RoutineTC() {
 	multiBatch := make([]*TCElementsContainer, 0)
 	sz := device.BatchSize()
 	priority := make([][]*TCElement, TcMaxPriority+1)
-	bouncePkts := make([]*TCElement, conn.IdealBatchSize)
-	bounceBufs := make([][]byte, conn.IdealBatchSize)
+	bouncePkts := make([]*TCElement, 0, conn.IdealBatchSize)
+	bounceBufs := make([][]byte, 0, conn.IdealBatchSize)
 	elemsForPeer := make(map[*Peer][]*TCElement)
 
 	for {
