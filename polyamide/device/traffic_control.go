@@ -44,23 +44,23 @@ func TCFAllowedip(dev *Device, packet *TCElement) (TCAction, error) {
 	}
 	for _, p := range dev.peers.keyMap {
 		dev.Allowedips.EntriesForPeer(p, func(prefix netip.Prefix) bool {
-			fmt.Printf("p: %v, prefix: %v\n", p, prefix)
+			//fmt.Printf("p: %v, prefix: %v\n", p, prefix)
 			return true
 		})
 	}
 
-	fmt.Printf("nfw addr: %s\n", packet.GetDst().String())
+	//fmt.Printf("nfw addr: %s\n", packet.GetDst().String())
 	return TcPass, nil
 }
 
 func TCFDrop(dev *Device, packet *TCElement) (TCAction, error) {
-	dev.log.Verbosef("TCFDrop packet: %v", packet)
+	//dev.log.Verbosef("TCFDrop packet: %v", packet)
 	return TcDrop, nil
 }
 
 func TCFBounce(dev *Device, packet *TCElement) (TCAction, error) {
 	if packet.FromPeer != nil {
-		dev.log.Verbosef("TCFBounce packet: %v", packet)
+		//dev.log.Verbosef("TCFBounce packet: %v", packet)
 		return TcBounce, nil
 	}
 	return TcPass, nil
@@ -108,6 +108,7 @@ func (device *Device) EnqueueTC(elems *TCElementsContainer) {
 		}
 		select {
 		case tooOld := <-device.queue.tc.c:
+			fmt.Printf("dropped old packet")
 			for _, elem := range tooOld.Elems {
 				device.PutMessageBuffer(elem.Buffer)
 				device.PutTCElement(elem)
@@ -207,13 +208,14 @@ func (device *Device) RoutineTC() {
 		// bounce packets back to the system
 		if len(bouncePkts) > 0 {
 			for _, elem := range bouncePkts {
-				bounceBufs = append(bounceBufs, elem.Packet)
+				bounceBufs = append(bounceBufs, elem.Buffer[:MessageTransportHeaderSize+len(elem.Packet)])
 			}
-			_, err := device.tun.device.Write(bounceBufs, 0)
+			// here, we need to use elem.Buffer instead of elem.Packet since we will get io.ErrShortBuffer if offset < 4
+			_, err := device.tun.device.Write(bounceBufs, MessageTransportHeaderSize)
 			if err != nil && !device.isClosed() {
 				device.log.Errorf("Failed to loop back packets to TUN device: %v", err)
 			}
-			bouncePkts = bouncePkts[:0]
+			bounceBufs = bounceBufs[:0]
 			for i, elem := range bouncePkts {
 				device.PutMessageBuffer(elem.Buffer)
 				device.PutTCElement(elem)
@@ -225,6 +227,9 @@ func (device *Device) RoutineTC() {
 		// forward packets to peers based on priority
 		for p, elems := range slices.Backward(priority) {
 			for i, elem := range elems {
+				if elem == nil {
+					continue
+				}
 				if len(elemsForPeer[elem.ToPeer]) > sz {
 					// too many packets, we need to drop this one
 					device.PutMessageBuffer(elem.Buffer)

@@ -232,13 +232,13 @@ func (device *Device) RoutineReadFromTUN() {
 		readErr   error
 		rBufs     = make([][]byte, batchSize)
 		bufs      = make([]*[MaxMessageSize]byte, batchSize)
-		count     = 0
+		count     = batchSize
 		sizes     = make([]int, batchSize)
 		offset    = MessageTransportHeaderSize
 	)
 
 	for {
-		for i := range batchSize {
+		for i := range count {
 			bufs[i] = device.GetMessageBuffer()
 			rBufs[i] = bufs[i][:]
 		}

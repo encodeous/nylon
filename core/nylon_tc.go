@@ -73,6 +73,7 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 	err := proto.Unmarshal(packet, pkt)
 	if err != nil {
 		// log skipped message
+		n.env.Log.Debug("Failed to unmarshal packet", "err", err)
 		return
 	}
 

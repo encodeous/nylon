@@ -10,7 +10,7 @@ import (
 
 // poly packets use other "IP Versions"
 const (
-	PolyHeaderSize          = 4
+	PolyHeaderSize          = 3
 	PolyOffsetPayloadLength = 1
 )
 

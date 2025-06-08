@@ -476,7 +476,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			tce.Packet = elem.packet
 			tce.Buffer = elem.buffer
 			elem.buffer = nil
-			elem.buffer = nil
+			elem.packet = nil
 			tce.FromEp = elem.endpoint
 			tce.FromPeer = peer
 
