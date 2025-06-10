@@ -11,13 +11,12 @@ import (
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
-	PolySock *device.PolySock
-	PingBuf  *ttlcache.Cache[uint64, EpPing]
-	Device   *device.Device
-	Tun      tun.Device
-	wgUapi   net.Listener
-	env      *state.Env
-	itfName  string
+	PingBuf *ttlcache.Cache[uint64, EpPing]
+	Device  *device.Device
+	Tun     tun.Device
+	wgUapi  net.Listener
+	env     *state.Env
+	itfName string
 }
 
 func (n *Nylon) Init(s *state.State) error {

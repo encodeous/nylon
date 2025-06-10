@@ -260,10 +260,11 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			if n.Address == dst {
 				select {
 				case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
+					return true
 				default:
-					panic(fmt.Sprintf("node %s's tun is not ready to accept data", n.Id))
+					fmt.Printf("%s's tun is not ready to accept data\n", n.Id)
+					return true
 				}
-				return true
 			}
 		}
 		return false

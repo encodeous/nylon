@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/proto"
@@ -24,11 +25,11 @@ func broadcast(s *state.State, message proto.Message, neighs []*state.Neighbour)
 			// TODO, investigate effect of packet loss on control messages
 			best := neigh.BestEndpoint()
 			if best != nil && best.IsActive() {
-				marshal, err := proto.Marshal(message)
+				peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(best.Node()).PubKey))
+				err := n.SendNylon(message, nil, peer)
 				if err != nil {
 					s.Env.Log.Error("error while broadcasting", "err", err.Error())
 				}
-				n.Send(marshal, best)
 			}
 		}
 	}()

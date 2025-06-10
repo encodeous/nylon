@@ -1,6 +1,6 @@
 module github.com/encodeous/nylon
 
-go 1.24.0
+go 1.24.4
 
 require (
 	github.com/docker/docker v27.1.1+incompatible

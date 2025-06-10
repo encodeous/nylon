@@ -209,7 +209,7 @@ func (peer *Peer) Start() {
 	}
 
 	device := peer.device
-	device.log.Verbosef("%v - Starting", peer)
+	device.Log.Verbosef("%v - Starting", peer)
 
 	// reset routine state
 	peer.stopping.Wait()
@@ -288,7 +288,7 @@ func (peer *Peer) Stop() {
 		return
 	}
 
-	peer.device.log.Verbosef("%v - Stopping", peer)
+	peer.device.Log.Verbosef("%v - Stopping", peer)
 
 	peer.timersStop()
 	// Signal that RoutineSequentialSender and RoutineSequentialReceiver should exit.
@@ -307,22 +307,12 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 		return
 	}
 	peer.endpoints.clearSrcOnTx = false
-	idx := slices.IndexFunc(peer.endpoints.val, func(endpoint conn.Endpoint) bool {
-		return endpoint.DstIPPort() == endpoint.DstIPPort()
-	})
 
 	if peer.endpoints.preferRoaming {
-		if idx == -1 {
-			peer.endpoints.val = append([]conn.Endpoint{endpoint}, peer.endpoints.val...)
-		} else {
-			nep := []conn.Endpoint{endpoint}
-			nep = append(nep, peer.endpoints.val[:idx]...)
-			nep = append(nep, peer.endpoints.val[idx+1:]...)
-			peer.endpoints.val = nep
-		}
-	} else {
-		if idx == -1 {
+		if len(peer.endpoints.val) == 0 {
 			peer.endpoints.val = append(peer.endpoints.val, endpoint)
+		} else {
+			peer.endpoints.val[0] = endpoint
 		}
 	}
 }
@@ -338,6 +328,14 @@ func (peer *Peer) GetEndpoints() []conn.Endpoint {
 	peer.handshake.mutex.RLock()
 	defer peer.handshake.mutex.RUnlock()
 	return slices.Clone(peer.endpoints.val)
+}
+
+func (peer *Peer) CleanEndpoints() {
+	peer.handshake.mutex.Lock()
+	defer peer.handshake.mutex.Unlock()
+	if len(peer.endpoints.val) > 1 {
+		peer.endpoints.val = peer.endpoints.val[:1]
+	}
 }
 
 func (peer *Peer) SetPreferRoaming(val bool) {

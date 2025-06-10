@@ -130,7 +130,7 @@ func SwitchHeuristic(curRoute *Route, newRoute PubRoute, metric uint16, via *Dyn
 	// prevent oscillation
 	curMetric := float64(curRoute.PubMetric)
 	newMetric := float64(metric)
-	if (newMetric+float64(via.StabilizedPing()))*LinkSwitchMetricCostMultiplier > curMetric {
+	if (newMetric+float64(via.Metric()))*LinkSwitchMetricCostMultiplier > curMetric {
 		return false
 	}
 	return true
