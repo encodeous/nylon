@@ -222,7 +222,8 @@ func (peer *Peer) keepKeyFreshSending() {
 func (device *Device) RoutineReadFromTUN() {
 	defer func() {
 		device.log.Verbosef("Routine: TUN reader - stopped")
-		device.queue.tc.wg.Done()
+		device.state.stopping.Done()
+		device.queue.encryption.wg.Done()
 	}()
 
 	device.log.Verbosef("Routine: TUN reader - started")
@@ -234,28 +235,35 @@ func (device *Device) RoutineReadFromTUN() {
 		bufs      = make([]*[MaxMessageSize]byte, batchSize)
 		count     = batchSize
 		sizes     = make([]int, batchSize)
+		tcBufs    = make([]*TCElement, 0, batchSize)
 		offset    = MessageTransportHeaderSize
+		tcs       = NewTCState()
 	)
 
+	for i := 0; i < batchSize; i++ {
+		bufs[i] = device.GetMessageBuffer()
+		rBufs[i] = bufs[i][:]
+	}
+
 	for {
-		for i := range count {
-			bufs[i] = device.GetMessageBuffer()
-			rBufs[i] = bufs[i][:]
-		}
 		count, readErr = device.tun.device.Read(rBufs, sizes, offset)
-		tcec := device.GetTCElementsContainer()
+
 		for i := 0; i < count; i++ {
 			if sizes[i] < 1 {
 				continue
 			}
 			tce := device.GetTCElement()
 			tce.Buffer = bufs[i]
-			bufs[i] = nil
-			rBufs[i] = nil
-			tcec.Elems = append(tcec.Elems, tce)
+			tcBufs = append(tcBufs, tce)
+
+			bufs[i] = device.GetMessageBuffer()
+			rBufs[i] = bufs[i][:]
 		}
+
 		// pass to traffic control
-		device.EnqueueTC(tcec)
+		device.TCBatch(tcBufs, tcs)
+
+		tcBufs = tcBufs[:0]
 
 		if readErr != nil {
 			if errors.Is(readErr, tun.ErrTooManySegments) {
@@ -282,6 +290,7 @@ func (peer *Peer) StagePackets(elems *QueueOutboundElementsContainer) {
 		case peer.queue.staged <- elems:
 			return
 		default:
+			print("peer queue full")
 		}
 		select {
 		case tooOld := <-peer.queue.staged:

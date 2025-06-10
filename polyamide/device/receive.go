@@ -428,14 +428,18 @@ func (device *Device) RoutineHandshake(id int) {
 	}
 }
 
-func (peer *Peer) RoutineSequentialReceiver() {
+func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	device := peer.device
 	defer func() {
 		device.log.Verbosef("%v - Routine: sequential receiver - stopped", peer)
-		peer.device.queue.tc.wg.Done()
 		peer.stopping.Done()
 	}()
 	device.log.Verbosef("%v - Routine: sequential receiver - started", peer)
+
+	var (
+		tcBufs = make([]*TCElement, 0, maxBatchSize)
+		tcs    = NewTCState()
+	)
 
 	for elemsContainer := range peer.queue.inbound.c {
 		if elemsContainer == nil {
@@ -445,8 +449,6 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		validTailPacket := -1
 		dataPacketReceived := false
 		rxBytesLen := uint64(0)
-
-		tcec := device.GetTCElementsContainer()
 
 		for i, elem := range elemsContainer.elems {
 			if elem.packet == nil {
@@ -480,10 +482,13 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			tce.FromEp = elem.endpoint
 			tce.FromPeer = peer
 
-			tcec.Elems = append(tcec.Elems, tce)
+			tcBufs = append(tcBufs, tce)
 		}
 
-		device.EnqueueTC(tcec)
+		// pass to traffic control
+		device.TCBatch(tcBufs, tcs)
+
+		tcBufs = tcBufs[:0]
 
 		peer.rxBytes.Add(rxBytesLen)
 		if validTailPacket >= 0 {

@@ -71,7 +71,6 @@ type Device struct {
 	pool struct {
 		inboundElementsContainer  *WaitPool
 		outboundElementsContainer *WaitPool
-		tcElementsContainer       *WaitPool
 		messageBuffers            *WaitPool
 		inboundElements           *WaitPool
 		outboundElements          *WaitPool
@@ -82,7 +81,6 @@ type Device struct {
 		encryption *outboundQueue
 		decryption *inboundQueue
 		handshake  *handshakeQueue
-		tc         *tcQueue
 	}
 
 	tun struct {
@@ -312,7 +310,6 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.queue.handshake = newHandshakeQueue()
 	device.queue.encryption = newOutboundQueue()
 	device.queue.decryption = newInboundQueue()
-	device.queue.tc = newTCQueue()
 
 	// start workers
 
@@ -325,12 +322,10 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 		go device.RoutineHandshake(i + 1)
 	}
 
-	device.state.stopping.Add(1)      // RoutineTC
-	device.queue.tc.wg.Add(1)         // RoutineReadFromTUN
-	device.queue.encryption.wg.Add(1) // RoutineTC
+	device.state.stopping.Add(1)      // RoutineReadFromTUN
+	device.queue.encryption.wg.Add(1) // RoutineReadFromTUN
 	go device.RoutineReadFromTUN()
 	go device.RoutineTUNEventReader()
-	go device.RoutineTC()
 
 	return device
 }
@@ -412,7 +407,6 @@ func (device *Device) Close() {
 	device.queue.encryption.wg.Done()
 	device.queue.decryption.wg.Done()
 	device.queue.handshake.wg.Done()
-	device.queue.tc.wg.Done()
 	device.state.stopping.Wait()
 
 	device.rate.limiter.Close()

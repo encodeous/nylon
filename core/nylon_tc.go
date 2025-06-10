@@ -62,9 +62,11 @@ func (n *Nylon) SendNylon(pkt proto.Message, endpoint conn.Endpoint, peer *devic
 	tce.ToEp = endpoint
 	tce.ToPeer = peer
 
-	tcc := n.Device.GetTCElementsContainer()
-	tcc.Elems = append(tcc.Elems, tce)
-	n.Device.EnqueueTC(tcc)
+	// TODO: Optimize? is it worth it?
+
+	tcs := device.NewTCState()
+
+	n.Device.TCBatch([]*device.TCElement{tce}, tcs)
 	return nil
 }
 

@@ -35,24 +35,6 @@ func newOutboundQueue() *outboundQueue {
 	return q
 }
 
-// A tcQueue is similar to an outboundQueue; see those docs.
-type tcQueue struct {
-	c  chan *TCElementsContainer
-	wg sync.WaitGroup
-}
-
-func newTCQueue() *tcQueue {
-	q := &tcQueue{
-		c: make(chan *TCElementsContainer, QueueOutboundSize),
-	}
-	q.wg.Add(1)
-	go func() {
-		q.wg.Wait()
-		close(q.c)
-	}()
-	return q
-}
-
 // A inboundQueue is similar to an outboundQueue; see those docs.
 type inboundQueue struct {
 	c  chan *QueueInboundElementsContainer

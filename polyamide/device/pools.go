@@ -66,10 +66,6 @@ func (device *Device) PopulatePools() {
 	device.pool.tcElements = NewWaitPool(PreallocatedBuffersPerPool, func() any {
 		return new(TCElement)
 	})
-	device.pool.tcElementsContainer = NewWaitPool(PreallocatedBuffersPerPool, func() any {
-		s := make([]*TCElement, 0, device.BatchSize())
-		return &TCElementsContainer{Elems: s}
-	})
 }
 
 func (device *Device) GetInboundElementsContainer() *QueueInboundElementsContainer {
@@ -119,19 +115,6 @@ func (device *Device) PutTCElement(elem *TCElement) {
 	elem.clearPointers()
 	elem.Priority = 0
 	device.pool.tcElements.Put(elem)
-}
-
-func (device *Device) GetTCElementsContainer() *TCElementsContainer {
-	c := device.pool.tcElementsContainer.Get().(*TCElementsContainer)
-	return c
-}
-
-func (device *Device) PutTCElementsContainer(c *TCElementsContainer) {
-	for i := range c.Elems {
-		c.Elems[i] = nil
-	}
-	c.Elems = c.Elems[:0]
-	device.pool.tcElementsContainer.Put(c)
 }
 
 func (device *Device) GetInboundElement() *QueueInboundElement {

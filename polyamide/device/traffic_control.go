@@ -1,7 +1,6 @@
 package device
 
 import (
-	"fmt"
 	"github.com/encodeous/nylon/polyamide/conn"
 	"net/netip"
 	"slices"
@@ -76,10 +75,6 @@ type TCElement struct {
 	Priority TCPriority            // Priority, higher is better
 }
 
-type TCElementsContainer struct {
-	Elems []*TCElement
-}
-
 func (elem *TCElement) clearPointers() {
 	elem.Buffer = nil
 	elem.Packet = nil
@@ -99,178 +94,129 @@ func (device *Device) InstallFilter(filter TCFilter) {
 	device.TCFilters = append(device.TCFilters, filter)
 }
 
-func (device *Device) EnqueueTC(elems *TCElementsContainer) {
-	for {
-		select {
-		case device.queue.tc.c <- elems:
-			return
-		default:
-		}
-		select {
-		case tooOld := <-device.queue.tc.c:
-			fmt.Printf("dropped old packet")
-			for _, elem := range tooOld.Elems {
-				device.PutMessageBuffer(elem.Buffer)
-				device.PutTCElement(elem)
-			}
-			device.PutTCElementsContainer(tooOld)
-		default:
-		}
+type TCState struct {
+	priority     [][]*TCElement
+	bouncePkts   []*TCElement
+	bounceBufs   [][]byte
+	elemsForPeer map[*Peer][]*TCElement
+}
+
+func NewTCState() *TCState {
+	return &TCState{
+		priority:     make([][]*TCElement, TcMaxPriority+1),
+		bouncePkts:   make([]*TCElement, 0, conn.IdealBatchSize),
+		bounceBufs:   make([][]byte, 0, conn.IdealBatchSize),
+		elemsForPeer: make(map[*Peer][]*TCElement),
 	}
 }
 
-func (device *Device) RoutineTC() {
-	defer func() {
-		device.log.Verbosef("Routine: polyamide traffic control - stopped")
-		device.state.stopping.Done()
-		device.queue.encryption.wg.Done()
-	}()
-	device.log.Verbosef("Routine: polyamide traffic control - started")
-
-	multiBatch := make([]*TCElementsContainer, 0)
-	sz := device.BatchSize()
-	priority := make([][]*TCElement, TcMaxPriority+1)
-	bouncePkts := make([]*TCElement, 0, conn.IdealBatchSize)
-	bounceBufs := make([][]byte, 0, conn.IdealBatchSize)
-	elemsForPeer := make(map[*Peer][]*TCElement)
-
-	for {
-		// avoid infinite spins
-		multiBatch = append(multiBatch, <-device.queue.tc.c)
-		if multiBatch[0] == nil {
-			return
-		}
-	readBatch:
-		for {
-			select {
-			case elemsContainer := <-device.queue.tc.c:
-				if elemsContainer == nil {
-					return
-				}
-				multiBatch = append(multiBatch, elemsContainer)
-			default:
-				break readBatch
-			}
-		}
-
-		for _, elems := range multiBatch {
-			for i, elem := range elems.Elems {
-				// process TC Filters
-				act := TcPass
-				elem.ParsePacket()
-				if !elem.Validate() {
-					device.log.Errorf("Found malformed packet, dropping packet")
-					act = TcDrop
-				} else {
-					for _, filter := range slices.Backward(device.TCFilters) {
-						nAct, err := filter(device, elem)
-						act = nAct
-						if err != nil {
-							device.log.Errorf("Error on filter action: %v", err)
-							act = TcDrop
-						}
-						if act != TcPass {
-							break
-						}
-					}
-				}
-				if act == TcPass {
-					device.log.Errorf("Unexpectedly passed all filters!")
+func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
+	for i, elem := range batch {
+		// process TC Filters
+		act := TcPass
+		elem.ParsePacket()
+		if !elem.Validate() {
+			device.log.Errorf("Found malformed packet, dropping packet")
+			act = TcDrop
+		} else {
+			for _, filter := range slices.Backward(device.TCFilters) {
+				nAct, err := filter(device, elem)
+				act = nAct
+				if err != nil {
+					device.log.Errorf("Error on filter action: %v", err)
 					act = TcDrop
 				}
-				switch act {
-				case TcPass:
-					panic("unreachable")
-				case TcDrop:
-					// cleanup
-					device.PutMessageBuffer(elem.Buffer)
-					device.PutTCElement(elem)
-					elems.Elems[i] = nil
-				case TcBounce:
-					// bounce back to system
-					bouncePkts = append(bouncePkts, elem)
-					elems.Elems[i] = nil
-				case TcForward:
-					// reroute/forward packet
-					if elem.ToPeer == nil {
-						device.log.Errorf("Failed to forward packet to destination, toPeer not set")
-						device.PutMessageBuffer(elem.Buffer)
-						device.PutTCElement(elem)
-						elems.Elems[i] = nil
-					}
-					priority[elem.Priority] = append(priority[elem.Priority], elem)
-					elems.Elems[i] = nil
+				if act != TcPass {
+					break
 				}
 			}
-			device.PutTCElementsContainer(elems)
+		}
+		if act == TcPass {
+			device.log.Errorf("Unexpectedly passed all filters!")
+			act = TcDrop
 		}
 
-		// bounce packets back to the system
-		if len(bouncePkts) > 0 {
-			for _, elem := range bouncePkts {
-				bounceBufs = append(bounceBufs, elem.Buffer[:MessageTransportHeaderSize+len(elem.Packet)])
-			}
-			// here, we need to use elem.Buffer instead of elem.Packet since we will get io.ErrShortBuffer if offset < 4
-			_, err := device.tun.device.Write(bounceBufs, MessageTransportHeaderSize)
-			if err != nil && !device.isClosed() {
-				device.log.Errorf("Failed to loop back packets to TUN device: %v", err)
-			}
-			bounceBufs = bounceBufs[:0]
-			for i, elem := range bouncePkts {
+		batch[i] = nil
+
+		switch act {
+		case TcDrop:
+			// cleanup
+			device.PutMessageBuffer(elem.Buffer)
+			device.PutTCElement(elem)
+		case TcBounce:
+			// bounce back to system
+			tcs.bouncePkts = append(tcs.bouncePkts, elem)
+		case TcForward:
+			// reroute/forward packet
+			if elem.ToPeer == nil {
+				device.log.Errorf("Failed to forward packet to destination, toPeer not set")
 				device.PutMessageBuffer(elem.Buffer)
 				device.PutTCElement(elem)
-				bouncePkts[i] = nil
-			}
-			bouncePkts = bouncePkts[:0]
-		}
-
-		// forward packets to peers based on priority
-		for p, elems := range slices.Backward(priority) {
-			for i, elem := range elems {
-				if elem == nil {
-					continue
-				}
-				if len(elemsForPeer[elem.ToPeer]) > sz {
-					// too many packets, we need to drop this one
-					device.PutMessageBuffer(elem.Buffer)
-					device.PutTCElement(elem)
-					elems[i] = nil
-					continue
-				}
-				elemsForPeer[elem.ToPeer] = append(elemsForPeer[elem.ToPeer], elem)
-				elems[i] = nil
-			}
-			priority[p] = priority[p][:0]
-		}
-
-		// stage packets to peers
-		for peer, elems := range elemsForPeer {
-			if len(elems) == 0 {
 				continue
 			}
-			if peer.isRunning.Load() {
-				obec := device.GetOutboundElementsContainer()
-				for i, elem := range elems {
-					obe := device.GetOutboundElement()
-					obe.nonce = 0
-					obe.endpoint = elem.ToEp
-					obe.packet = elem.Packet
-					obe.buffer = elem.Buffer
-					obec.elems = append(obec.elems, obe)
-					elems[i] = nil
-				}
-				peer.StagePackets(obec)
-				peer.SendStagedPackets()
-			} else {
-				for i, elem := range elems {
-					device.PutMessageBuffer(elem.Buffer)
-					device.PutTCElement(elem)
-					elems[i] = nil
-				}
-			}
-			elemsForPeer[peer] = elems[:0]
+			tcs.priority[elem.Priority] = append(tcs.priority[elem.Priority], elem)
+		default:
+			panic("unreachable default case")
 		}
+	}
 
-		multiBatch = multiBatch[:0]
+	// bounce packets back to the system
+	if len(tcs.bouncePkts) > 0 {
+		for _, elem := range tcs.bouncePkts {
+			tcs.bounceBufs = append(tcs.bounceBufs, elem.Buffer[:MessageTransportHeaderSize+len(elem.Packet)])
+		}
+		// here, we need to use elem.Buffer instead of elem.Packet since we will get io.ErrShortBuffer if offset < 4
+		_, err := device.tun.device.Write(tcs.bounceBufs, MessageTransportHeaderSize)
+		if err != nil && !device.isClosed() {
+			device.log.Errorf("Failed to loop back packets to TUN device: %v", err)
+		}
+		for i, elem := range tcs.bouncePkts {
+			device.PutMessageBuffer(elem.Buffer)
+			device.PutTCElement(elem)
+			tcs.bouncePkts[i] = nil
+			tcs.bounceBufs[i] = nil
+		}
+		tcs.bounceBufs = tcs.bounceBufs[:0]
+		tcs.bouncePkts = tcs.bouncePkts[:0]
+	}
+
+	// forward packets to peers based on priority
+	for p, elems := range slices.Backward(tcs.priority) {
+		for i, elem := range elems {
+			if elem == nil {
+				continue
+			}
+			tcs.elemsForPeer[elem.ToPeer] = append(tcs.elemsForPeer[elem.ToPeer], elem)
+			elems[i] = nil
+		}
+		tcs.priority[p] = tcs.priority[p][:0]
+	}
+
+	// stage packets to peers
+	for peer, elems := range tcs.elemsForPeer {
+		if len(elems) == 0 {
+			continue
+		}
+		if peer.isRunning.Load() {
+			obec := device.GetOutboundElementsContainer()
+			for i, elem := range elems {
+				obe := device.GetOutboundElement()
+				obe.nonce = 0
+				obe.endpoint = elem.ToEp
+				obe.packet = elem.Packet
+				obe.buffer = elem.Buffer
+				obec.elems = append(obec.elems, obe)
+				elems[i] = nil
+			}
+			peer.StagePackets(obec)
+			peer.SendStagedPackets()
+		} else {
+			for i, elem := range elems {
+				device.PutMessageBuffer(elem.Buffer)
+				device.PutTCElement(elem)
+				elems[i] = nil
+			}
+		}
+		tcs.elemsForPeer[peer] = elems[:0]
 	}
 }
