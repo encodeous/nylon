@@ -243,12 +243,32 @@ func (ring *ringBuffer) Open() error {
 	return nil
 }
 
+const (
+	IP_ORIGINAL_ARRIVAL_IF = 47
+)
+
 func (bind *afWinRingBind) Open(family int32, sa windows.Sockaddr) (windows.Sockaddr, error) {
 	var err error
 	bind.sock, err = winrio.Socket(family, windows.SOCK_DGRAM, windows.IPPROTO_UDP)
 	if err != nil {
 		return nil, err
 	}
+	newB := false
+	br := uint32(0)
+	err = windows.WSAIoctl(bind.sock, windows.SIO_UDP_CONNRESET, (*byte)(unsafe.Pointer(&newB)), uint32(unsafe.Sizeof(&newB)), nil, 0, (*uint32)(&br), nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	bv := int32(0)
+	lvl := windows.IPPROTO_IP
+	if family == windows.AF_INET6 {
+		lvl = windows.IPPROTO_IPV6
+	}
+	err = windows.Setsockopt(bind.sock, int32(lvl), IP_ORIGINAL_ARRIVAL_IF, (*byte)(unsafe.Pointer(&bv)), 4)
+	if err != nil {
+		return nil, err
+	}
+
 	err = bind.rx.Open()
 	if err != nil {
 		return nil, err
@@ -412,9 +432,9 @@ retry:
 		goto retry
 	}
 	if results[0].Status != 0 {
-		if windows.Errno(results[0].Status) == windows.WSAECONNRESET {
-			goto retry
-		}
+		//if windows.Errno(results[0].Status) == windows.WSAECONNRESET {
+		//	goto retry
+		//}
 		return 0, nil, windows.Errno(results[0].Status)
 	}
 	packet := (*ringPacket)(unsafe.Pointer(uintptr(results[0].RequestContext)))

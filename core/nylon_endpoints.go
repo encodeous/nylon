@@ -6,7 +6,6 @@ import (
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
-	"google.golang.org/protobuf/proto"
 	"math/rand/v2"
 	"slices"
 	"time"
@@ -16,7 +15,7 @@ type EpPing struct {
 	TimeSent time.Time
 }
 
-func (n *Nylon) Probe(e *state.Env, ep *state.DynamicEndpoint) error {
+func (n *Nylon) Probe(ep *state.DynamicEndpoint) error {
 	token := rand.Uint64()
 	ping := &protocol.Ny{
 		Type: &protocol.Ny_ProbeOp{
@@ -26,25 +25,20 @@ func (n *Nylon) Probe(e *state.Env, ep *state.DynamicEndpoint) error {
 			},
 		},
 	}
-	marshal, err := proto.Marshal(ping)
+	peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(ep.Node()).PubKey))
+	err := n.SendNylon(ping, ep.NetworkEndpoint().GetWgEndpoint(n.Device), peer)
 	if err != nil {
 		return err
 	}
 
-	n.Send(marshal, ep)
 	n.PingBuf.Set(token, EpPing{
 		TimeSent: time.Now(),
 	}, ttlcache.DefaultTTL)
 	return nil
 }
 
-func (n *Nylon) Send(packet []byte, ep *state.DynamicEndpoint) {
-	neigh := n.env.GetRouter(ep.Node())
-	dev := n.Device
-	n.PolySock.Send(packet, ep.NetworkEndpoint().GetWgEndpoint(dev), dev.LookupPeer(device.NoisePublicKey(neigh.PubKey)))
-}
-
-func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.NodeId) {
+func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer *device.Peer, node state.NodeId) {
+	e := n.env
 	if pkt.ResponseToken == nil {
 		// ping
 		// build pong response
@@ -53,11 +47,11 @@ func HandleProbe(e *state.Env, sock *device.PolySock, pkt *protocol.Ny_Probe, en
 		res.ResponseToken = &token
 
 		// send pong
-		pktBytes, err := proto.Marshal(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: pkt}})
+		err := n.SendNylon(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: pkt}}, endpoint, peer)
 		if err != nil {
+			n.env.Log.Error("Failed to send nylon packet to node", "node", node, "error", err)
 			return
 		}
-		sock.Send(pktBytes, endpoint, peer)
 
 		e.Dispatch(func(s *state.State) error {
 			return handleProbePing(s, node, endpoint)
@@ -147,10 +141,10 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 func (n *Nylon) probeLinks(s *state.State, active bool) error {
 	// probe links
 	for _, neigh := range s.Neighbours {
-		for _, dpLink := range neigh.Eps {
-			if dpLink.IsActive() == active {
+		for _, ep := range neigh.Eps {
+			if ep.IsActive() == active {
 				go func() {
-					err := n.Probe(s.Env, dpLink)
+					err := n.Probe(ep)
 					if err != nil {
 						s.Log.Debug("probe failed", "err", err.Error())
 					}
@@ -185,7 +179,7 @@ func (n *Nylon) probeNew(s *state.State) error {
 				dpl := state.NewEndpoint(ep, peer, false, nil)
 				neigh.Eps = append(neigh.Eps, dpl)
 				go func() {
-					err := n.Probe(s.Env, dpl)
+					err := n.Probe(dpl)
 					if err != nil {
 						//s.Log.Debug("discovery probe failed", "err", err.Error())
 					}
