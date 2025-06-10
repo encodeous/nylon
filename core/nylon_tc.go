@@ -30,6 +30,7 @@ func (n *Nylon) InstallTC() {
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 		if n.env.GetNode(n.env.Id).Address == packet.GetDst() {
+			//dev.Log.Verbosef("BounceCur packet: %v -> %v", packet.GetSrc(), packet.GetDst())
 			return device.TcBounce, nil
 		}
 		return device.TcPass, nil

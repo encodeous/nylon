@@ -2,7 +2,6 @@ package device
 
 import (
 	"github.com/encodeous/nylon/polyamide/conn"
-	"net/netip"
 	"slices"
 )
 
@@ -39,13 +38,8 @@ func TCFAllowedip(dev *Device, packet *TCElement) (TCAction, error) {
 	peer := dev.Allowedips.Lookup(packet.GetDstBytes())
 	if peer != nil {
 		packet.ToPeer = peer
+		//fmt.Printf("fw: %s -> %s\n", packet.GetDst().String(), peer)
 		return TcForward, nil
-	}
-	for _, p := range dev.peers.keyMap {
-		dev.Allowedips.EntriesForPeer(p, func(prefix netip.Prefix) bool {
-			//fmt.Printf("p: %v, prefix: %v\n", p, prefix)
-			return true
-		})
 	}
 
 	//fmt.Printf("nfw addr: %s\n", packet.GetDst().String())
@@ -53,13 +47,13 @@ func TCFAllowedip(dev *Device, packet *TCElement) (TCAction, error) {
 }
 
 func TCFDrop(dev *Device, packet *TCElement) (TCAction, error) {
-	//dev.log.Verbosef("TCFDrop packet: %v", packet)
+	//dev.Log.Verbosef("TCFDrop packet: %v -> %v", packet.GetSrc(), packet.GetDst())
 	return TcDrop, nil
 }
 
 func TCFBounce(dev *Device, packet *TCElement) (TCAction, error) {
-	if packet.FromPeer != nil {
-		//dev.log.Verbosef("TCFBounce packet: %v", packet)
+	if packet.Incoming() {
+		//dev.Log.Verbosef("TCFBounce packet: %v -> %v", packet.GetSrc(), packet.GetDst())
 		return TcBounce, nil
 	}
 	return TcPass, nil
@@ -116,14 +110,14 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 		act := TcPass
 		elem.ParsePacket()
 		if !elem.Validate() {
-			device.log.Errorf("Found malformed packet, dropping packet")
+			device.Log.Errorf("Found malformed packet, dropping packet")
 			act = TcDrop
 		} else {
 			for _, filter := range slices.Backward(device.TCFilters) {
 				nAct, err := filter(device, elem)
 				act = nAct
 				if err != nil {
-					device.log.Errorf("Error on filter action: %v", err)
+					device.Log.Errorf("Error on filter action: %v", err)
 					act = TcDrop
 				}
 				if act != TcPass {
@@ -132,7 +126,7 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 			}
 		}
 		if act == TcPass {
-			device.log.Errorf("Unexpectedly passed all filters!")
+			device.Log.Errorf("Unexpectedly passed all filters!")
 			act = TcDrop
 		}
 
@@ -149,7 +143,7 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 		case TcForward:
 			// reroute/forward packet
 			if elem.ToPeer == nil {
-				device.log.Errorf("Failed to forward packet to destination, toPeer not set")
+				device.Log.Errorf("Failed to forward packet to destination, toPeer not set")
 				device.PutMessageBuffer(elem.Buffer)
 				device.PutTCElement(elem)
 				continue
@@ -168,7 +162,7 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 		// here, we need to use elem.Buffer instead of elem.Packet since we will get io.ErrShortBuffer if offset < 4
 		_, err := device.tun.device.Write(tcs.bounceBufs, MessageTransportHeaderSize)
 		if err != nil && !device.isClosed() {
-			device.log.Errorf("Failed to loop back packets to TUN device: %v", err)
+			device.Log.Errorf("Failed to loop back packets to TUN device: %v", err)
 		}
 		for i, elem := range tcs.bouncePkts {
 			device.PutMessageBuffer(elem.Buffer)

@@ -31,8 +31,8 @@ const (
 func DiscardLogf(format string, args ...any) {}
 
 // NewLogger constructs a Logger that writes to stdout.
-// It logs at the specified log level and above.
-// It decorates log lines with the log level, date, time, and prepend.
+// It logs at the specified Log level and above.
+// It decorates Log lines with the Log level, date, time, and prepend.
 func NewLogger(level int, prepend string) *Logger {
 	logger := &Logger{DiscardLogf, DiscardLogf}
 	logf := func(prefix string) func(string, ...any) {

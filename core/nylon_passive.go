@@ -35,10 +35,7 @@ func cleanPassivePeers(s *state.State) error {
 	for _, client := range r.Clients {
 		cCfg := s.GetClient(client)
 		peer := n.Device.LookupPeer(device.NoisePublicKey(cCfg.PubKey))
-		ep := peer.GetEndpoints()
-		if len(ep) > 1 {
-			peer.SetEndpoints(ep[:1]) // prevent littering of too many endpoints
-		}
+		peer.CleanEndpoints()
 		if peer == nil || time.Now().Sub(peer.LastReceivedPacket()) > state.ClientDeadThreshold {
 			// dead client
 			s.Log.Debug("passive client dead", "node", client)

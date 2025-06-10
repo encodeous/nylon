@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -167,11 +168,16 @@ func UpdateWireGuard(s *state.State) error {
 		if nhNeigh != nil {
 			links := slices.Clone(nhNeigh.Eps)
 			slices.SortStableFunc(links, func(a, b *state.DynamicEndpoint) int {
-				return -int(a.Metric() - b.Metric())
+				return cmp.Compare(a.Metric(), b.Metric())
 			})
 			for _, ep := range links {
 				eps = append(eps, ep.NetworkEndpoint().GetWgEndpoint(n.Device))
 			}
+			//if nhNeigh.Id == "melon" {
+			//	for _, link := range links {
+			//		fmt.Printf("link: %s, %d\n", link.NetworkEndpoint().Ep, link.Metric())
+			//	}
+			//}
 		}
 
 		// add endpoint if it is not in the list
