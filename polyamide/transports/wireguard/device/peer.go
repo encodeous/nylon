@@ -308,7 +308,7 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 	}
 	peer.endpoints.clearSrcOnTx = false
 
-	if peer.endpoints.preferRoaming {
+	if peer.endpoints.preferRoaming || len(peer.endpoints.val) == 0 {
 		if len(peer.endpoints.val) == 0 {
 			peer.endpoints.val = append(peer.endpoints.val, endpoint)
 		} else {
