@@ -194,7 +194,9 @@ func UpdateWireGuard(s *state.State) error {
 		}
 
 		wgPeer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
-		wgPeer.SetEndpoints(eps)
+		if len(eps) != 0 {
+			wgPeer.SetEndpoints(eps)
+		}
 	}
 	return nil
 }
