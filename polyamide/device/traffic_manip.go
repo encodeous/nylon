@@ -153,3 +153,20 @@ func (elem *TCElement) Validate() bool {
 	}
 	return true
 }
+
+func (elem *TCElement) TTLBytes() []byte {
+	if elem.GetIPVersion() == 4 {
+		return elem.Packet[8:9]
+	} else if elem.GetIPVersion() == 6 {
+		return elem.Packet[7:8]
+	} else {
+		panic("invalid IP version")
+	}
+}
+
+func (elem *TCElement) GetTTL() byte {
+	return elem.TTLBytes()[0]
+}
+func (elem *TCElement) SetTTL(ttl byte) {
+	elem.TTLBytes()[0] = ttl
+}
