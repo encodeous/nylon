@@ -244,7 +244,7 @@ type InMemoryNetwork struct {
 }
 
 func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
-	if i.cfg.Central.GetNode(node).Address == dst {
+	if i.cfg.Central.GetNode(node).Address == dst || pkt[8] == 0 { // handle self if ttl is 0 as well
 		if i.SelfHandler.TryApply(node, src, dst, data) {
 			return true
 		}
@@ -370,7 +370,7 @@ func (i *InMemoryNetwork) Tun(node state.NodeId) tun.Device {
 	return bt.TUN()
 }
 
-func (i *InMemoryNetwork) Send(node state.NodeId, src, dst string, pkt []byte) {
+func (i *InMemoryNetwork) Send(node state.NodeId, src, dst string, pkt []byte, ttl byte) {
 	const (
 		ipv4Size = 20
 	)
@@ -379,6 +379,7 @@ func (i *InMemoryNetwork) Send(node state.NodeId, src, dst string, pkt []byte) {
 	ip := ipPkt[0:ipv4Size]
 	ip[0] = 4 << 4
 	binary.BigEndian.PutUint16(ip[2:4], uint16(ipv4Size+len(pkt)))
+	ip[8] = ttl
 	copy(ipPkt[12:16], netip.MustParseAddr(src).AsSlice())
 	copy(ipPkt[16:20], netip.MustParseAddr(dst).AsSlice())
 	i.virtTun[numId].Outbound <- ipPkt

@@ -25,6 +25,22 @@ func (n *Nylon) InstallTC() {
 			}
 			return device.TcPass, nil
 		})
+	} else {
+		// handle TTL
+		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
+			if packet.Incoming() && (packet.GetIPVersion() == 4 || packet.GetIPVersion() == 6) {
+				// allow traceroute to figure out the route
+				ttl := packet.GetTTL()
+				if ttl >= 1 {
+					ttl--
+					packet.DecrementTTL()
+				}
+				if ttl == 0 {
+					return device.TcBounce, nil
+				}
+			}
+			return device.TcPass, nil
+		})
 	}
 
 	// bounce back packets destined for the current node

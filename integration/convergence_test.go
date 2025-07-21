@@ -78,7 +78,7 @@ func TestOptimalConvergence(t *testing.T) {
 			case <-vh.Context.Done():
 				return
 			case <-time.After(100 * time.Millisecond):
-				vn.Send("a", "10.0.0.1", "10.0.0.3", []byte{222})
+				vn.Send("a", "10.0.0.1", "10.0.0.3", []byte{222}, 64)
 			}
 		}
 	}()
