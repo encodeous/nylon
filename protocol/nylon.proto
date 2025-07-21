@@ -3,15 +3,15 @@ package proto;
 
 option go_package = "protocol/";
 
+message TransportBundle {
+  repeated Ny Packets = 1;
+}
+
 message Ny {
   message Update {
     Source Source = 1;
     uint32 Metric = 2;
-  }
-
-  message UpdateBundle {
-    bool SeqnoPush = 1;
-    repeated Update Updates = 2;
+    bool SeqnoPush = 3;
   }
 
   message Source {
@@ -25,7 +25,7 @@ message Ny {
   }
 
   oneof type {
-    UpdateBundle RouteOp = 1;
+    Update RouteOp = 1;
     Source SeqnoRequestOp = 2;
     Probe ProbeOp = 3;
   }

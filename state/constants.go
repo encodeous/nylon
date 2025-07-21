@@ -15,6 +15,8 @@ var (
 	LinkSwitchMetricCostMultiplier = 1.10
 	StarvationDelay                = time.Millisecond * 100
 	SeqnoDedupTTL                  = time.Second * 3
+	NeighbourIOFlushDelay          = time.Millisecond * 500
+	SafeMTU                        = 1200
 
 	// WindowSamples is the sliding window size
 	WindowSamples     = int((time.Second * 60) / ProbeDelay)

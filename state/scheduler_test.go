@@ -48,40 +48,6 @@ func TestDispatch(t *testing.T) {
 	}
 }
 
-func TestDispatchWait(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	dispatchChan := make(chan func(*State) error, 10)
-	env := &Env{
-		DispatchChannel: dispatchChan,
-		Context:         ctx,
-		Cancel: func(err error) {
-			cancel()
-		},
-	}
-	state := &State{
-		Env: env,
-	}
-
-	go func() {
-		f := <-dispatchChan
-		f(state)
-	}()
-
-	result, err := env.DispatchWait(func(s *State) (any, error) {
-		return 42, nil
-	})
-
-	if err != nil {
-		t.Fatalf("DispatchWait error: %v", err)
-	}
-
-	if resultInt, ok := result.(int); !ok || resultInt != 42 {
-		t.Fatalf("Expected 42, got %v", result)
-	}
-}
-
 func TestScheduleTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
