@@ -2,10 +2,8 @@ package core
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
-	"google.golang.org/protobuf/proto"
 	"net/netip"
 	"strings"
 )
@@ -18,35 +16,38 @@ func AddrToPrefix(addr netip.Addr) netip.Prefix {
 	return res
 }
 
-func broadcast(s *state.State, message proto.Message, neighs []*state.Neighbour) {
-	n := Get[*Nylon](s)
-	go func() {
-		for _, neigh := range neighs {
-			// TODO, investigate effect of packet loss on control messages
-			best := neigh.BestEndpoint()
-			if best != nil && best.IsActive() {
-				peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(best.Node()).PubKey))
-				err := n.SendNylon(message, nil, peer)
-				if err != nil {
-					s.Env.Log.Error("error while broadcasting", "err", err.Error())
-				}
-			}
-		}
-	}()
-}
-
-func broadcastUpdates(s *state.State, updates []*protocol.Ny_Update, push bool, neighs []*state.Neighbour) {
-	pkt := protocol.Ny_UpdateBundle{
-		SeqnoPush: push,
-		Updates:   updates,
+func newMetricReplacementPolicy(existing *protocol.Ny_Update, new *protocol.Ny_Update) {
+	existing.SeqnoPush = existing.SeqnoPush || new.SeqnoPush
+	existing.Metric = new.Metric
+	if SeqnoLt(uint16(existing.Source.Seqno), uint16(new.Source.Seqno)) {
+		existing.Source = new.Source
 	}
-	broadcast(s, &protocol.Ny{Type: &protocol.Ny_RouteOp{RouteOp: &pkt}}, neighs)
 }
 
-func broadcastSeqnoRequest(s *state.State, src *protocol.Ny_Source, neighs []*state.Neighbour) {
-	broadcast(s, &protocol.Ny{Type: &protocol.Ny_SeqnoRequestOp{
-		SeqnoRequestOp: src,
-	}}, neighs)
+func maxMetricReplacementPolicy(existing *protocol.Ny_Update, new *protocol.Ny_Update) {
+	existing.SeqnoPush = existing.SeqnoPush || new.SeqnoPush
+	existing.Metric = max(new.Metric, existing.Metric)
+	if SeqnoLt(uint16(existing.Source.Seqno), uint16(new.Source.Seqno)) {
+		existing.Source = new.Source
+	}
+}
+
+func broadcastUpdate(update *protocol.Ny_Update, neighs []*state.Neighbour, resolve func(existing *protocol.Ny_Update, new *protocol.Ny_Update)) {
+	for _, neigh := range neighs {
+		cur := neigh.IO.Updates[state.NodeId(update.Source.Id)]
+		if cur != nil {
+			resolve(cur, update)
+		} else {
+			cur = update
+		}
+		neigh.IO.Updates[state.NodeId(update.Source.Id)] = cur
+	}
+}
+
+func broadcastSeqnoRequest(src state.Source, neighs []*state.Neighbour) {
+	for _, neigh := range neighs {
+		neigh.IO.SeqnoReq[src] = struct{}{}
+	}
 }
 
 func mapToPktSource(source *state.Source) *protocol.Ny_Source {

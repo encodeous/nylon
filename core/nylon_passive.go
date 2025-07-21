@@ -45,7 +45,7 @@ func cleanPassivePeers(s *state.State) error {
 		}
 	}
 	r.Clients = r.Clients[:x]
-	err := updateRoutes(s)
+	err := updateRoutes(s, false)
 	if err != nil {
 		return err
 	}

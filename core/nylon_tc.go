@@ -46,7 +46,11 @@ func (n *Nylon) InstallTC() {
 	})
 }
 
-func (n *Nylon) SendNylon(pkt proto.Message, endpoint conn.Endpoint, peer *device.Peer) error {
+func (n *Nylon) SendNylon(pkt *protocol.Ny, endpoint conn.Endpoint, peer *device.Peer) error {
+	return n.SendNylonBundle(&protocol.TransportBundle{Packets: []*protocol.Ny{pkt}}, endpoint, peer)
+}
+
+func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint conn.Endpoint, peer *device.Peer) error {
 	tce := n.Device.NewTCElement()
 	offset := device.MessageTransportOffsetContent + device.PolyHeaderSize
 	buf, err := proto.MarshalOptions{
@@ -72,8 +76,8 @@ func (n *Nylon) SendNylon(pkt proto.Message, endpoint conn.Endpoint, peer *devic
 }
 
 func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *device.Peer) {
-	pkt := &protocol.Ny{}
-	err := proto.Unmarshal(packet, pkt)
+	bundle := &protocol.TransportBundle{}
+	err := proto.Unmarshal(packet, bundle)
 	if err != nil {
 		// log skipped message
 		n.env.Log.Debug("Failed to unmarshal packet", "err", err)
@@ -89,22 +93,25 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 		return
 	}
 
-	switch pkt.Type.(type) {
-	case *protocol.Ny_SeqnoRequestOp:
-		e.Dispatch(func(s *state.State) error {
-			return routerHandleSeqnoRequest(s, *neigh, pkt.GetSeqnoRequestOp())
-		})
-	case *protocol.Ny_RouteOp:
-		e.Dispatch(func(s *state.State) error {
-			return routerHandleRouteUpdate(s, *neigh, pkt.GetRouteOp())
-		})
-	case *protocol.Ny_ProbeOp:
-		handleProbe(n, pkt.GetProbeOp(), endpoint, peer, *neigh)
-	}
 	defer func() {
 		err := recover()
 		if err != nil {
 			n.env.Log.Error("panic while handling poly socket: %v", err)
 		}
 	}()
+
+	for _, pkt := range bundle.Packets {
+		switch pkt.Type.(type) {
+		case *protocol.Ny_SeqnoRequestOp:
+			e.Dispatch(func(s *state.State) error {
+				return routerHandleSeqnoRequest(s, *neigh, pkt.GetSeqnoRequestOp())
+			})
+		case *protocol.Ny_RouteOp:
+			e.Dispatch(func(s *state.State) error {
+				return routerHandleRouteUpdate(s, *neigh, pkt.GetRouteOp())
+			})
+		case *protocol.Ny_ProbeOp:
+			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, *neigh)
+		}
+	}
 }

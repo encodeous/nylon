@@ -1,16 +1,23 @@
 package state
 
 import (
+	"github.com/encodeous/nylon/protocol"
 	"slices"
 	"time"
 )
 
 type NodeId string
 
+type IOPending struct {
+	SeqnoReq map[Source]struct{}
+	Updates  map[NodeId]*protocol.Ny_Update
+}
+
 type Neighbour struct {
 	Id     NodeId
 	Routes map[NodeId]PubRoute
 	Eps    []*DynamicEndpoint
+	IO     IOPending
 }
 
 type Source struct {

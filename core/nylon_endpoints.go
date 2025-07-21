@@ -79,7 +79,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 				dep.NetworkEndpoint().WgEndpoint = ep
 
 				if !dep.IsActive() {
-					err := pushRouteTable(s, &node)
+					err := pushRouteTable(s, &node, nil, false)
 					if err != nil {
 						return err
 					}
@@ -100,7 +100,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
-			return pushRouteTable(s, &node)
+			return pushRouteTable(s, &node, nil, false)
 		}
 	}
 	return nil
@@ -120,7 +120,7 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 					if state.DBG_log_probe {
 						s.Log.Debug("probe back", "peer", node, "ping", latency)
 					}
-					err := updateRoutes(s)
+					err := updateRoutes(s, false)
 					if err != nil {
 						s.Log.Error("Error updating routes: ", "err", err)
 					}
