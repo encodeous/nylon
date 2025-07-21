@@ -20,25 +20,8 @@ func (e *Env) Dispatch(fun func(*State) error) {
 
 }
 
-// DispatchWait Dispatches the function to run on the main thread and wait for it to complete
-func (e *Env) DispatchWait(fun func(*State) (any, error)) (any, error) {
-	ret := make(chan Pair[any, error])
-	e.Dispatch(func(s *State) error {
-		res, err := fun(s)
-		ret <- Pair[any, error]{res, err}
-		return err
-	})
-	select {
-	case res := <-ret:
-		return res.V1, res.V2
-	case <-e.Context.Done():
-		return nil, e.Context.Err()
-	}
-}
-
 func (e *Env) ScheduleTask(fun func(*State) error, delay time.Duration) {
 	time.AfterFunc(delay, func() {
-
 		e.Dispatch(fun)
 	})
 }

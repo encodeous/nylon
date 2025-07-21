@@ -3,6 +3,7 @@ package core
 import (
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
 	"net"
@@ -33,6 +34,10 @@ func (n *Nylon) Init(s *state.State) error {
 			Id:     peer,
 			Routes: make(map[state.NodeId]state.PubRoute),
 			Eps:    make([]*state.DynamicEndpoint, 0),
+			IO: state.IOPending{
+				SeqnoReq: make(map[state.Source]struct{}),
+				Updates:  make(map[state.NodeId]*protocol.Ny_Update),
+			},
 		}
 		cfg := s.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {
