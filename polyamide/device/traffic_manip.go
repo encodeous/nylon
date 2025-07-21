@@ -167,6 +167,17 @@ func (elem *TCElement) TTLBytes() []byte {
 func (elem *TCElement) GetTTL() byte {
 	return elem.TTLBytes()[0]
 }
-func (elem *TCElement) SetTTL(ttl byte) {
-	elem.TTLBytes()[0] = ttl
+
+func (elem *TCElement) DecrementTTL() {
+	const (
+		checksumOffset = 10
+	)
+	elem.TTLBytes()[0]--
+	// using algorithm described in https://datatracker.ietf.org/doc/html/rfc1141
+	if elem.GetIPVersion() == 4 {
+		// fast incremental checksum calculation
+		csum := uint32(binary.BigEndian.Uint16(elem.Packet[checksumOffset:checksumOffset+2])) + 0x100
+		csum = csum + (csum >> 16)
+		binary.BigEndian.PutUint16(elem.Packet[checksumOffset:checksumOffset+2], uint16(csum))
+	}
 }
