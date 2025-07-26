@@ -20,7 +20,7 @@ type State struct {
 
 // Env can be read from any Goroutine
 type Env struct {
-	DispatchChannel chan<- func(s *State) error
+	DispatchChannel chan func(s *State) error
 	CentralCfg
 	LocalCfg
 	Context    context.Context

@@ -19,7 +19,7 @@ import (
 func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initState **state.State) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
-	dispatch := make(chan func(env *state.State) error, 512)
+	dispatch := make(chan func(env *state.State) error, 128)
 
 	handlers := make([]slog.Handler, 0)
 	handlers = append(handlers,
@@ -134,7 +134,7 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 			}
 			elapsed := time.Since(start)
 			if elapsed > time.Millisecond*4 {
-				s.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed)
+				s.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed, "len", len(dispatch))
 			}
 			//s.Log.Debug("done", "elapsed", elapsed)
 		case <-s.Context.Done():
