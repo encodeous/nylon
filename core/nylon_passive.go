@@ -14,7 +14,7 @@ func (n *Nylon) initPassiveClient(s *state.State) error {
 
 func scanPassivePeers(s *state.State) error {
 	n := Get[*Nylon](s)
-	r := Get[*Router](s)
+	r := Get[*NylonRouter](s)
 	for _, peer := range n.Device.GetPeers() {
 		nid := s.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
 		if nid != nil && s.IsClient(*nid) && time.Now().Sub(peer.LastReceivedPacket()) < state.ClientDeadThreshold {
@@ -30,7 +30,7 @@ func scanPassivePeers(s *state.State) error {
 
 func cleanPassivePeers(s *state.State) error {
 	n := Get[*Nylon](s)
-	r := Get[*Router](s)
+	r := Get[*NylonRouter](s)
 	x := 0
 	for _, client := range r.Clients {
 		cCfg := s.GetClient(client)

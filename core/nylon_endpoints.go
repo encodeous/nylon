@@ -15,7 +15,7 @@ type EpPing struct {
 	TimeSent time.Time
 }
 
-func (n *Nylon) Probe(ep *state.DynamicEndpoint) error {
+func (n *Nylon) Probe(ep *state.NylonEndpoint) error {
 	token := rand.Uint64()
 	ping := &protocol.Ny{
 		Type: &protocol.Ny_ProbeOp{
@@ -26,7 +26,7 @@ func (n *Nylon) Probe(ep *state.DynamicEndpoint) error {
 		},
 	}
 	peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(ep.Node()).PubKey))
-	err := n.SendNylon(ping, ep.NetworkEndpoint().GetWgEndpoint(n.Device), peer)
+	err := n.SendNylon(ping, ep.GetWgEndpoint(n.Device), peer)
 	if err != nil {
 		return err
 	}
@@ -72,11 +72,12 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
-			if dep.NetworkEndpoint().Ep == ep.DstIPPort() && neigh.Id == node {
+			dep := dep.AsNylonEndpoint()
+			if dep.Ep == ep.DstIPPort() && neigh.Id == node {
 				// we have a link
 
 				// refresh wireguard ep
-				dep.NetworkEndpoint().WgEndpoint = ep
+				dep.WgEndpoint = ep
 
 				if !dep.IsActive() {
 					err := pushRouteTable(s, &node, nil, false)
@@ -87,7 +88,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 				dep.Renew()
 
 				if state.DBG_log_probe {
-					s.Log.Debug("probe from", "addr", dep.NetworkEndpoint().Ep)
+					s.Log.Debug("probe from", "addr", dep.Ep)
 				}
 				return nil
 			}
@@ -111,7 +112,8 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dpLink := range neigh.Eps {
-			if dpLink.NetworkEndpoint().Ep == ep.DstIPPort() && neigh.Id == node {
+			dpLink := dpLink.AsNylonEndpoint()
+			if dpLink.Ep == ep.DstIPPort() && neigh.Id == node {
 				linkHealth, ok := n.PingBuf.GetAndDelete(token)
 				if ok {
 					health := linkHealth.Value()
@@ -128,7 +130,7 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 					dpLink.UpdatePing(latency)
 
 					// update wireguard endpoint
-					dpLink.NetworkEndpoint().WgEndpoint = ep
+					dpLink.WgEndpoint = ep
 				}
 				return
 			}
@@ -144,7 +146,7 @@ func (n *Nylon) probeLinks(s *state.State, active bool) error {
 		for _, ep := range neigh.Eps {
 			if ep.IsActive() == active {
 				go func() {
-					err := n.Probe(ep)
+					err := n.Probe(ep.AsNylonEndpoint())
 					if err != nil {
 						s.Log.Debug("probe failed", "err", err.Error())
 					}
@@ -171,8 +173,8 @@ func (n *Nylon) probeNew(s *state.State) error {
 			if !ep.IsValid() {
 				continue
 			}
-			idx := slices.IndexFunc(neigh.Eps, func(link *state.DynamicEndpoint) bool {
-				return !link.IsRemote() && link.NetworkEndpoint().Ep == ep
+			idx := slices.IndexFunc(neigh.Eps, func(link state.Endpoint) bool {
+				return !link.IsRemote() && link.AsNylonEndpoint().Ep == ep
 			})
 			if idx == -1 {
 				// add the link to the neighbour

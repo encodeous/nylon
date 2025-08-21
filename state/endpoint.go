@@ -10,7 +10,16 @@ import (
 	"time"
 )
 
-type DynamicEndpoint struct {
+type Endpoint interface {
+	Node() NodeId
+	UpdatePing(ping time.Duration)
+	Metric() uint16
+	IsRemote() bool
+	IsActive() bool
+	AsNylonEndpoint() *NylonEndpoint
+}
+
+type NylonEndpoint struct {
 	node          NodeId
 	history       []time.Duration
 	histSort      []time.Duration
@@ -18,16 +27,16 @@ type DynamicEndpoint struct {
 	prevMedian    time.Duration
 	lastHeardBack time.Time
 	expRTT        float64
-	endpoint      *NetworkEndpoint
+	remoteInit    bool
+	WgEndpoint    conn.Endpoint
+	Ep            netip.AddrPort
 }
 
-type NetworkEndpoint struct {
-	RemoteInit bool
-	WgEndpoint conn.Endpoint
-	Ep         netip.AddrPort
+func (ep *NylonEndpoint) AsNylonEndpoint() *NylonEndpoint {
+	return ep
 }
 
-func (ep *NetworkEndpoint) GetWgEndpoint(device *device.Device) conn.Endpoint {
+func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device) conn.Endpoint {
 	if ep.WgEndpoint == nil || ep.WgEndpoint.DstToString() != ep.Ep.String() {
 		wgEp, err := device.Bind().ParseEndpoint(ep.Ep.String())
 		if err != nil {
@@ -38,8 +47,8 @@ func (ep *NetworkEndpoint) GetWgEndpoint(device *device.Device) conn.Endpoint {
 	return ep.WgEndpoint
 }
 
-func (n *Neighbour) BestEndpoint() *DynamicEndpoint {
-	var best *DynamicEndpoint
+func (n *Neighbour) BestEndpoint() Endpoint {
+	var best Endpoint
 
 	for _, link := range n.Eps {
 		if best == nil || link.Metric() < best.Metric() || (link.IsActive() && !best.IsActive()) {
@@ -49,15 +58,15 @@ func (n *Neighbour) BestEndpoint() *DynamicEndpoint {
 	return best
 }
 
-func (u *DynamicEndpoint) Node() NodeId {
+func (u *NylonEndpoint) Node() NodeId {
 	return u.node
 }
 
-func (u *DynamicEndpoint) IsActive() bool {
+func (u *NylonEndpoint) IsActive() bool {
 	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold
 }
 
-func (u *DynamicEndpoint) Renew() {
+func (u *NylonEndpoint) Renew() {
 	if !u.IsActive() {
 		u.history = u.history[:0]
 		u.expRTT = math.Inf(1)
@@ -66,28 +75,22 @@ func (u *DynamicEndpoint) Renew() {
 	u.lastHeardBack = time.Now()
 }
 
-func (u *DynamicEndpoint) IsAlive() bool {
-	return u.IsActive() || !u.endpoint.RemoteInit // we never gc endpoints that we have in our config
+func (u *NylonEndpoint) IsAlive() bool {
+	return u.IsActive() || !u.remoteInit // we never gc endpoints that we have in our config
 }
 
-func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoint conn.Endpoint) *DynamicEndpoint {
-	return &DynamicEndpoint{
-		endpoint: &NetworkEndpoint{
-			RemoteInit: remoteInit,
-			WgEndpoint: wgEndpoint,
-			Ep:         endpoint,
-		},
-		history: make([]time.Duration, 0),
-		node:    node,
-		expRTT:  math.Inf(1),
+func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoint conn.Endpoint) *NylonEndpoint {
+	return &NylonEndpoint{
+		remoteInit: remoteInit,
+		WgEndpoint: wgEndpoint,
+		Ep:         endpoint,
+		history:    make([]time.Duration, 0),
+		node:       node,
+		expRTT:     math.Inf(1),
 	}
 }
 
-func (u *DynamicEndpoint) NetworkEndpoint() *NetworkEndpoint {
-	return u.endpoint
-}
-
-func (u *DynamicEndpoint) calcR() (time.Duration, time.Duration, time.Duration) {
+func (u *NylonEndpoint) calcR() (time.Duration, time.Duration, time.Duration) {
 	if len(u.history) < MinimumConfidenceWindow {
 		return time.Second * 10, time.Second * 10, time.Second * 10
 	}
@@ -103,21 +106,21 @@ func (u *DynamicEndpoint) calcR() (time.Duration, time.Duration, time.Duration) 
 	return low, med, high
 }
 
-func (u *DynamicEndpoint) LowRange() time.Duration {
+func (u *NylonEndpoint) LowRange() time.Duration {
 	l, _, _ := u.calcR()
 	return l
 }
 
-func (u *DynamicEndpoint) HighRange() time.Duration {
+func (u *NylonEndpoint) HighRange() time.Duration {
 	_, _, h := u.calcR()
 	return h
 }
 
-func (u *DynamicEndpoint) FilteredPing() time.Duration {
+func (u *NylonEndpoint) FilteredPing() time.Duration {
 	return time.Duration(int64(u.expRTT))
 }
 
-func (u *DynamicEndpoint) StabilizedPing() time.Duration {
+func (u *NylonEndpoint) StabilizedPing() time.Duration {
 	l, m, h := u.calcR()
 	// don't change median unless it is out of the range of l <= h
 	if l > u.prevMedian || h < u.prevMedian {
@@ -126,17 +129,7 @@ func (u *DynamicEndpoint) StabilizedPing() time.Duration {
 	return u.prevMedian
 }
 
-func SwitchHeuristic(curRoute *Route, newRoute PubRoute, metric uint16, via *DynamicEndpoint) bool {
-	// prevent oscillation
-	curMetric := float64(curRoute.PubMetric)
-	newMetric := float64(metric)
-	if (newMetric+float64(via.Metric()))*LinkSwitchMetricCostMultiplier > curMetric {
-		return false
-	}
-	return true
-}
-
-func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
+func (u *NylonEndpoint) UpdatePing(ping time.Duration) {
 	// sometimes our system clock is not fast enough, so ping is 0
 	if ping == 0 {
 		ping = time.Microsecond * 100
@@ -155,7 +148,7 @@ func (u *DynamicEndpoint) UpdatePing(ping time.Duration) {
 	u.dirty = true
 }
 
-func (u *DynamicEndpoint) Metric() uint16 {
+func (u *NylonEndpoint) Metric() uint16 {
 	// if link is dead, return INF
 	if !u.IsActive() {
 		return INF
@@ -163,6 +156,6 @@ func (u *DynamicEndpoint) Metric() uint16 {
 	return uint16(min(u.StabilizedPing().Microseconds()/100, int64(INF)-1))
 }
 
-func (u *DynamicEndpoint) IsRemote() bool {
-	return u.endpoint.RemoteInit
+func (u *NylonEndpoint) IsRemote() bool {
+	return u.remoteInit
 }

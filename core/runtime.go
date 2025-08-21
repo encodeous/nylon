@@ -105,7 +105,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 func initModules(s *state.State) error {
 	var modules []state.NyModule
 	modules = append(modules, &Nylon{}) // nylon must start before router
-	modules = append(modules, &Router{})
+	modules = append(modules, &NylonRouter{})
 
 	for _, module := range modules {
 		s.Modules[reflect.TypeOf(module).String()] = module

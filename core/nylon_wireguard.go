@@ -4,12 +4,13 @@ import (
 	"cmp"
 	"encoding/hex"
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/state"
 	"net/netip"
 	"slices"
 	"sort"
+
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/state"
 )
 
 func (n *Nylon) initWireGuard(s *state.State) error {
@@ -116,11 +117,11 @@ func (n *Nylon) cleanupWireGuard(s *state.State) error {
 }
 
 func UpdateWireGuard(s *state.State) error {
-	r := Get[*Router](s)
+	r := Get[*NylonRouter](s)
 	n := Get[*Nylon](s)
 	dev := n.Device
 
-	routesToNeigh := make(map[state.NodeId][]*state.Route)
+	routesToNeigh := make(map[state.NodeId][]*state.SelRoute)
 	for _, route := range r.Routes {
 		routesToNeigh[route.Nh] = append(routesToNeigh[route.Nh], route)
 	}
@@ -130,7 +131,7 @@ func UpdateWireGuard(s *state.State) error {
 		if neigh == s.Id {
 			// set client allowedIps individually
 			for _, route := range routes {
-				nid := route.Src.Id
+				nid := route.NodeId
 				if s.IsClient(nid) {
 					ccfg := s.GetClient(nid)
 					peer := dev.LookupPeer(device.NoisePublicKey(ccfg.PubKey))
@@ -141,7 +142,7 @@ func UpdateWireGuard(s *state.State) error {
 			allowedIps := make([]string, 0)
 			pcfg := s.GetNode(neigh)
 			for _, route := range routes {
-				cfg := s.TryGetNode(route.Src.Id)
+				cfg := s.TryGetNode(route.NodeId)
 				if cfg == nil {
 					continue // config might not always be synced
 				}
@@ -167,17 +168,12 @@ func UpdateWireGuard(s *state.State) error {
 
 		if nhNeigh != nil {
 			links := slices.Clone(nhNeigh.Eps)
-			slices.SortStableFunc(links, func(a, b *state.DynamicEndpoint) int {
+			slices.SortStableFunc(links, func(a, b state.Endpoint) int {
 				return cmp.Compare(a.Metric(), b.Metric())
 			})
 			for _, ep := range links {
-				eps = append(eps, ep.NetworkEndpoint().GetWgEndpoint(n.Device))
+				eps = append(eps, ep.AsNylonEndpoint().GetWgEndpoint(n.Device))
 			}
-			//if nhNeigh.Id == "melon" {
-			//	for _, link := range links {
-			//		fmt.Printf("link: %s, %d\n", link.NetworkEndpoint().Ep, link.Metric())
-			//	}
-			//}
 		}
 
 		// add endpoint if it is not in the list
