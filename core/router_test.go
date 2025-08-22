@@ -3,12 +3,13 @@
 package core
 
 import (
+	"testing"
+
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
-func TestBasicComputeRoutes(t *testing.T) {
+func TestRouterBasicComputeRoutes(t *testing.T) {
 	h := &RouterHarness{}
 	rs := state.RouterState{
 		Id:         "a",
@@ -30,7 +31,7 @@ func TestBasicComputeRoutes(t *testing.T) {
 	out.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("a"))
 }
 
-func TestNet1A(t *testing.T) {
+func TestRouterNet1A(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//          B
@@ -125,4 +126,356 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 1)`, rs.StringRoutes())
 			Metric: state.INF,
 		},
 	})
+}
+
+func TestRouterNet2S(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being S:
+	//    A
+	// 1 /|        D(A) = 1
+	//  / |       FD(A) = 1
+	// S  |1
+	//  \ |        D(B) = 2
+	// 2 \|       FD(B) = 2
+	//    B
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "S",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("A", "B"),
+		Advertised: []state.ServiceId{"S"},
+	}
+
+	AS := AddLink(rs, NewMockEndpoint("A", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 2))
+
+	// A's advertised routes
+	h.NeighUpdate(rs, "A", "S", 0, 1)
+	h.NeighUpdate(rs, "A", "A", 0, 0)
+	h.NeighUpdate(rs, "A", "B", 0, 1)
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdate(rs, "B", "A", 0, 1)
+	h.NeighUpdate(rs, "B", "S", 0, 2)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	assert.Equal(t,
+		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 0)`,
+		a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 1)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 2)
+S via (nh: S, router: S, svc: S, seqno: 0, metric: 0)`, rs.StringRoutes())
+
+	// check feasibility distances
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 1}, rs.Sources[state.Source{NodeId: "A", ServiceId: "A"}])
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 2}, rs.Sources[state.Source{NodeId: "B", ServiceId: "B"}])
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 0}, rs.Sources[state.Source{NodeId: "S", ServiceId: "S"}])
+
+	// Suppose now that the link to A goes down
+	//    A
+	//    |
+	//    |       FD(A) = 1
+	// S  |1
+	//  \ |        D(B) = 2
+	// 2 \|       FD(B) = 2
+	//    B
+
+	RemoveLink(rs, AS)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	// We should retract our route to A
+	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"), state.PubRoute{
+		Source: state.Source{
+			NodeId:    "A",
+			ServiceId: "A",
+		},
+		FD: state.FD{
+			Seqno:  0,
+			Metric: state.INF,
+		},
+	})
+	// B acknowledges the retraction
+	HandleAckRetract(rs, h, "B", "A")
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	// check that we are indeed starved
+	a.AssertNotContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"))
+	SolveStarvation(rs, h)
+	a = h.GetActions()
+	a.AssertContains(t, "BROADCAST_REQUEST_SEQNO", state.Source{NodeId: "A", ServiceId: "A"}, uint16(1), uint8(64))
+
+	// suppose now that A receives the seqno request, sends an update to B, and B sends it to S
+	h.NeighUpdate(rs, "B", "A", 1, 1)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	pr := state.PubRoute{
+		Source: state.Source{
+			NodeId:    "A",
+			ServiceId: "A",
+		},
+		FD: state.FD{
+			Seqno:  1,
+			Metric: 3,
+		},
+	}
+	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"), pr)
+	assert.Equal(t, pr, rs.Routes[("A")].PubRoute)
+}
+
+func TestRouterNet3A(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	//       3
+	//    B ---- D
+	// 1 /|     /
+	//  / |    /
+	// A  |1  / 1
+	//  \ |  /
+	// 3 \| /
+	//    C
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 3))
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "A", 0, 1)
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdate(rs, "B", "C", 0, 1)
+	h.NeighUpdate(rs, "B", "D", 0, 2)
+
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "A", 0, 3)
+	h.NeighUpdate(rs, "C", "B", 0, 1)
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+	h.NeighUpdate(rs, "C", "D", 0, 1)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	// check that we converge to the correct table
+	assert.Equal(t,
+		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: B, router: C, svc: C, seqno: 0, metric: 2)
+D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
+
+	// Suppose now that the link between B and C goes down
+	//       3
+	//    B ---- D
+	// 1 /      /
+	//  /      /
+	// A      / 1
+	//  \    /
+	// 3 \  /
+	//    C
+
+	// C will retract its route to B
+	h.NeighUpdate(rs, "C", "B", 0, state.INF)
+	a = h.GetActions()
+	a.AssertContains(t, "ACK_RETRACT", state.NodeId("C"), state.ServiceId("B"))
+
+	// B will retract its route to C and D
+	h.NeighUpdate(rs, "B", "C", 0, state.INF)
+	h.NeighUpdate(rs, "B", "D", 0, state.INF)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	a.AssertContains(t, "ACK_RETRACT", state.NodeId("B"), state.ServiceId("C"))
+	a.AssertContains(t, "ACK_RETRACT", state.NodeId("B"), state.ServiceId("D"))
+
+	// D via C is feasible as C advertises D with a cost of 1, which is less than B's 2
+	assert.Equal(t, uint16(4), rs.Routes["D"].Metric)
+}
+
+func TestRouterNet4ALoop(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	// Note, X is a service that both S and D advertise
+
+	//            C
+	//            | 1
+	//  (S,X) --- A --- B --- (D,X)
+	//         1     1     1
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("S", "B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	SA := AddLink(rs, NewMockEndpoint("S", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+
+	// S's advertised routes
+	h.NeighUpdate(rs, "S", "S", 0, 0)
+	h.NeighUpdateSvc(rs, "S", "S", "X", 0, 0)
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdateSvc(rs, "B", "D", "X", 0, 1)
+
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: C, router: C, svc: C, seqno: 0, metric: 1)
+S via (nh: S, router: S, svc: S, seqno: 0, metric: 1)
+X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
+
+	// Now, lets cut off both S from A and D from B, to see if we can produce a routing loop
+	//            C
+	//            | 1
+	//  (S,X)     A --- B     (D,X)
+	//               1
+	RemoveLink(rs, SA)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 65535)`, a.String())
+	HandleAckRetract(rs, h, "B", "S")
+	HandleAckRetract(rs, h, "B", "X")
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Empty(t, a, "Expect S and X to be held until C also sends ACK")
+	HandleAckRetract(rs, h, "C", "S")
+	HandleAckRetract(rs, h, "C", "X")
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE X (router: D, svc: X, seqno: 0, metric: 2)`, a.String())
+	// B retracts D's published routes
+	h.NeighUpdate(rs, "B", "D", 0, state.INF)
+	h.NeighUpdateSvc(rs, "B", "D", "X", 0, state.INF)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `ACK_RETRACT B D
+ACK_RETRACT B X
+BROADCAST_UPDATE_ROUTE X (router: D, svc: X, seqno: 0, metric: 65535)`, a.String())
+}
+
+func TestRouterNet4A(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	// Note, X is a service that both S and D advertise
+
+	//            C
+	//            | 1
+	//  (S,X) --- A --- B --- (D,X)
+	//         1     1     4
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("S", "B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	SA := AddLink(rs, NewMockEndpoint("S", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+
+	// S's advertised routes
+	h.NeighUpdate(rs, "S", "S", 0, 0)
+	h.NeighUpdateSvc(rs, "S", "S", "X", 0, 0)
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdateSvc(rs, "B", "D", "X", 0, 4)
+
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: C, router: C, svc: C, seqno: 0, metric: 1)
+S via (nh: S, router: S, svc: S, seqno: 0, metric: 1)
+X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
+	// Suppose now that SA's link cost increases to 2
+	//            C
+	//            | 1
+	//  (S,X) --- A --- B --- (D,X)
+	//         3     1     4
+	SA.metric = 3
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Empty(t, a, "We should not change routes as S is still feasible")
+	// However, for C, Cost(A, S) = 3 > 2, meaning S is no longer feasible via A
+	// C should send a seqno request to A
+	HandleSeqnoRequest(rs, h, "C", state.Source{NodeId: "S", ServiceId: "X"}, 1, 64)
+	a = h.GetActions()
+	// A should forward the request to S, decrementing the TTL by 1
+	assert.Equal(t, `REQUEST_SEQNO S (router: S, svc: X) 1 63`, a.String())
+
+	// Now, S replies with an update with a higher seqno
+	h.NeighUpdateSvc(rs, "S", "S", "X", 1, 0)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
+
+	// Suppose, some other node also requests the seqno for S,X
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", ServiceId: "X"}, 1, 64)
+	// A should not forward the request as we already have a route to S with an equivalent or higher seqno
+	a = h.GetActions()
+	// Instead, A should just reply with its current route to S,X
+	assert.Equal(t, `UPDATE_ROUTE B X (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
+
+	// Now, suppose some node requests the seqno for A
+
+	// Req 1: A should not increase its seqno
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 0, 64)
+	a = h.GetActions()
+	assert.Equal(t, `UPDATE_ROUTE B A (router: A, svc: A, seqno: 0, metric: 0)`, a.String())
+
+	// Req 2: A should increase its seqno by 1
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 1, 64)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 1, metric: 0)`, a.String())
+
+	// Req 3: A should increase its seqno to 5
+	// Req 1: A should not increase its seqno
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 5, 64)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 5, metric: 0)`, a.String())
 }

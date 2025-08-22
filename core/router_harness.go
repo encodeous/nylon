@@ -4,16 +4,18 @@ package core
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/state"
-	"github.com/google/go-cmp/cmp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/encodeous/nylon/state"
+	"github.com/google/go-cmp/cmp"
 )
 
 func ConfigureConstants() {
 	state.HopCost = 0
+	state.RouteExpiryTime = 10 * time.Hour
 }
 
 type MockEndpoint struct {
@@ -72,6 +74,10 @@ type RouterHarness struct {
 	actions []HarnessEvent
 }
 
+func (h *RouterHarness) SendAckRetract(neigh state.NodeId, svc state.ServiceId) {
+	h.actions = append(h.actions, MakeEvent("ACK_RETRACT", neigh, svc))
+}
+
 func (h *RouterHarness) SendRouteUpdate(neigh state.NodeId, svc state.ServiceId, advRoute state.PubRoute) {
 	h.actions = append(h.actions, MakeEvent("UPDATE_ROUTE", neigh, svc, advRoute))
 }
@@ -111,12 +117,18 @@ func (h HarnessEvents) String() string {
 }
 
 func (h *RouterHarness) GetActions() HarnessEvents {
-	x := h.actions
+	x := make([]HarnessEvent, 0)
+	for _, action := range h.actions {
+		if action.Message != "LOG" {
+			x = append(x, action)
+		}
+	}
+
 	h.actions = make([]HarnessEvent, 0)
 	return x
 }
 
-func (e HarnessEvents) AssertContains(t *testing.T, msg string, args ...any) {
+func (e HarnessEvents) contains(msg string, args ...any) bool {
 	for _, event := range e {
 		if event.Message == msg {
 			if len(event.Args) >= len(args) {
@@ -128,12 +140,26 @@ func (e HarnessEvents) AssertContains(t *testing.T, msg string, args ...any) {
 					}
 				}
 				if match {
-					return
+					return true
 				}
 			}
 		}
 	}
+	return false
+
+}
+
+func (e HarnessEvents) AssertContains(t *testing.T, msg string, args ...any) {
+	if e.contains(msg, args...) {
+		return
+	}
 	t.Fatal("Expected event not found: ", msg, " with args: ", args, " in ", e)
+}
+
+func (e HarnessEvents) AssertNotContains(t *testing.T, msg string, args ...any) {
+	if e.contains(msg, args...) {
+		t.Fatal("Unexpected event found: ", msg, " with args: ", args, " in ", e)
+	}
 }
 
 func MakeNeighbours(ids ...state.NodeId) []*state.Neighbour {

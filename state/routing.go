@@ -71,8 +71,9 @@ type NeighRoute struct {
 
 type SelRoute struct {
 	PubRoute
-	Nh       NodeId    // next hop node
-	ExpireAt time.Time // when the route expires
+	Nh          NodeId    // next hop node
+	ExpireAt    time.Time // when the route expires
+	RetractedBy []NodeId
 }
 
 func (r SelRoute) String() string {

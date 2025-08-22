@@ -9,7 +9,8 @@ const (
 )
 
 var (
-	HopCost               = (uint16)(5) // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
+	HopCost               = (uint16)(5)    // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
+	LargeChangeThreshold  = (uint16)(1000) // 100 milliseconds change
 	SeqnoRequestHopCount  = (uint8)(64)
 	RouteUpdateDelay      = time.Second * 5
 	ProbeDelay            = time.Millisecond * 1000
@@ -28,7 +29,7 @@ var (
 
 	GcDelay           = time.Millisecond * 1000
 	LinkDeadThreshold = 5 * ProbeDelay
-	RouteExpiryTime   = 5 * ProbeDelay
+	RouteExpiryTime   = 5 * RouteUpdateDelay
 
 	// client configuration
 	ClientKeepaliveInterval = 25 * time.Second
