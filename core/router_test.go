@@ -31,7 +31,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 	out.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("a"))
 }
 
-func TestRouterNet1A(t *testing.T) {
+func TestRouterNet1A_BasicRetraction(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//          B
@@ -128,7 +128,7 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 1)`, rs.StringRoutes())
 	})
 }
 
-func TestRouterNet2S(t *testing.T) {
+func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being S:
 	//    A
@@ -229,10 +229,10 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 0)`, rs.StringRoutes())
 	assert.Equal(t, pr, rs.Routes[("A")].PubRoute)
 }
 
-func TestRouterNet3A(t *testing.T) {
+func TestRouterNet3A_HandleRetraction(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
-	//       3
+	//       2
 	//    B ---- D
 	// 1 /|     /
 	//  / |    /
@@ -281,7 +281,7 @@ C via (nh: B, router: C, svc: C, seqno: 0, metric: 2)
 D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 
 	// Suppose now that the link between B and C goes down
-	//       3
+	//       2
 	//    B ---- D
 	// 1 /      /
 	//  /      /
@@ -307,7 +307,7 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 	assert.Equal(t, uint16(4), rs.Routes["D"].Metric)
 }
 
-func TestRouterNet4ALoop(t *testing.T) {
+func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
 	// Note, X is a service that both S and D advertise
@@ -385,7 +385,7 @@ ACK_RETRACT B X
 BROADCAST_UPDATE_ROUTE X (router: D, svc: X, seqno: 0, metric: 65535)`, a.String())
 }
 
-func TestRouterNet4A(t *testing.T) {
+func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
 	// Note, X is a service that both S and D advertise
@@ -474,8 +474,242 @@ X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
 	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 1, metric: 0)`, a.String())
 
 	// Req 3: A should increase its seqno to 5
-	// Req 1: A should not increase its seqno
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 5, 64)
 	a = h.GetActions()
 	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 5, metric: 0)`, a.String())
+}
+
+func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	//       2
+	//    B ---- D
+	// 1 /|     /
+	//  / |    /
+	// A  |1  / 1
+	//  \ |  /
+	// 5 \| /
+	//    C
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 5))
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "A", 0, 1)
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdate(rs, "B", "C", 0, 1)
+	h.NeighUpdate(rs, "B", "D", 0, 2)
+
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "A", 0, 5)
+	h.NeighUpdate(rs, "C", "B", 0, 1)
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+	h.NeighUpdate(rs, "C", "D", 0, 1)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	// check that we converge to the correct table
+	assert.Equal(t,
+		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: B, router: C, svc: C, seqno: 0, metric: 2)
+D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
+
+	// Suppose now that the link between B and C increases in metric
+	//       2
+	//    B ---- D
+	// 1 /|     /
+	//  / |    /
+	// A  |3  / 1
+	//  \ |  /
+	// 5 \| /
+	//    C
+
+	h.NeighUpdate(rs, "B", "C", 0, 3)
+	h.NeighUpdate(rs, "B", "D", 0, 3)
+	h.NeighUpdate(rs, "C", "B", 0, 3)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `REQUEST_SEQNO B (router: C, svc: C) 1 64
+REQUEST_SEQNO B (router: D, svc: D) 1 64`, a.String())
+
+	// Now, we get the seqno updates from B
+	h.NeighUpdate(rs, "B", "C", 1, 3)
+	h.NeighUpdate(rs, "B", "D", 1, 3)
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 1, metric: 4)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 1, metric: 4)`, a.String())
+}
+
+func TestRouter5A_GCRoutes(t *testing.T) {
+	ConfigureConstants()
+	state.RouteExpiryTime = -1 // for testing, we want routes to expire immediately
+	// This test is for the following network with our router being A:
+	//       3
+	//    B ---- D
+	// 1 /|     /
+	//  / |    /
+	// A  |1  / 1
+	//  \ |  /
+	// 5 \| /
+	//    C
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 5))
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "A", 0, 1)
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdate(rs, "B", "C", 0, 1)
+	h.NeighUpdate(rs, "B", "D", 0, 2)
+
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "A", 0, 5)
+	h.NeighUpdate(rs, "C", "B", 0, 1)
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+	h.NeighUpdate(rs, "C", "D", 0, 1)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	// check that we converge to the correct table
+	assert.Equal(t,
+		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: B, router: C, svc: C, seqno: 0, metric: 2)
+D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
+
+	RunGC(rs, h) // expired routes are not held, so we do not need to wait for retraction ACK
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 65535)`, a.String())
+
+	RunGC(rs, h)
+	for _, neigh := range rs.Neighbours {
+		assert.Empty(t, neigh.Routes, "Expected all routes to be expired")
+	}
+}
+
+func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	//       3
+	//    B ---- D
+	// 1 /      /
+	//  /      /
+	// A      / 1
+	//       /
+	//      /
+	//    C
+
+	h := &RouterHarness{}
+	rs := &state.RouterState{
+		Id:         "A",
+		Seqno:      0,
+		Routes:     make(map[state.ServiceId]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: []state.ServiceId{"A"},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+
+	// B's advertised routes
+	h.NeighUpdate(rs, "B", "A", 0, 1)
+	h.NeighUpdate(rs, "B", "B", 0, 0)
+	h.NeighUpdate(rs, "B", "C", 0, 4)
+	h.NeighUpdate(rs, "B", "D", 0, 3)
+
+	ComputeRoutes(rs, h)
+	a := h.GetActions()
+	// check that we converge to the correct table
+	assert.Equal(t,
+		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 5)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 4)`,
+		a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: B, router: C, svc: C, seqno: 0, metric: 5)
+D via (nh: B, router: D, svc: D, seqno: 0, metric: 4)`, rs.StringRoutes())
+
+	// Suppose now, we introduce a new link
+	//       3
+	//    B ---- D
+	// 1 /      /
+	//  /      /
+	// A      / 1
+	//  \    /
+	// 6 \  /
+	//    C
+
+	AC := AddLink(rs, NewMockEndpoint("C", 6))
+	// C's advertised routes
+	h.NeighUpdate(rs, "C", "B", 0, 4)
+	h.NeighUpdate(rs, "C", "C", 0, 0)
+	h.NeighUpdate(rs, "C", "D", 0, 1)
+
+	// this should not change anything, as this route is not optimal
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	// check that we converge to the correct table
+	assert.Empty(t, a, "No changes expected")
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: B, router: C, svc: C, seqno: 0, metric: 5)
+D via (nh: B, router: D, svc: D, seqno: 0, metric: 4)`, rs.StringRoutes())
+
+	// Now, we improve the cost of AC to 2
+	//       3
+	//    B ---- D
+	// 1 /      /
+	//  /      /
+	// A      / 1
+	//  \    /
+	// 2 \  /
+	//    C
+	AC.metric = 2
+	// Now, C and B are closer via C instead of B
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	// check that we converge to the correct table
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`, a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
+C via (nh: C, router: C, svc: C, seqno: 0, metric: 2)
+D via (nh: C, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
+
 }
