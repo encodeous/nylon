@@ -7,13 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/conn/bindtest"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/polyamide/tun/tuntest"
-	"github.com/encodeous/nylon/state"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -21,6 +14,14 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/encodeous/nylon/core"
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/conn/bindtest"
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/tun/tuntest"
+	"github.com/encodeous/nylon/state"
 )
 
 type Signal chan bool
@@ -127,9 +128,11 @@ func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
-			Id:      id,
-			PubKey:  privKey.Pubkey(),
-			Address: netip.MustParsePrefix(virtPrefix).Addr(),
+			Id:     id,
+			PubKey: privKey.Pubkey(),
+			Services: []state.ServiceId{
+				v.Central.RegisterService(state.ServiceId(id), netip.MustParsePrefix(virtPrefix)),
+			},
 		},
 	}
 	v.Central.Routers = append(v.Central.Routers, ncfg)
@@ -244,9 +247,18 @@ type InMemoryNetwork struct {
 }
 
 func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
-	if i.cfg.Central.GetNode(node).Address == dst || pkt[8] == 0 { // handle self if ttl is 0 as well
+	curCfg := i.cfg.Central.GetNode(node)
+	if pkt[8] == 0 { // handle self if ttl is 0 as well
 		if i.SelfHandler.TryApply(node, src, dst, data) {
 			return true
+		}
+	}
+	for _, svc := range curCfg.Services {
+		prefix := i.cfg.Central.GetSvcPrefix(svc)
+		if prefix.Contains(dst) {
+			if i.SelfHandler.TryApply(node, src, dst, data) {
+				return true
+			}
 		}
 	}
 	curIdx := i.cfg.IndexOf(node)
@@ -257,13 +269,17 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			if node == n.Id {
 				continue
 			}
-			if n.Address == dst {
-				select {
-				case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
-					return true
-				default:
-					fmt.Printf("%s's tun is not ready to accept data\n", n.Id)
-					return true
+			for _, p := range n.Services {
+				prefix := i.cfg.Central.GetSvcPrefix(p)
+				if prefix.Contains(dst) {
+					// route to this node
+					select {
+					case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
+						return true
+					default:
+						fmt.Printf("%s's tun is not ready to accept data\n", n.Id)
+						return true
+					}
 				}
 			}
 		}

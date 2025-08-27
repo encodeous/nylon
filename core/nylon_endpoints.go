@@ -1,14 +1,15 @@
 package core
 
 import (
+	"math/rand/v2"
+	"slices"
+	"time"
+
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
-	"math/rand/v2"
-	"slices"
-	"time"
 )
 
 type EpPing struct {
@@ -54,7 +55,8 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 		}
 
 		e.Dispatch(func(s *state.State) error {
-			return handleProbePing(s, node, endpoint)
+			handleProbePing(s, node, endpoint)
+			return nil
 		})
 	} else {
 		// pong
@@ -65,10 +67,11 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 	}
 }
 
-func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error {
+func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	if node == s.Id {
-		return nil
+		return
 	}
+	r := Get[*NylonRouter](s)
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
@@ -80,17 +83,14 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 				dep.WgEndpoint = ep
 
 				if !dep.IsActive() {
-					err := pushRouteTable(s, &node, nil, false)
-					if err != nil {
-						return err
-					}
+					r.UpdateNeighbour(node)
 				}
 				dep.Renew()
 
 				if state.DBG_log_probe {
 					s.Log.Debug("probe from", "addr", dep.Ep)
 				}
-				return nil
+				return
 			}
 		}
 	}
@@ -101,10 +101,10 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) error 
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
-			return pushRouteTable(s, &node, nil, false)
+			r.UpdateNeighbour(node)
+			return
 		}
 	}
-	return nil
 }
 
 func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.Endpoint) {
@@ -121,10 +121,6 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 					// we have a link
 					if state.DBG_log_probe {
 						s.Log.Debug("probe back", "peer", node, "ping", latency)
-					}
-					err := updateRoutes(s, false)
-					if err != nil {
-						s.Log.Error("Error updating routes: ", "err", err)
 					}
 					dpLink.Renew()
 					dpLink.UpdatePing(latency)

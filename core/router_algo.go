@@ -12,15 +12,6 @@ import (
 
 type RouterEvent int
 
-// trace events
-
-const (
-	RouteImproved RouterEvent = iota
-	RouteRetracted
-	RouteAdded
-	StaleRouteDropped
-)
-
 // warn events
 
 const (
@@ -30,9 +21,9 @@ const (
 
 // Router is an interface that defines the underlying router operations
 type Router interface {
-	SendRouteUpdate(neigh state.NodeId, svc state.ServiceId, advRoute state.PubRoute)
+	SendRouteUpdate(neigh state.NodeId, advRoute state.PubRoute)
 	SendAckRetract(neigh state.NodeId, svc state.ServiceId)
-	BroadcastSendRouteUpdate(svc state.ServiceId, advRoute state.PubRoute)
+	BroadcastSendRouteUpdate(advRoute state.PubRoute)
 	RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16, hopCnt uint8)
 	BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8)
 	Log(event RouterEvent, args ...any)
@@ -93,6 +84,28 @@ func checkFeasibility(router *state.RouterState, advRoute state.PubRoute) bool {
 	return false
 }
 
+func FullTableUpdate(s *state.RouterState, r Router) {
+	// send a full table update to all neighbours
+	for _, route := range s.Routes {
+		if s.DisableRouting && route.Nh != s.Id {
+			continue // skip routes that are not ours
+		}
+		updateFeasibility(s, route.PubRoute)
+		r.BroadcastSendRouteUpdate(route.PubRoute)
+	}
+}
+
+func PushFullTable(s *state.RouterState, r Router, neigh state.NodeId) {
+	// send a full table update to all neighbours
+	for _, route := range s.Routes {
+		if s.DisableRouting && route.Nh != s.Id {
+			continue // skip routes that are not ours
+		}
+		updateFeasibility(s, route.PubRoute)
+		r.SendRouteUpdate(neigh, route.PubRoute)
+	}
+}
+
 func RunGC(s *state.RouterState, r Router) {
 	now := time.Now()
 
@@ -118,6 +131,13 @@ func RunGC(s *state.RouterState, r Router) {
 		}
 	}
 
+	for svc, exp := range s.Advertised {
+		if now.After(exp) {
+			// advertised route expired, remove it
+			delete(s.Advertised, svc)
+		}
+	}
+
 	// Re-run route selection
 	ComputeRoutes(s, r)
 }
@@ -129,7 +149,7 @@ func retract(s *state.RouterState, r Router, svc state.ServiceId) {
 		return // route does not exist
 	}
 	tblEntry.Metric = state.INF
-	r.BroadcastSendRouteUpdate(svc, tblEntry.PubRoute)
+	r.BroadcastSendRouteUpdate(tblEntry.PubRoute)
 }
 
 func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, src state.Source, reqSeqno uint16, hopCnt uint8) {
@@ -148,7 +168,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 		if selRoute.Metric != state.INF &&
 			(selRoute.Source.NodeId != src.NodeId || selRoute.Source.NodeId == src.NodeId && SeqnoGe(selRoute.FD.Seqno, reqSeqno)) {
 			updateFeasibility(s, selRoute.PubRoute)
-			r.SendRouteUpdate(fromNeigh, src.ServiceId, selRoute.PubRoute)
+			r.SendRouteUpdate(fromNeigh, selRoute.PubRoute)
 		}
 		//   If the router-ids match, but the requested seqno is larger (modulo 2^(16)) than the
 		//   route entry's, the node compares the router-id against its own
@@ -423,9 +443,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 		// enumerate through neighbour advertisements
 		for S, adv := range neigh.Routes {
-			if slices.ContainsFunc(s.Advertised, func(s state.ServiceId) bool {
-				return s == S.ServiceId
-			}) {
+			if _, ok := s.Advertised[S.ServiceId]; ok {
 				continue // skip self routes
 			}
 			svc := S.ServiceId
@@ -483,7 +501,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 	}
 
 	// add our own routes to the route table, so that we can advertise them
-	for _, adv := range s.Advertised {
+	for adv, _ := range s.Advertised {
 		newTable[adv] = state.SelRoute{
 			PubRoute: state.PubRoute{
 				Source: state.Source{
@@ -496,7 +514,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				},
 			},
 			Nh:       s.Id, // next hop is self
-			ExpireAt: time.Now().Add(state.RouteExpiryTime),
+			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), s.Advertised[adv]}, time.Time.Compare),
 		}
 	}
 
@@ -517,7 +535,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			(newRoute.Metric-oldRoute.Metric) > state.LargeChangeThreshold && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
-			r.BroadcastSendRouteUpdate(svc, newRoute.PubRoute)
+			r.BroadcastSendRouteUpdate(newRoute.PubRoute)
 		}
 	}
 

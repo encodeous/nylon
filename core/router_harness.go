@@ -78,12 +78,12 @@ func (h *RouterHarness) SendAckRetract(neigh state.NodeId, svc state.ServiceId) 
 	h.actions = append(h.actions, MakeEvent("ACK_RETRACT", neigh, svc))
 }
 
-func (h *RouterHarness) SendRouteUpdate(neigh state.NodeId, svc state.ServiceId, advRoute state.PubRoute) {
-	h.actions = append(h.actions, MakeEvent("UPDATE_ROUTE", neigh, svc, advRoute))
+func (h *RouterHarness) SendRouteUpdate(neigh state.NodeId, advRoute state.PubRoute) {
+	h.actions = append(h.actions, MakeEvent("UPDATE_ROUTE", neigh, advRoute))
 }
 
-func (h *RouterHarness) BroadcastSendRouteUpdate(svc state.ServiceId, advRoute state.PubRoute) {
-	h.actions = append(h.actions, MakeEvent("BROADCAST_UPDATE_ROUTE", svc, advRoute))
+func (h *RouterHarness) BroadcastSendRouteUpdate(advRoute state.PubRoute) {
+	h.actions = append(h.actions, MakeEvent("BROADCAST_UPDATE_ROUTE", advRoute))
 }
 
 func (h *RouterHarness) RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16, hopCnt uint8) {

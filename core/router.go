@@ -1,6 +1,9 @@
 package core
 
 import (
+	"github.com/encodeous/nylon/polyamide/device"
+	"google.golang.org/protobuf/proto"
+
 	//"errors"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
@@ -10,351 +13,235 @@ import (
 )
 
 type NylonRouter struct {
-	// list of active neighbours
-	Routes                map[state.NodeId]*state.SelRoute
-	SeqnoDedup            *ttlcache.Cache[state.NodeId, state.Source]
-	Self                  *state.Source
+	*state.State
 	LastStarvationRequest time.Time
-	Clients               []state.NodeId
+	PassiveServices       []state.ServiceId
 	IO                    map[state.NodeId]*IOPending
 }
 
+func (r *NylonRouter) GetNeighIO(neigh state.NodeId) *IOPending {
+	nio, ok := r.IO[neigh]
+	if !ok {
+		nio = &IOPending{
+			SeqnoReq:   make(map[state.Source]state.Pair[uint16, uint8]),
+			SeqnoDedup: ttlcache.New[state.Source, uint16](ttlcache.WithTTL[state.Source, uint16](state.SeqnoDedupTTL), ttlcache.WithDisableTouchOnHit[state.Source, uint16]()),
+			Acks:       make(map[state.ServiceId]struct{}),
+			Updates:    make(map[state.ServiceId]*protocol.Ny_Update),
+		}
+		r.IO[neigh] = nio
+	}
+	r.IO[neigh] = nio
+	return nio
+}
+
+func (r *NylonRouter) SendRouteUpdate(neigh state.NodeId, advRoute state.PubRoute) {
+	nio := r.GetNeighIO(neigh)
+	nio.Updates[advRoute.ServiceId] = &protocol.Ny_Update{
+		RouterId:  string(advRoute.NodeId),
+		ServiceId: string(advRoute.ServiceId),
+		Seqno:     uint32(advRoute.Seqno),
+		Metric:    uint32(advRoute.Metric),
+	}
+}
+
+func (r *NylonRouter) SendAckRetract(neigh state.NodeId, svc state.ServiceId) {
+	nio := r.GetNeighIO(neigh)
+	nio.Acks[svc] = struct{}{}
+}
+
+func (r *NylonRouter) BroadcastSendRouteUpdate(advRoute state.PubRoute) {
+	for neigh := range r.IO {
+		r.SendRouteUpdate(neigh, advRoute)
+	}
+}
+
+func (r *NylonRouter) RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16, hopCnt uint8) {
+	nio := r.GetNeighIO(neigh)
+	old := nio.SeqnoDedup.Get(src)
+	maxSeq := seqno
+	if old != nil {
+		maxSeq = max(seqno, old.Value())
+		if SeqnoGe(old.Value(), seqno) {
+			return // we have already sent such a request before
+		}
+	}
+	nio.SeqnoDedup.Set(src, maxSeq, ttlcache.DefaultTTL)
+	req, ok := nio.SeqnoReq[src]
+	if !ok || seqno < req.V1 {
+		req = state.Pair[uint16, uint8]{V1: seqno, V2: hopCnt}
+	} else {
+		if hopCnt > req.V2 {
+			req.V2 = hopCnt
+		}
+	}
+	nio.SeqnoReq[src] = req
+}
+
+func (r *NylonRouter) BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8) {
+	for neigh := range r.IO {
+		r.RequestSeqno(neigh, src, seqno, hopCnt)
+	}
+}
+
+func (r *NylonRouter) Log(event RouterEvent, args ...any) {
+	r.Env.Log.Warn(string(rune(event)), args...)
+}
+
+func (r *NylonRouter) UpdateNeighbour(neigh state.NodeId) {
+	PushFullTable(r.RouterState, r, neigh)
+}
+
 type IOPending struct {
-	SeqnoReq map[state.Source]struct{}
-	Updates  map[state.NodeId]*protocol.Ny_Update
+	// SeqnoReq values represent a pair of (seqno, hop count)
+	SeqnoReq   map[state.Source]state.Pair[uint16, uint8]
+	SeqnoDedup *ttlcache.Cache[state.Source, uint16]
+	Acks       map[state.ServiceId]struct{}
+	Updates    map[state.ServiceId]*protocol.Ny_Update
 }
 
 func (r *NylonRouter) Cleanup(s *state.State) error {
-	r.SeqnoDedup.Stop()
+	r.State = nil
+	r.IO = nil
+	return nil
+}
+
+func (r *NylonRouter) GcRouter(s *state.State) error {
+	RunGC(s.RouterState, r)
+	for id, _ := range r.IO {
+		if s.GetNeighbour(id) == nil {
+			delete(r.IO, id)
+			continue
+		}
+	}
+	for _, nio := range r.IO {
+		nio.SeqnoDedup.DeleteExpired()
+	}
 	return nil
 }
 
 func (r *NylonRouter) Init(s *state.State) error {
-	//s.Log.Debug("init router")
-	//s.Env.RepeatTask(func(s *state.State) error {
-	//	err := updateRoutes(s, false)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	return pushRouteTable(s, nil, nil, false)
-	//}, state.RouteUpdateDelay)
-	//s.Env.RepeatTask(checkStarvation, state.StarvationDelay)
-	//s.Env.RepeatTask(flushIO, state.NeighbourIOFlushDelay)
-	//r.Self = &state.Source{
-	//	Id:    s.Id,
-	//	Seqno: 0,
-	//}
-	//r.Routes = make(map[state.NodeId]*state.SelRoute)
-	//r.SeqnoDedup = ttlcache.New[state.NodeId, state.Source](
-	//	ttlcache.WithTTL[state.NodeId, state.Source](state.SeqnoDedupTTL),
-	//	ttlcache.WithDisableTouchOnHit[state.NodeId, state.Source](),
-	//)
-	//go r.SeqnoDedup.Start()
+	s.Log.Debug("init router")
+	r.State = s
+	r.IO = make(map[state.NodeId]*IOPending)
+	s.RouterState = &state.RouterState{
+		Id:             s.Env.LocalCfg.Id,
+		Seqno:          0,
+		Routes:         make(map[state.ServiceId]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     make([]*state.Neighbour, 0),
+		Advertised:     make(map[state.ServiceId]time.Time),
+		DisableRouting: s.Env.LocalCfg.DisableRouting,
+	}
+	maxTime := time.Unix(1<<63-62135596801, 999999999)
+	for _, svc := range s.Env.GetRouter(s.Id).Services {
+		s.RouterState.Advertised[svc] = maxTime
+	}
+
+	s.Log.Debug("schedule router tasks")
+
+	s.Env.RepeatTask(func(s *state.State) error {
+		FullTableUpdate(s.RouterState, r)
+		return nil
+	}, state.RouteUpdateDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		SolveStarvation(s.RouterState, r)
+		return nil
+	}, state.StarvationDelay)
+
+	s.Env.RepeatTask(flushIO, state.NeighbourIOFlushDelay)
 	return nil
 }
 
-func updateRoutes(s *state.State, seqnoPush bool) error {
-	//r := Get[*NylonRouter](s)
-	//retractions := make([]*protocol.Ny_Update, 0)
-	//improvedSeqno := make([]state.NodeId, 0)
-	//
-	//// basically bellman ford algorithm
-	//
-	//if state.DBG_log_router {
-	//	s.Log.Debug("--- computing routing table ---")
-	//}
-	//
-	//for _, neigh := range s.Neighbours {
-	//	if state.DBG_log_router {
-	//		s.Log.Debug(" -- neighbour --", "id", neigh.Id)
-	//	}
-	//	bestEp := neigh.BestEndpoint()
-	//
-	//	if bestEp != nil && bestEp.Metric() == 0 {
-	//		s.Log.Warn(" link metric is zero")
-	//		return errors.New(" metric cannot be zero")
-	//	}
-	//
-	//	if state.DBG_log_router {
-	//		if bestEp != nil {
-	//			s.Log.Debug(" selected", "met", bestEp.Metric())
-	//		} else {
-	//			s.Log.Debug(" no link to neighbour")
-	//		}
-	//	}
-	//
-	//	for src, neighRoute := range neigh.Routes {
-	//		if src == s.Id {
-	//			continue
-	//		}
-	//
-	//		metric := state.INF
-	//
-	//		if bestEp != nil {
-	//			metric = AddMetric(bestEp.Metric(), neighRoute.PubMetric)
-	//			metric = AddMetric(metric, state.HopCost)
-	//		}
-	//
-	//		if state.DBG_log_router {
-	//			s.Log.Debug("  - eval neigh route -", "src", src, "met", metric, "nh", neigh.Id)
-	//		}
-	//
-	//		tRoute, ok := r.Routes[src]
-	//
-	//		if ok {
-	//			if SeqnoLt(neighRoute.Src.Seqno, tRoute.Src.Seqno) {
-	//				if state.DBG_log_router {
-	//					s.Log.Debug("  dropped, new seqno < old seqno")
-	//					continue
-	//				}
-	//			}
-	//			if state.DBG_log_router {
-	//				s.Log.Debug("  existing route", "src", src, "met", metric, "nh", tRoute.Nh)
-	//			}
-	//			// route exists
-	//			if IsFeasible(tRoute, neighRoute, metric) && bestEp != nil {
-	//				if state.DBG_log_router {
-	//					s.Log.Debug("  feasible, selected")
-	//				}
-	//				// feasible, update existing route, if matching switch heuristic
-	//				if tRoute.Nh != neigh.Id && !state.SwitchHeuristic(tRoute, neighRoute, metric, bestEp) && !tRoute.Retracted {
-	//					// dont update this route, as it might cause oscillations
-	//					continue
-	//				}
-	//				if tRoute.Nh != neigh.Id {
-	//					dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
-	//				}
-	//				tRoute.PubMetric = metric
-	//				if SeqnoLt(tRoute.Src.Seqno, neighRoute.Src.Seqno) {
-	//					improvedSeqno = append(improvedSeqno, neighRoute.Src.Id)
-	//				}
-	//				tRoute.Src = neighRoute.Src
-	//				tRoute.Fd = metric
-	//				tRoute.Nh = neigh.Id
-	//				tRoute.Retracted = false
-	//			} else {
-	//				// not feasible :(
-	//				nh := tRoute.Nh
-	//				if nh == neigh.Id {
-	//					retract := false
-	//					// route is currently selected
-	//					if metric > tRoute.Fd {
-	//						if state.DBG_log_router {
-	//							s.Log.Debug("  not feasible, retract (new-met > fd)")
-	//						}
-	//						// retract our route!
-	//						if !tRoute.Retracted {
-	//							retract = true
-	//						}
-	//						tRoute.PubMetric = state.INF
-	//						tRoute.Retracted = true
-	//					} else {
-	//						if state.DBG_log_router {
-	//							s.Log.Debug("  not feasible, but (new-met <= fd)")
-	//						}
-	//						// update metric unconditionally, as it is <= Fd
-	//						tRoute.PubMetric = metric
-	//						tRoute.Fd = metric
-	//						if metric == state.INF && !tRoute.Retracted {
-	//							retract = true
-	//						}
-	//						tRoute.Retracted = retract
-	//					}
-	//					if retract {
-	//						metric = state.INF
-	//						dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
-	//						retractions = append(retractions, &protocol.Ny_Update{
-	//							Source: mapToPktSource(&tRoute.Src),
-	//							Metric: uint32(state.INF),
-	//						})
-	//					}
-	//				}
-	//			}
-	//			r.Routes[src] = tRoute
-	//		} else if metric != state.INF {
-	//			if state.DBG_log_router {
-	//				s.Log.Debug("  new route! added to table")
-	//			}
-	//			dbgPrintRouteChanges(s, tRoute, &neighRoute, neigh.Id, metric)
-	//			// add new route, if it is not retracted
-	//			r.Routes[src] = &state.SelRoute{
-	//				PubRoute: state.PubRoute{
-	//					Src:       neighRoute.Src,
-	//					PubMetric: metric,
-	//					Retracted: false,
-	//				},
-	//				Fd: metric,
-	//				Nh: neigh.Id,
-	//			}
-	//		}
-	//	}
-	//}
-	//
-	//// retract routes that the neighbour no longer publishes
-	//for _, neigh := range s.Neighbours {
-	//	for src, route := range r.Routes {
-	//		if route.Nh == neigh.Id && !route.Retracted {
-	//			if _, ok := neigh.Routes[src]; !ok {
-	//				route.Retracted = true
-	//				route.PubMetric = state.INF
-	//				retractions = append(retractions, &protocol.Ny_Update{
-	//					Source: mapToPktSource(&route.Src),
-	//					Metric: uint32(state.INF),
-	//				})
-	//				dbgPrintRouteChanges(s, route, nil, neigh.Id, state.INF)
-	//			}
-	//		}
-	//	}
-	//}
-	//
-	//// retract published client routes
-	//for src, route := range r.Routes {
-	//	if route.Nh == s.Id && !slices.Contains(r.Clients, src) && !route.Retracted {
-	//		route.Retracted = true
-	//		route.PubMetric = state.INF
-	//		retractions = append(retractions, &protocol.Ny_Update{
-	//			Source:    mapToPktSource(&route.Src),
-	//			Metric:    uint32(state.INF),
-	//			SeqnoPush: true,
-	//		})
-	//		dbgPrintRouteChanges(s, route, nil, s.Id, state.INF)
-	//	}
-	//}
-	//
-	//slices.Sort(improvedSeqno)
-	//improvedSeqno = slices.Compact(improvedSeqno)
-	//if len(improvedSeqno) > 0 {
-	//	err := pushRouteTable(s, nil, &improvedSeqno, seqnoPush)
-	//	if err != nil {
-	//		return err
-	//	}
-	//}
-	//
-	//if len(retractions) > 0 {
-	//	for _, retraction := range retractions {
-	//		broadcastUpdate(retraction, s.Neighbours, newMetricReplacementPolicy)
-	//	}
-	//}
-
-	return checkStarvation(s)
-}
-
-func checkStarvation(s *state.State) error {
-	//r := Get[*NylonRouter](s)
-	//starved := false
-	//// check for starvation
-	//if time.Now().Sub(r.LastStarvationRequest) > state.StarvationDelay {
-	//	for node, route := range r.Routes {
-	//		bestMetric := state.INF
-	//		if route.Nh == s.Id {
-	//			// for clients directly connected to the current node
-	//			bestMetric = route.PubMetric
-	//		} else {
-	//			neigh := s.GetNeighbour(route.Nh)
-	//			bestEp := neigh.BestEndpoint()
-	//			if bestEp != nil {
-	//				bestMetric = bestEp.Metric()
-	//			}
-	//		}
-	//
-	//		if bestMetric == state.INF || route.PubMetric == state.INF {
-	//			// we dont have a valid route to this node
-	//			starved = true
-	//
-	//			prev := r.SeqnoDedup.Get(node)
-	//			if prev != nil && SeqnoGe(prev.Value().Seqno, route.Src.Seqno) {
-	//				continue // we have already sent such a request before
-	//			}
-	//			r.SeqnoDedup.Set(node, route.Src, ttlcache.DefaultTTL)
-	//
-	//			broadcastSeqnoRequest(route.Src, s.Neighbours)
-	//		}
-	//	}
-	//}
-	//if starved {
-	//	r.LastStarvationRequest = time.Now()
-	//}
-	return nil
-}
-
-func (r *NylonRouter) updatePassiveClient(client state.NodeId) {
-	//// inserts an artificial route into the table
-	//if _, ok := r.Routes[client]; !ok {
-	//	r.Routes[client] = &state.SelRoute{
-	//		PubRoute: state.PubRoute{
-	//			Src: state.Source{
-	//				Id:    client,
-	//				Seqno: 0,
-	//			},
-	//		},
-	//	}
-	//}
-	//// since the client can only connect to a single node, we know we have the best link to it
-	//k := r.Routes[client]
-	//k.PubMetric = 0
-	//k.Fd = 0
-	//k.Nh = r.Self.Id
-	//k.Retracted = false
-	//k.LastPublished = time.Now()
+func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId) {
+	// inserts an artificial route into the table
+	s.Advertised[client] = time.Now().Add(state.ClientDeadThreshold)
 }
 
 // packet handlers
 func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol.Ny_Update) error {
-	//neigh := s.GetNeighbour(node)
-	//hasRetractions := false
-	//cur, ok := neigh.Routes[state.NodeId(update.Source.Id)]
-	//if ok {
-	//	hasRetractions = !cur.Retracted && update.Metric == uint32(state.INF)
-	//}
-	//neigh.Routes[state.NodeId(update.Source.Id)] = state.PubRoute{
-	//	Src:           mapFromPktSource(update.Source),
-	//	PubMetric:     uint16(update.Metric),
-	//	Retracted:     update.Metric == uint32(state.INF),
-	//	LastPublished: time.Now(),
-	//}
-	//if hasRetractions || update.SeqnoPush {
-	//	return updateRoutes(s, update.SeqnoPush)
-	//}
+	r := Get[*NylonRouter](s)
+	HandleNeighbourUpdate(s.RouterState, r, node, state.PubRoute{
+		Source: state.Source{
+			NodeId:    state.NodeId(update.RouterId),
+			ServiceId: state.ServiceId(update.ServiceId),
+		},
+		FD: state.FD{
+			Seqno:  uint16(update.Seqno),
+			Metric: uint16(update.Metric),
+		},
+	})
 	return nil
 }
 
-func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.Ny_Source) error {
-	//r := Get[*NylonRouter](s)
-	//src := mapFromPktSource(pkt)
-	//
-	//var fSrc *state.Source
-	//
-	//if s.Id == src.Id {
-	//	// we are the node in question!
-	//	if SeqnoLe(r.Self.Seqno, src.Seqno) {
-	//		r.Self.Seqno = src.Seqno + 1
-	//	}
-	//	fSrc = r.Self
-	//} else if !s.DisableRouting {
-	//	froute, ok := r.Routes[src.Id]
-	//
-	//	if ok && SeqnoGt(froute.Src.Seqno, src.Seqno) {
-	//		fSrc = &froute.Src
-	//	} else if slices.Contains(r.Clients, src.Id) {
-	//		// client is directly connected to us!
-	//		clientSrc := &r.Routes[src.Id].Src
-	//		if SeqnoLe(clientSrc.Seqno, src.Seqno) {
-	//			clientSrc.Seqno = src.Seqno + 1
-	//		}
-	//		fSrc = clientSrc
-	//	}
-	//}
-	//
-	//if fSrc != nil {
-	//	// we have a better one cached, we can respond to this request
-	//	return pushRouteTable(s, nil, &[]state.NodeId{fSrc.Id}, true)
-	//} else {
-	//	prev := r.SeqnoDedup.Get(src.Id)
-	//	if prev != nil && SeqnoGe(prev.Value().Seqno, src.Seqno) {
-	//		return nil // we have already sent such a request before
-	//	}
-	//	r.SeqnoDedup.Set(src.Id, src, ttlcache.DefaultTTL)
-	//	broadcastSeqnoRequest(src, s.Neighbours)
-	//}
+func routerHandleAckRetract(s *state.State, neigh state.NodeId, update *protocol.Ny_AckRetract) error {
+	r := Get[*NylonRouter](s)
+	HandleAckRetract(s.RouterState, r, neigh, state.ServiceId(update.ServiceId))
+	return nil
+}
+
+func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.Ny_SeqnoRequest) error {
+	r := Get[*NylonRouter](s)
+	HandleSeqnoRequest(s.RouterState, r, neigh, state.Source{
+		NodeId:    state.NodeId(pkt.RouterId),
+		ServiceId: state.ServiceId(pkt.ServiceId),
+	}, uint16(pkt.Seqno), uint8(pkt.HopCount))
+	return nil
+}
+
+func flushIO(s *state.State) error {
+	n := Get[*Nylon](s)
+	r := Get[*NylonRouter](s)
+	for _, neigh := range s.Neighbours {
+		// TODO, investigate effect of packet loss on control messages
+		best := neigh.BestEndpoint()
+		nio := r.GetNeighIO(neigh.Id)
+		if best != nil && best.IsActive() {
+			peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(best.Node()).PubKey))
+			for {
+				bundle := &protocol.TransportBundle{}
+				tLength := 0
+
+				// we can coalesce messages, but we need to make sure we don't fragment our UDP packet
+
+				for seqR, _ := range nio.SeqnoReq {
+					req := &protocol.Ny{Type: &protocol.Ny_SeqnoRequestOp{
+						SeqnoRequestOp: &protocol.Ny_SeqnoRequest{
+							RouterId:  string(seqR.NodeId),
+							ServiceId: string(seqR.ServiceId),
+							Seqno:     uint32(nio.SeqnoReq[seqR].V1),
+							HopCount:  uint32(nio.SeqnoReq[seqR].V2),
+						},
+					}}
+					if tLength+proto.Size(req) >= state.SafeMTU {
+						goto send
+					}
+					delete(nio.SeqnoReq, seqR)
+					bundle.Packets = append(bundle.Packets, req)
+					tLength += proto.Size(req)
+				}
+
+				for id, update := range nio.Updates {
+					req := &protocol.Ny{Type: &protocol.Ny_RouteOp{
+						RouteOp: update,
+					}}
+					if tLength+proto.Size(req) >= state.SafeMTU {
+						goto send
+					}
+					delete(nio.Updates, id)
+					bundle.Packets = append(bundle.Packets, req)
+					tLength += proto.Size(req)
+				}
+
+				if tLength == 0 {
+					break
+				}
+			send:
+				err := n.SendNylonBundle(bundle, nil, peer)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }

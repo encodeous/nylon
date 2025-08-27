@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -84,19 +85,15 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		return err
 	}
 
-	//prefixes := make([]netip.Prefix, 0)
+	prefixes := make([]netip.Prefix, 0)
 
-	// ensure prefixes do not overlap
-	//for _, node := range cfg.Routers {
-	//	for _, prefix := range node.Prefixes {
-	//		for _, oPrefix := range prefixes {
-	//			if oPrefix.Overlaps(prefix) {
-	//				return fmt.Errorf("node %s's prefix %s overlaps with existing prefix %s", node, oPrefix.String(), prefix.String())
-	//			}
-	//		}
-	//		prefixes = append(prefixes, prefix)
-	//	}
-	//}
+	//ensure prefixes of services do not overlap
+	for svc, prefix := range cfg.Services {
+		if slices.Contains(prefixes, prefix) {
+			return fmt.Errorf("service %s's prefix %s is identical to an existing prefix", svc, prefix.String())
+		}
+		prefixes = append(prefixes, prefix)
+	}
 
 	if cfg.Dist != nil {
 		// validate repos
@@ -107,15 +104,5 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			}
 		}
 	}
-
-	for domain, node := range cfg.Hosts {
-		if !slices.Contains(nodes, node) {
-			return fmt.Errorf("destination node %s not found for %s. nodes: %v", node, domain, nodes)
-		}
-		if slices.Contains(nodes, domain) {
-			return fmt.Errorf("domain name %s cannot be the same name as node %s", domain, node)
-		}
-	}
-
 	return nil
 }

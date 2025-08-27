@@ -28,7 +28,10 @@ type RouterState struct {
 	Routes     map[ServiceId]SelRoute
 	Sources    map[Source]FD
 	Neighbours []*Neighbour
-	Advertised []ServiceId
+	// Advertised is a map tracking the service id and the time it will be advertised until
+	Advertised map[ServiceId]time.Time
+	// DisableRouting indicates that this node should not route traffic for other nodes
+	DisableRouting bool
 }
 
 func (s *RouterState) StringRoutes() string {

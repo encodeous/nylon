@@ -7,20 +7,21 @@ message TransportBundle {
   repeated Ny Packets = 1;
 }
 
-message Source {
-  string Id = 1;
-  uint32 Seqno = 2;
-}
-
 message Ny {
   message Update {
-    Source Source = 1;
-    uint32 Metric = 2;
-    bool SeqnoPush = 3;
+    string RouterId = 1;
+    string ServiceId = 2;
+    uint32 Seqno = 3;
+    uint32 Metric = 4;
+  }
+  message AckRetract {
+    string ServiceId = 1;
   }
   message SeqnoRequest {
-    Source Source = 1;
-    uint32 HopCount = 2;
+    string RouterId = 1;
+    string ServiceId = 2;
+    uint32 Seqno = 3;
+    uint32 HopCount = 4;
   }
 
   message Probe {

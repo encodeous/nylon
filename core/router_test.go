@@ -4,9 +4,14 @@ package core
 
 import (
 	"testing"
+	"time"
 
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
+)
+
+var (
+	maxTime = time.Unix(1<<63-62135596801, 999999999)
 )
 
 func TestRouterBasicComputeRoutes(t *testing.T) {
@@ -17,7 +22,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("b", "c", "d"),
-		Advertised: []state.ServiceId{"a"},
+		Advertised: map[state.ServiceId]time.Time{"a": maxTime},
 	}
 	ComputeRoutes(&rs, h)
 	// we should have only routes to ourselves
@@ -28,7 +33,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 		t.Errorf("Expected route to service 'a', but it was not found")
 	}
 	out := h.GetActions()
-	out.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("a"))
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: a, svc: a, seqno: 0, metric: 0)`, out.String())
 }
 
 func TestRouterNet1A_BasicRetraction(t *testing.T) {
@@ -49,7 +54,7 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	sr := AddLink(rs, NewMockEndpoint("S", 1))
@@ -77,10 +82,10 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 1)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 1)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
@@ -116,7 +121,7 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 1)`, rs.StringRoutes())
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// We should retract our route to S
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("S"), state.PubRoute{
+	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.PubRoute{
 		Source: state.Source{
 			NodeId:    "S",
 			ServiceId: "S",
@@ -146,7 +151,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("A", "B"),
-		Advertised: []state.ServiceId{"S"},
+		Advertised: map[state.ServiceId]time.Time{"S": maxTime},
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
@@ -165,9 +170,9 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 0)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 0)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 1)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 2)
@@ -191,7 +196,7 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 0)`, rs.StringRoutes())
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// We should retract our route to A
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"), state.PubRoute{
+	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.PubRoute{
 		Source: state.Source{
 			NodeId:    "A",
 			ServiceId: "A",
@@ -206,7 +211,7 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 0)`, rs.StringRoutes())
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// check that we are indeed starved
-	a.AssertNotContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"))
+	a.AssertNotContains(t, "BROADCAST_UPDATE_ROUTE")
 	SolveStarvation(rs, h)
 	a = h.GetActions()
 	a.AssertContains(t, "BROADCAST_REQUEST_SEQNO", state.Source{NodeId: "A", ServiceId: "A"}, uint16(1), uint8(64))
@@ -225,7 +230,7 @@ S via (nh: S, router: S, svc: S, seqno: 0, metric: 0)`, rs.StringRoutes())
 			Metric: 3,
 		},
 	}
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.ServiceId("A"), pr)
+	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", pr)
 	assert.Equal(t, pr, rs.Routes[("A")].PubRoute)
 }
 
@@ -248,7 +253,7 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -270,10 +275,10 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 	a := h.GetActions()
 	// check that we converge to the correct table
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 3)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
@@ -324,7 +329,7 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -344,11 +349,11 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
 C via (nh: C, router: C, svc: C, seqno: 0, metric: 1)
@@ -363,8 +368,8 @@ X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
 	RemoveLink(rs, SA)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 65535)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 65535)`, a.String())
 	HandleAckRetract(rs, h, "B", "S")
 	HandleAckRetract(rs, h, "B", "X")
 	ComputeRoutes(rs, h)
@@ -374,7 +379,7 @@ BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 65535)`, a.String
 	HandleAckRetract(rs, h, "C", "X")
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE X (router: D, svc: X, seqno: 0, metric: 2)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: D, svc: X, seqno: 0, metric: 2)`, a.String())
 	// B retracts D's published routes
 	h.NeighUpdate(rs, "B", "D", 0, state.INF)
 	h.NeighUpdateSvc(rs, "B", "D", "X", 0, state.INF)
@@ -382,7 +387,7 @@ BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 65535)`, a.String
 	a = h.GetActions()
 	assert.Equal(t, `ACK_RETRACT B D
 ACK_RETRACT B X
-BROADCAST_UPDATE_ROUTE X (router: D, svc: X, seqno: 0, metric: 65535)`, a.String())
+BROADCAST_UPDATE_ROUTE (router: D, svc: X, seqno: 0, metric: 65535)`, a.String())
 }
 
 func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
@@ -402,7 +407,7 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -422,11 +427,11 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE S (router: S, svc: S, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 1)`, a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
 C via (nh: C, router: C, svc: C, seqno: 0, metric: 1)
@@ -452,31 +457,31 @@ X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
 	h.NeighUpdateSvc(rs, "S", "S", "X", 1, 0)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE X (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
 
 	// Suppose, some other node also requests the seqno for S,X
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", ServiceId: "X"}, 1, 64)
 	// A should not forward the request as we already have a route to S with an equivalent or higher seqno
 	a = h.GetActions()
 	// Instead, A should just reply with its current route to S,X
-	assert.Equal(t, `UPDATE_ROUTE B X (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
+	assert.Equal(t, `UPDATE_ROUTE B (router: S, svc: X, seqno: 1, metric: 3)`, a.String())
 
 	// Now, suppose some node requests the seqno for A
 
 	// Req 1: A should not increase its seqno
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 0, 64)
 	a = h.GetActions()
-	assert.Equal(t, `UPDATE_ROUTE B A (router: A, svc: A, seqno: 0, metric: 0)`, a.String())
+	assert.Equal(t, `UPDATE_ROUTE B (router: A, svc: A, seqno: 0, metric: 0)`, a.String())
 
 	// Req 2: A should increase its seqno by 1
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 1, 64)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 1, metric: 0)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 1, metric: 0)`, a.String())
 
 	// Req 3: A should increase its seqno to 5
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", ServiceId: "A"}, 5, 64)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 5, metric: 0)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 5, metric: 0)`, a.String())
 }
 
 func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
@@ -498,7 +503,7 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -520,10 +525,10 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 	a := h.GetActions()
 	// check that we converge to the correct table
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 3)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
@@ -553,8 +558,8 @@ REQUEST_SEQNO B (router: D, svc: D) 1 64`, a.String())
 	h.NeighUpdate(rs, "B", "D", 1, 3)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 1, metric: 4)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 1, metric: 4)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 1, metric: 4)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 1, metric: 4)`, a.String())
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {
@@ -577,7 +582,7 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -599,10 +604,10 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 	a := h.GetActions()
 	// check that we converge to the correct table
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 3)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
@@ -611,9 +616,9 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 
 	RunGC(rs, h) // expired routes are not held, so we do not need to wait for retraction ACK
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 65535)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 65535)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 65535)`, a.String())
 
 	RunGC(rs, h)
 	for _, neigh := range rs.Neighbours {
@@ -640,7 +645,7 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: []state.ServiceId{"A"},
+		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -655,10 +660,10 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 	a := h.GetActions()
 	// check that we converge to the correct table
 	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE A (router: A, svc: A, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE B (router: B, svc: B, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 5)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 4)`,
+		`BROADCAST_UPDATE_ROUTE (router: A, svc: A, seqno: 0, metric: 0)
+BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 1)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 5)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 4)`,
 		a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
@@ -705,8 +710,8 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 4)`, rs.StringRoutes())
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE C (router: C, svc: C, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE D (router: D, svc: D, seqno: 0, metric: 3)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 3)`, a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
 C via (nh: C, router: C, svc: C, seqno: 0, metric: 2)

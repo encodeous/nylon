@@ -3,9 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/tint"
-	slogmulti "github.com/samber/slog-multi"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -14,6 +11,10 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/tint"
+	slogmulti "github.com/samber/slog-multi"
 )
 
 func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initState **state.State) (bool, error) {
@@ -104,8 +105,8 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 func initModules(s *state.State) error {
 	var modules []state.NyModule
-	modules = append(modules, &Nylon{}) // nylon must start before router
 	modules = append(modules, &NylonRouter{})
+	modules = append(modules, &Nylon{})
 
 	for _, module := range modules {
 		s.Modules[reflect.TypeOf(module).String()] = module

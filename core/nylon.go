@@ -1,12 +1,13 @@
 package core
 
 import (
+	"net"
+	"time"
+
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
-	"net"
-	"time"
 )
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
@@ -30,13 +31,9 @@ func (n *Nylon) Init(s *state.State) error {
 			continue
 		}
 		stNeigh := &state.Neighbour{
-			Id: peer,
-			//Routes: make(map[state.NodeId]state.PubRoute),
-			//Eps:    make([]*state.NylonEndpoint, 0),
-			//IO: state.IOPending{
-			//	SeqnoReq: make(map[state.Source]struct{}),
-			//	Updates:  make(map[state.NodeId]*protocol.Ny_Update),
-			//},
+			Id:     peer,
+			Routes: make(map[state.Source]state.NeighRoute),
+			Eps:    make([]state.Endpoint, 0),
 		}
 		cfg := s.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {

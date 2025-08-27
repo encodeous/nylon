@@ -9,9 +9,9 @@ import (
 )
 
 type NodeCfg struct {
-	Id      NodeId
-	PubKey  NyPublicKey
-	Address netip.Addr
+	Id       NodeId
+	PubKey   NyPublicKey
+	Services []ServiceId `yaml:",omitempty"`
 }
 
 // RouterCfg represents a central representation of a node that can route
@@ -34,7 +34,15 @@ type CentralCfg struct {
 	Clients   []ClientCfg
 	Graph     []string
 	Timestamp int64
-	Hosts     map[string]string `yaml:",omitempty"`
+	Services  map[ServiceId]netip.Prefix
+}
+
+func (c *CentralCfg) RegisterService(svcId ServiceId, prefix netip.Prefix) ServiceId {
+	if c.Services == nil {
+		c.Services = make(map[ServiceId]netip.Prefix)
+	}
+	c.Services[svcId] = prefix
+	return svcId
 }
 
 func (c *CentralCfg) GetNodes() []NodeCfg {
@@ -61,21 +69,6 @@ type LocalCfg struct {
 	NoNetConfigure   bool `yaml:",omitempty"`
 	InterfaceName    string
 	LogPath          string
-}
-
-func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Addr) RouterCfg {
-	extDp := netip.AddrPortFrom(extIp, port)
-	cfg := RouterCfg{
-		NodeCfg: NodeCfg{
-			Id:      n.Id,
-			Address: nylonIp,
-		},
-		Endpoints: []netip.AddrPort{
-			extDp,
-		},
-	}
-	cfg.PubKey = n.Key.Pubkey()
-	return cfg
 }
 
 func parseSymbolList(s string, validSymbols []string) ([]string, error) {
@@ -374,6 +367,10 @@ func (e *CentralCfg) GetRouter(node NodeId) RouterCfg {
 	}
 
 	return e.Routers[idx]
+}
+
+func (e *CentralCfg) GetSvcPrefix(svc ServiceId) netip.Prefix {
+	return e.Services[svc]
 }
 
 func (e *CentralCfg) GetClient(node NodeId) ClientCfg {

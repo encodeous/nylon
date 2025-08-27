@@ -15,7 +15,7 @@ type NyModule interface {
 type State struct {
 	*Env
 	Modules map[string]NyModule
-	RouterState
+	*RouterState
 }
 
 // Env can be read from any Goroutine
