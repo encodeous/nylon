@@ -11,7 +11,7 @@ import (
 type NodeCfg struct {
 	Id       NodeId
 	PubKey   NyPublicKey
-	Address  *netip.Addr `yaml:",omitempty"`
+	Address  netip.Addr
 	Services []ServiceId `yaml:",omitempty"`
 }
 
@@ -318,18 +318,14 @@ func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
 }
 
 func ExpandCentralConfig(cfg *CentralCfg) {
-	// compatibility & convenience: add a default service for a node if it has an Address defined
+	// compatibility & convenience: add a default service for a node
 	for idx, node := range cfg.Routers {
-		if node.Address != nil {
-			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
-			cfg.Routers[idx] = node
-		}
+		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		cfg.Routers[idx] = node
 	}
 	for idx, node := range cfg.Clients {
-		if node.Address != nil {
-			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
-			cfg.Clients[idx] = node
-		}
+		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		cfg.Clients[idx] = node
 	}
 }
 
