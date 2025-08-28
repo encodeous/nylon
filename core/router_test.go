@@ -648,7 +648,7 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
 	}
 
-	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	AB := AddLink(rs, NewMockEndpoint("B", 1))
 
 	// B's advertised routes
 	h.NeighUpdate(rs, "B", "A", 0, 1)
@@ -710,11 +710,22 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 4)`, rs.StringRoutes())
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 3)`, a.String())
+	assert.Equal(t, ``, a.String()) // not a significant change, so we should not broadcast
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
 B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
 C via (nh: C, router: C, svc: C, seqno: 0, metric: 2)
 D via (nh: C, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 
+	// Now, AC degrades to 10000, and AB degrades to 12000
+	AC.metric = 10000
+	AB.metric = 12000
+	ComputeRoutes(rs, h)
+	a = h.GetActions()
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 12000)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 10000)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 10001)`, a.String())
+	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 12000)
+C via (nh: C, router: C, svc: C, seqno: 0, metric: 10000)
+D via (nh: C, router: D, svc: D, seqno: 0, metric: 10001)`, rs.StringRoutes())
 }

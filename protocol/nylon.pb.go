@@ -72,6 +72,7 @@ type Ny struct {
 	//	*Ny_RouteOp
 	//	*Ny_SeqnoRequestOp
 	//	*Ny_ProbeOp
+	//	*Ny_AckRetractOp
 	Type          isNy_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -141,6 +142,15 @@ func (x *Ny) GetProbeOp() *Ny_Probe {
 	return nil
 }
 
+func (x *Ny) GetAckRetractOp() *Ny_AckRetract {
+	if x != nil {
+		if x, ok := x.Type.(*Ny_AckRetractOp); ok {
+			return x.AckRetractOp
+		}
+	}
+	return nil
+}
+
 type isNy_Type interface {
 	isNy_Type()
 }
@@ -157,11 +167,17 @@ type Ny_ProbeOp struct {
 	ProbeOp *Ny_Probe `protobuf:"bytes,3,opt,name=ProbeOp,proto3,oneof"`
 }
 
+type Ny_AckRetractOp struct {
+	AckRetractOp *Ny_AckRetract `protobuf:"bytes,4,opt,name=AckRetractOp,proto3,oneof"`
+}
+
 func (*Ny_RouteOp) isNy_Type() {}
 
 func (*Ny_SeqnoRequestOp) isNy_Type() {}
 
 func (*Ny_ProbeOp) isNy_Type() {}
+
+func (*Ny_AckRetractOp) isNy_Type() {}
 
 type Ny_Update struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -401,11 +417,12 @@ const file_protocol_nylon_proto_rawDesc = "" +
 	"\n" +
 	"\x14protocol/nylon.proto\x12\x05proto\"6\n" +
 	"\x0fTransportBundle\x12#\n" +
-	"\aPackets\x18\x01 \x03(\v2\t.proto.NyR\aPackets\"\x9f\x04\n" +
+	"\aPackets\x18\x01 \x03(\v2\t.proto.NyR\aPackets\"\xdb\x04\n" +
 	"\x02Ny\x12,\n" +
 	"\aRouteOp\x18\x01 \x01(\v2\x10.proto.Ny.UpdateH\x00R\aRouteOp\x12@\n" +
 	"\x0eSeqnoRequestOp\x18\x02 \x01(\v2\x16.proto.Ny.SeqnoRequestH\x00R\x0eSeqnoRequestOp\x12+\n" +
-	"\aProbeOp\x18\x03 \x01(\v2\x0f.proto.Ny.ProbeH\x00R\aProbeOp\x1ap\n" +
+	"\aProbeOp\x18\x03 \x01(\v2\x0f.proto.Ny.ProbeH\x00R\aProbeOp\x12:\n" +
+	"\fAckRetractOp\x18\x04 \x01(\v2\x14.proto.Ny.AckRetractH\x00R\fAckRetractOp\x1ap\n" +
 	"\x06Update\x12\x1a\n" +
 	"\bRouterId\x18\x01 \x01(\tR\bRouterId\x12\x1c\n" +
 	"\tServiceId\x18\x02 \x01(\tR\tServiceId\x12\x14\n" +
@@ -451,11 +468,12 @@ var file_protocol_nylon_proto_depIdxs = []int32{
 	2, // 1: proto.Ny.RouteOp:type_name -> proto.Ny.Update
 	4, // 2: proto.Ny.SeqnoRequestOp:type_name -> proto.Ny.SeqnoRequest
 	5, // 3: proto.Ny.ProbeOp:type_name -> proto.Ny.Probe
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 4: proto.Ny.AckRetractOp:type_name -> proto.Ny.AckRetract
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_protocol_nylon_proto_init() }
@@ -467,6 +485,7 @@ func file_protocol_nylon_proto_init() {
 		(*Ny_RouteOp)(nil),
 		(*Ny_SeqnoRequestOp)(nil),
 		(*Ny_ProbeOp)(nil),
+		(*Ny_AckRetractOp)(nil),
 	}
 	file_protocol_nylon_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}

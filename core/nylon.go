@@ -50,7 +50,6 @@ func (n *Nylon) Init(s *state.State) error {
 	go n.PingBuf.Start()
 
 	s.Env.RepeatTask(nylonGc, state.GcDelay)
-	//s.Env.RepeatTask(otelUpdate, state.OtelDelay)
 
 	// wireguard configuration
 	err := n.initWireGuard(s)

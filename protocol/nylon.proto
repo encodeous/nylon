@@ -33,5 +33,6 @@ message Ny {
     Update RouteOp = 1;
     SeqnoRequest SeqnoRequestOp = 2;
     Probe ProbeOp = 3;
+    AckRetract AckRetractOp = 4;
   }
 }

@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/netip"
+	"runtime/pprof"
 	"slices"
 	"sync"
 	"time"
@@ -175,20 +176,23 @@ func (v *VirtualHarness) Start() chan error {
 		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, netip.MustParseAddrPort(e))
 	}
 	startDelay := 0 * time.Millisecond
-	for idx, _ := range v.Central.Routers {
+	for idx, rt := range v.Central.Routers {
 		sd := startDelay
 		go func() {
 			time.Sleep(sd)
-			restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
-				"vnet": vn,
-			}, &v.States[idx])
-			if cErr != nil {
-				errChan <- cErr
-				return
-			}
-			if restart {
-				panic(fmt.Sprintf("node restart is not implemented"))
-			}
+			labels := pprof.Labels("nylon node", string(rt.Id))
+			pprof.Do(context.Background(), labels, func(_ context.Context) {
+				restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
+					"vnet": vn,
+				}, &v.States[idx])
+				if cErr != nil {
+					errChan <- cErr
+					return
+				}
+				if restart {
+					panic(fmt.Sprintf("node restart is not implemented"))
+				}
+			})
 		}()
 		startDelay += time.Millisecond * 500 // add a tiny delay so they don't try to handshake at the exact same time
 	}

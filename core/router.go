@@ -1,7 +1,10 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/gaissmai/bart"
 	"google.golang.org/protobuf/proto"
 
 	//"errors"
@@ -17,6 +20,15 @@ type NylonRouter struct {
 	LastStarvationRequest time.Time
 	PassiveServices       []state.ServiceId
 	IO                    map[state.NodeId]*IOPending
+	// ForwardTable contains the full routing table
+	ForwardTable bart.Table[RouteTableEntry]
+	// LoopbackTable contains only routes to services hosted on this node
+	LoopbackTable bart.Table[RouteTableEntry]
+}
+
+type RouteTableEntry struct {
+	Nh   state.NodeId
+	Peer *device.Peer
 }
 
 func (r *NylonRouter) GetNeighIO(neigh state.NodeId) *IOPending {
@@ -83,12 +95,37 @@ func (r *NylonRouter) BroadcastRequestSeqno(src state.Source, seqno uint16, hopC
 	}
 }
 
-func (r *NylonRouter) Log(event RouterEvent, args ...any) {
-	r.Env.Log.Warn(string(rune(event)), args...)
+func (r *NylonRouter) Log(event RouterEvent, desc string, args ...any) {
+	r.Env.Log.Warn(fmt.Sprintf("%d %s", event, desc), args...)
 }
 
 func (r *NylonRouter) UpdateNeighbour(neigh state.NodeId) {
 	PushFullTable(r.RouterState, r, neigh)
+}
+
+func (r *NylonRouter) TableInsertRoute(svc state.ServiceId, route state.SelRoute) {
+	prefix := r.GetSvcPrefix(svc)
+	n := Get[*Nylon](r.State)
+	nh := route.Nh
+	peer := n.Device.LookupPeer(device.NoisePublicKey(r.GetNode(nh).PubKey))
+	r.ForwardTable.Insert(prefix, RouteTableEntry{
+		Nh:   nh,
+		Peer: peer,
+	})
+	if route.Nh == r.Id {
+		r.LoopbackTable.Insert(prefix, RouteTableEntry{
+			Nh:   nh,
+			Peer: peer,
+		})
+	} else {
+		r.LoopbackTable.Delete(prefix)
+	}
+}
+
+func (r *NylonRouter) TableDeleteRoute(svc state.ServiceId) {
+	prefix := r.GetSvcPrefix(svc)
+	r.ForwardTable.Delete(prefix)
+	r.LoopbackTable.Delete(prefix)
 }
 
 type IOPending struct {
@@ -123,6 +160,7 @@ func (r *NylonRouter) Init(s *state.State) error {
 	s.Log.Debug("init router")
 	r.State = s
 	r.IO = make(map[state.NodeId]*IOPending)
+	r.ForwardTable = bart.Table[RouteTableEntry]{}
 	s.RouterState = &state.RouterState{
 		Id:             s.Env.LocalCfg.Id,
 		Seqno:          0,
@@ -195,6 +233,9 @@ func flushIO(s *state.State) error {
 		// TODO, investigate effect of packet loss on control messages
 		best := neigh.BestEndpoint()
 		nio := r.GetNeighIO(neigh.Id)
+		if nio == nil {
+			continue
+		}
 		if best != nil && best.IsActive() {
 			peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(best.Node()).PubKey))
 			for {

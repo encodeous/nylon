@@ -74,6 +74,14 @@ type RouterHarness struct {
 	actions []HarnessEvent
 }
 
+func (h *RouterHarness) TableInsertRoute(svc state.ServiceId, route state.SelRoute) {
+
+}
+
+func (h *RouterHarness) TableDeleteRoute(svc state.ServiceId) {
+
+}
+
 func (h *RouterHarness) SendAckRetract(neigh state.NodeId, svc state.ServiceId) {
 	h.actions = append(h.actions, MakeEvent("ACK_RETRACT", neigh, svc))
 }
@@ -94,9 +102,10 @@ func (h *RouterHarness) BroadcastRequestSeqno(src state.Source, seqno uint16, ho
 	h.actions = append(h.actions, MakeEvent("BROADCAST_REQUEST_SEQNO", src, seqno, hopCnt))
 }
 
-func (h *RouterHarness) Log(event RouterEvent, args ...any) {
+func (h *RouterHarness) Log(event RouterEvent, desc string, args ...any) {
 	x := make([]any, 0)
 	x = append(x, event)
+	x = append(x, desc)
 	x = append(x, args...)
 	h.actions = append(h.actions, MakeEvent("LOG", x...))
 }

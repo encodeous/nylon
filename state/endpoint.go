@@ -2,12 +2,13 @@ package state
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/device"
 	"math"
 	"net/netip"
 	"slices"
 	"time"
+
+	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/device"
 )
 
 type Endpoint interface {
@@ -92,7 +93,7 @@ func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoi
 
 func (u *NylonEndpoint) calcR() (time.Duration, time.Duration, time.Duration) {
 	if len(u.history) < MinimumConfidenceWindow {
-		return time.Second * 10, time.Second * 10, time.Second * 10
+		return time.Second * 1, time.Second * 1, time.Second * 1
 	}
 	if u.dirty {
 		u.histSort = slices.Clone(u.history)

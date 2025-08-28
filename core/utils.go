@@ -1,8 +1,9 @@
 package core
 
 import (
-	"github.com/encodeous/nylon/state"
 	"reflect"
+
+	"github.com/encodeous/nylon/state"
 )
 
 func AddMetric(a, b uint16) uint16 {
@@ -31,4 +32,11 @@ func SeqnoGe(a, b uint16) bool {
 func Get[T state.NyModule](s *state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)
+}
+
+func abs(a int) int {
+	if a < 0 {
+		return -a
+	}
+	return a
 }

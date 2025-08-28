@@ -109,6 +109,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 
 func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.Endpoint) {
 	n := Get[*Nylon](s)
+	r := Get[*NylonRouter](s)
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dpLink := range neigh.Eps {
@@ -127,6 +128,8 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 
 					// update wireguard endpoint
 					dpLink.WgEndpoint = ep
+
+					ComputeRoutes(s.RouterState, r)
 				}
 				return
 			}

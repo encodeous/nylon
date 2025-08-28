@@ -27,7 +27,7 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	n.Tun = tdev
 	n.itfName = itfName
 
-	n.InstallTC()
+	n.InstallTC(s)
 	s.Log.Info("installed nylon traffic control filter for polysock")
 
 	// TODO: fully convert to code-based api

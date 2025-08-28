@@ -3,17 +3,20 @@
 package integration
 
 import (
-	"github.com/encodeous/nylon/state"
-	"go.uber.org/goleak"
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/encodeous/nylon/state"
+	"go.uber.org/goleak"
 )
 
 func TestOptimalConvergence(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	state.ProbeDelay /= 3 // 3x faster
 	state.RouteUpdateDelay /= 3
+	state.MinimumConfidenceWindow /= 5
 
 	vh := &VirtualHarness{}
 	a1 := "192.168.1.1:1234"
@@ -48,6 +51,8 @@ func TestOptimalConvergence(t *testing.T) {
 
 	go func() {
 		conv1.Wait()
+
+		fmt.Printf("---- Stage 1 convergence reached ----\n")
 
 		// b <-10-> c
 		vh.AddLink(b1, c1).WithLatency(10*time.Millisecond, 0)
