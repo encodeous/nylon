@@ -58,9 +58,17 @@ func NodeConfigValidator(node *LocalCfg) error {
 	return nil
 }
 
+func AddrToPrefix(addr netip.Addr) netip.Prefix {
+	res, err := addr.Prefix(addr.BitLen())
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
 func CentralConfigValidator(cfg *CentralCfg) error {
 	nodes := make([]string, 0)
-	for _, node := range cfg.Routers {
+	for idx, node := range cfg.Routers {
 		err := NameValidator(string(node.Id))
 		if err != nil {
 			return err
@@ -69,6 +77,10 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			return fmt.Errorf("duplicate router id %s", node.Id)
 		}
 		nodes = append(nodes, string(node.Id))
+		if node.Address != nil {
+			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
+			cfg.Routers[idx] = node
+		}
 	}
 	for _, node := range cfg.Clients {
 		err := NameValidator(string(node.Id))
@@ -89,6 +101,9 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 
 	//ensure prefixes of services do not overlap
 	for svc, prefix := range cfg.Services {
+		if slices.Contains(nodes, string(svc)) {
+			return fmt.Errorf("service id %s conflicts with a node id", svc)
+		}
 		if slices.Contains(prefixes, prefix) {
 			return fmt.Errorf("service %s's prefix %s is identical to an existing prefix", svc, prefix.String())
 		}

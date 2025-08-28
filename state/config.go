@@ -11,6 +11,7 @@ import (
 type NodeCfg struct {
 	Id       NodeId
 	PubKey   NyPublicKey
+	Address  *netip.Addr `yaml:",omitempty"`
 	Services []ServiceId `yaml:",omitempty"`
 }
 
