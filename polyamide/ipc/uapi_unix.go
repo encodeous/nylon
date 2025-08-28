@@ -64,3 +64,8 @@ func UAPIOpen(name string) (*os.File, error) {
 	}
 	return listener.File()
 }
+
+func UAPIDial(name string) (net.Conn, error) {
+	socketPath := sockPath(name)
+	return net.Dial("unix", socketPath)
+}

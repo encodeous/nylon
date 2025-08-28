@@ -3,10 +3,14 @@ module github.com/encodeous/nylon
 go 1.24.4
 
 require (
+	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v27.1.1+incompatible
 	github.com/encodeous/tint v1.2.0
+	github.com/gaissmai/bart v0.24.0
+	github.com/google/go-cmp v0.7.0
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/kmahyyg/go-network-compo v0.2.10
+	github.com/mattn/go-isatty v0.0.20
 	github.com/samber/slog-multi v1.4.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
@@ -36,12 +40,10 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/gaissmai/bart v0.24.0 // indirect
 	github.com/go-fonts/liberation v0.3.3 // indirect
 	github.com/go-latex/latex v0.0.0-20240709081214-31cef3c7570e // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -51,7 +53,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/btree v1.0.1 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect

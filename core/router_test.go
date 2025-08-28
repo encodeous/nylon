@@ -22,7 +22,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("b", "c", "d"),
-		Advertised: map[state.ServiceId]time.Time{"a": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"a": {state.NodeId("a"), maxTime}},
 	}
 	ComputeRoutes(&rs, h)
 	// we should have only routes to ourselves
@@ -54,7 +54,7 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	sr := AddLink(rs, NewMockEndpoint("S", 1))
@@ -151,7 +151,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("A", "B"),
-		Advertised: map[state.ServiceId]time.Time{"S": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"S": {state.NodeId("S"), maxTime}},
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
@@ -253,7 +253,7 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -329,7 +329,7 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -407,7 +407,7 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -503,7 +503,7 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -582,7 +582,7 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -645,7 +645,7 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]time.Time{"A": maxTime},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
 	}
 
 	AB := AddLink(rs, NewMockEndpoint("B", 1))

@@ -71,6 +71,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+		state.ExpandCentralConfig(&centralCfg)
 		err = state.NodeConfigValidator(&nodeCfg)
 		if err != nil {
 			panic(err)

@@ -275,21 +275,7 @@ func MakeSortedPair[T cmp.Ordered](a, b T) Pair[T, T] {
 	}
 }
 
-func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
-	for _, n := range e.Routers {
-		if n.PubKey == pkey {
-			return &n.Id
-		}
-	}
-	for _, n := range e.Clients {
-		if n.PubKey == pkey {
-			return &n.Id
-		}
-	}
-	return nil
-}
-
-func (e *Env) GetPeers() []NodeId {
+func (e *CentralCfg) GetPeers(curId NodeId) []NodeId {
 	allNodes := make([]string, 0)
 	for _, node := range e.Routers {
 		allNodes = append(allNodes, string(node.Id))
@@ -304,17 +290,47 @@ func (e *Env) GetPeers() []NodeId {
 	nodes := make([]NodeId, 0)
 	for _, edge := range graph {
 		var neighNode NodeId
-		if edge.V1 == e.Id {
+		if edge.V1 == curId {
 			neighNode = edge.V2
 		}
-		if edge.V2 == e.Id {
+		if edge.V2 == curId {
 			neighNode = edge.V1
 		}
-		if neighNode != e.Id && neighNode != "" {
+		if neighNode != curId && neighNode != "" {
 			nodes = append(nodes, neighNode)
 		}
 	}
 	return nodes
+}
+
+func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
+	for _, n := range e.Routers {
+		if n.PubKey == pkey {
+			return &n.Id
+		}
+	}
+	for _, n := range e.Clients {
+		if n.PubKey == pkey {
+			return &n.Id
+		}
+	}
+	return nil
+}
+
+func ExpandCentralConfig(cfg *CentralCfg) {
+	// compatibility & convenience: add a default service for a node if it has an Address defined
+	for idx, node := range cfg.Routers {
+		if node.Address != nil {
+			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
+			cfg.Routers[idx] = node
+		}
+	}
+	for idx, node := range cfg.Clients {
+		if node.Address != nil {
+			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
+			cfg.Clients[idx] = node
+		}
+	}
 }
 
 func (e *CentralCfg) IsRouter(node NodeId) bool {

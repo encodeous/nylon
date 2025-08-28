@@ -26,7 +26,7 @@ func (n *Nylon) Init(s *state.State) error {
 	s.Log.Debug("init nylon")
 
 	// add neighbours
-	for _, peer := range s.GetPeers() {
+	for _, peer := range s.GetPeers(s.Id) {
 		if !s.IsRouter(peer) {
 			continue
 		}

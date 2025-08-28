@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/conn"
 	"io"
 	"net"
 	"net/netip"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/encodeous/nylon/polyamide/conn"
 
 	"github.com/encodeous/nylon/polyamide/ipc"
 )
@@ -447,6 +448,10 @@ func (device *Device) IpcHandle(socket net.Conn) {
 			}
 			err = device.IpcGetOperation(buffered.Writer)
 		default:
+			if fun, ok := device.IpcHandler[op]; ok {
+				err = fun(buffered)
+				break
+			}
 			device.Log.Errorf("invalid UAPI operation: %v", op)
 			return
 		}

@@ -66,9 +66,12 @@ func (n *Nylon) InstallTC(s *state.State) {
 		})
 	}
 
+	// handle passive client traffic separately
+
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 		entry, ok := r.LoopbackTable.Lookup(packet.GetDst())
+		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == s.Id {
 			//dev.Log.Verbosef("BounceCur packet: %v -> %v", packet.GetSrc(), packet.GetDst())
 			return device.TcBounce, nil

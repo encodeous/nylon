@@ -106,17 +106,25 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		prefixes = append(prefixes, prefix)
 	}
 
-	// compatibility & convenience: add a default service for a node if it has an Address defined
-	for idx, node := range cfg.Routers {
-		if node.Address != nil {
-			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
-			cfg.Routers[idx] = node
+	// ensure the current node contains unique services
+	for _, router := range cfg.Routers {
+		svc := make(map[ServiceId]struct{})
+		for _, s := range router.Services {
+			if _, ok := svc[s]; ok {
+				return fmt.Errorf("router %s has duplicate service %s", router.Id, s)
+			}
+			svc[s] = struct{}{}
 		}
-	}
-	for idx, node := range cfg.Clients {
-		if node.Address != nil {
-			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
-			cfg.Clients[idx] = node
+		for _, p := range cfg.GetPeers(router.Id) {
+			if cfg.IsClient(p) {
+				client := cfg.GetClient(p)
+				for _, cs := range client.Services {
+					if _, ok := svc[cs]; ok {
+						return fmt.Errorf("router %s has duplicate service %s (provided by client %s)", router.Id, cs, client.Id)
+					}
+					svc[cs] = struct{}{}
+				}
+			}
 		}
 	}
 

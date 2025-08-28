@@ -63,6 +63,7 @@ var hostsCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+		state.ExpandCentralConfig(&cfg)
 		hosts := make(map[string][]string)
 		for domain, prefix := range cfg.Services {
 			primaryIp := prefix.Addr().String()

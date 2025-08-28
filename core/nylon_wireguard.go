@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"cmp"
 	"encoding/hex"
 	"fmt"
@@ -30,6 +31,10 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	n.InstallTC(s)
 	s.Log.Info("installed nylon traffic control filter for polysock")
 
+	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
+		return HandleNylonIPCGet(s, writer)
+	}
+
 	// TODO: fully convert to code-based api
 	err = dev.IpcSet(
 		fmt.Sprintf(
@@ -45,7 +50,7 @@ listen_port=%d
 	}
 
 	// add peers
-	peers := s.GetPeers()
+	peers := s.GetPeers(s.Id)
 	for _, peer := range peers {
 		s.Log.Debug("adding", "peer", peer)
 		ncfg := s.GetNode(peer)
@@ -134,7 +139,7 @@ func UpdateWireGuard(s *state.State) error {
 	dev := n.Device
 
 	// configure endpoints
-	for _, peer := range slices.Sorted(slices.Values(s.GetPeers())) {
+	for _, peer := range slices.Sorted(slices.Values(s.GetPeers(s.Id))) {
 		if s.IsClient(peer) {
 			continue
 		}

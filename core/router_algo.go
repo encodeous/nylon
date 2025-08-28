@@ -10,6 +10,7 @@ import (
 	"github.com/encodeous/nylon/state"
 )
 
+//go:generate stringer -type RouterEvent
 type RouterEvent int
 
 // warn events
@@ -142,7 +143,7 @@ func RunGC(s *state.RouterState, r Router) {
 	}
 
 	for svc, exp := range s.Advertised {
-		if now.After(exp) {
+		if now.After(exp.Expiry) {
 			// advertised route expired, remove it
 			delete(s.Advertised, svc)
 		}
@@ -511,20 +512,20 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 	}
 
 	// add our own routes to the route table, so that we can advertise them
-	for adv, _ := range s.Advertised {
-		newTable[adv] = state.SelRoute{
+	for svc, adv := range s.Advertised {
+		newTable[svc] = state.SelRoute{
 			PubRoute: state.PubRoute{
 				Source: state.Source{
 					NodeId:    s.Id,
-					ServiceId: adv,
+					ServiceId: svc,
 				},
 				FD: state.FD{
 					Seqno:  s.Seqno,
 					Metric: 0,
 				},
 			},
-			Nh:       s.Id, // next hop is self
-			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), s.Advertised[adv]}, time.Time.Compare),
+			Nh:       adv.NodeId, // next hop is self or directly connected client
+			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), adv.Expiry}, time.Time.Compare),
 		}
 	}
 

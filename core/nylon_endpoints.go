@@ -158,7 +158,7 @@ func (n *Nylon) probeLinks(s *state.State, active bool) error {
 
 func (n *Nylon) probeNew(s *state.State) error {
 	// probe for new dp links
-	for _, peer := range s.GetPeers() {
+	for _, peer := range s.GetPeers(s.Id) {
 		if !s.IsRouter(peer) {
 			continue
 		}

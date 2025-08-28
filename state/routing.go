@@ -22,6 +22,10 @@ func (s Source) String() string {
 	return fmt.Sprintf("(router: %s, svc: %s)", s.NodeId, s.ServiceId)
 }
 
+type Advertisement struct {
+	NodeId
+	Expiry time.Time
+}
 type RouterState struct {
 	Id         NodeId
 	Seqno      uint16
@@ -29,7 +33,7 @@ type RouterState struct {
 	Sources    map[Source]FD
 	Neighbours []*Neighbour
 	// Advertised is a map tracking the service id and the time it will be advertised until
-	Advertised map[ServiceId]time.Time
+	Advertised map[ServiceId]Advertisement
 	// DisableRouting indicates that this node should not route traffic for other nodes
 	DisableRouting bool
 }

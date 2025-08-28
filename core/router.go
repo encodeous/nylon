@@ -18,7 +18,6 @@ import (
 type NylonRouter struct {
 	*state.State
 	LastStarvationRequest time.Time
-	PassiveServices       []state.ServiceId
 	IO                    map[state.NodeId]*IOPending
 	// ForwardTable contains the full routing table
 	ForwardTable bart.Table[RouteTableEntry]
@@ -167,12 +166,12 @@ func (r *NylonRouter) Init(s *state.State) error {
 		Routes:         make(map[state.ServiceId]state.SelRoute),
 		Sources:        make(map[state.Source]state.FD),
 		Neighbours:     make([]*state.Neighbour, 0),
-		Advertised:     make(map[state.ServiceId]time.Time),
+		Advertised:     make(map[state.ServiceId]state.Advertisement),
 		DisableRouting: s.Env.LocalCfg.DisableRouting,
 	}
 	maxTime := time.Unix(1<<63-62135596801, 999999999)
 	for _, svc := range s.Env.GetRouter(s.Id).Services {
-		s.RouterState.Advertised[svc] = maxTime
+		s.RouterState.Advertised[svc] = state.Advertisement{NodeId: s.Id, Expiry: maxTime}
 	}
 
 	s.Log.Debug("schedule router tasks")
@@ -190,14 +189,48 @@ func (r *NylonRouter) Init(s *state.State) error {
 	return nil
 }
 
-func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId) {
+func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId, node state.NodeId) {
 	// inserts an artificial route into the table
-	s.Advertised[client] = time.Now().Add(state.ClientDeadThreshold)
+	s.Advertised[client] = state.Advertisement{
+		NodeId: node,
+		Expiry: time.Now().Add(state.ClientKeepaliveInterval),
+	}
+}
+
+func checkNeigh(s *state.State, id state.NodeId) bool {
+	for _, n := range s.Neighbours {
+		if n.Id == id {
+			return true
+		}
+	}
+	s.Log.Warn("received packet from unknown neighbour", "from", id)
+	return false
+}
+
+func checkService(s *state.State, svc state.ServiceId) bool {
+	_, ok := s.Services[svc]
+	if !ok {
+		s.Log.Warn("received packet for unknown service", "service", svc)
+	}
+	return ok
+}
+
+func checkNode(s *state.State, id state.NodeId) bool {
+	ncfg := s.TryGetNode(id)
+	if ncfg == nil {
+		s.Log.Warn("received packet from unknown node", "from", id)
+	}
+	return ncfg != nil
 }
 
 // packet handlers
 func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol.Ny_Update) error {
 	r := Get[*NylonRouter](s)
+	if !checkNeigh(s, node) ||
+		!checkService(s, state.ServiceId(update.ServiceId)) ||
+		!checkNode(s, state.NodeId(update.RouterId)) {
+		return nil
+	}
 	HandleNeighbourUpdate(s.RouterState, r, node, state.PubRoute{
 		Source: state.Source{
 			NodeId:    state.NodeId(update.RouterId),
@@ -213,12 +246,21 @@ func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol
 
 func routerHandleAckRetract(s *state.State, neigh state.NodeId, update *protocol.Ny_AckRetract) error {
 	r := Get[*NylonRouter](s)
+	if !checkService(s, state.ServiceId(update.ServiceId)) ||
+		!checkNeigh(s, neigh) {
+		return nil
+	}
 	HandleAckRetract(s.RouterState, r, neigh, state.ServiceId(update.ServiceId))
 	return nil
 }
 
 func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.Ny_SeqnoRequest) error {
 	r := Get[*NylonRouter](s)
+	if !checkNeigh(s, neigh) ||
+		!checkService(s, state.ServiceId(pkt.ServiceId)) ||
+		!checkNode(s, state.NodeId(pkt.RouterId)) {
+		return nil
+	}
 	HandleSeqnoRequest(s.RouterState, r, neigh, state.Source{
 		NodeId:    state.NodeId(pkt.RouterId),
 		ServiceId: state.ServiceId(pkt.ServiceId),
