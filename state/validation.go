@@ -68,7 +68,7 @@ func AddrToPrefix(addr netip.Addr) netip.Prefix {
 
 func CentralConfigValidator(cfg *CentralCfg) error {
 	nodes := make([]string, 0)
-	for idx, node := range cfg.Routers {
+	for _, node := range cfg.Routers {
 		err := NameValidator(string(node.Id))
 		if err != nil {
 			return err
@@ -77,10 +77,6 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			return fmt.Errorf("duplicate router id %s", node.Id)
 		}
 		nodes = append(nodes, string(node.Id))
-		if node.Address != nil {
-			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
-			cfg.Routers[idx] = node
-		}
 	}
 	for _, node := range cfg.Clients {
 		err := NameValidator(string(node.Id))
@@ -108,6 +104,20 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			return fmt.Errorf("service %s's prefix %s is identical to an existing prefix", svc, prefix.String())
 		}
 		prefixes = append(prefixes, prefix)
+	}
+
+	// compatibility & convenience: add a default service for a node if it has an Address defined
+	for idx, node := range cfg.Routers {
+		if node.Address != nil {
+			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
+			cfg.Routers[idx] = node
+		}
+	}
+	for idx, node := range cfg.Clients {
+		if node.Address != nil {
+			node.Services = append(node.Services, cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(*node.Address)))
+			cfg.Clients[idx] = node
+		}
 	}
 
 	if cfg.Dist != nil {
