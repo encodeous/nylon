@@ -194,7 +194,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 				//   Nylon note: We increase seqno by more than one, as we do not persist our seqno
 				//   state, so we cannot guarantee that increasing by one is enough.
 
-				s.Seqno = reqSeqno
+				s.SetSeqno(selRoute.ServiceId, reqSeqno)
 				ComputeRoutes(s, r) // should generate an update
 			} else {
 				//   Otherwise, if the requested router-id is not its own, the received
@@ -414,6 +414,29 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		}
 	}
 
+	// add our own routes to the route table, so that we can advertise them
+	for svc, adv := range s.Advertised {
+		advMetric := uint16(0)
+		if adv.IsPassiveHold {
+			// The metric should be high enough so that if the passive client connects to any other node, our route will be immediately unselected
+			advMetric = state.INFM
+		}
+		newTable[svc] = state.SelRoute{
+			PubRoute: state.PubRoute{
+				Source: state.Source{
+					NodeId:    s.Id,
+					ServiceId: svc,
+				},
+				FD: state.FD{
+					Seqno:  s.GetSeqno(svc),
+					Metric: advMetric,
+				},
+			},
+			Nh:       adv.NodeId, // next hop is self or directly connected client
+			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), adv.Expiry}, time.Time.Compare),
+		}
+	}
+
 	// 3.6.  Route Selection
 	//   Route selection is the process by which a single route for a given
 	//   prefix is selected to be used for forwarding packets and to be re-
@@ -508,24 +531,6 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 					newTable[svc] = newRoute
 				}
 			}
-		}
-	}
-
-	// add our own routes to the route table, so that we can advertise them
-	for svc, adv := range s.Advertised {
-		newTable[svc] = state.SelRoute{
-			PubRoute: state.PubRoute{
-				Source: state.Source{
-					NodeId:    s.Id,
-					ServiceId: svc,
-				},
-				FD: state.FD{
-					Seqno:  s.Seqno,
-					Metric: 0,
-				},
-			},
-			Nh:       adv.NodeId, // next hop is self or directly connected client
-			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), adv.Expiry}, time.Time.Compare),
 		}
 	}
 

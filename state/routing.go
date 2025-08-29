@@ -24,11 +24,12 @@ func (s Source) String() string {
 
 type Advertisement struct {
 	NodeId
-	Expiry time.Time
+	Expiry        time.Time
+	IsPassiveHold bool
 }
 type RouterState struct {
 	Id         NodeId
-	Seqno      uint16
+	SelfSeqno  map[ServiceId]uint16
 	Routes     map[ServiceId]SelRoute
 	Sources    map[Source]FD
 	Neighbours []*Neighbour
@@ -36,6 +37,18 @@ type RouterState struct {
 	Advertised map[ServiceId]Advertisement
 	// DisableRouting indicates that this node should not route traffic for other nodes
 	DisableRouting bool
+}
+
+func (s *RouterState) GetSeqno(id ServiceId) uint16 {
+	seq, ok := s.SelfSeqno[id]
+	if !ok {
+		return 0
+	}
+	return seq
+}
+
+func (s *RouterState) SetSeqno(id ServiceId, seqno uint16) {
+	s.SelfSeqno[id] = seqno
 }
 
 func (s *RouterState) StringRoutes() string {
