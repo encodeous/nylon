@@ -63,7 +63,7 @@ graph:
 
 You can now sync this file across all the nodes using `rsync` or any other method you prefer. Nylon comes with a built-in way to update the central config automatically, but you will need to set up the network first.
 
-Notice nodes can have 0 or more accessible endpoints, and that is due to one of the key features of nylon: `Dynamic Endpoint`. Nylon will regularly try to reach out to neighbours with published endpoints, and pick the most optimal endpoint (e.g we might have a public ip and a LAN ip).
+Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try to reach out to neighbours with published endpoints, and pick the most optimal endpoint (e.g we might have a public ip and a LAN ip).
 
 ### Running the network
 

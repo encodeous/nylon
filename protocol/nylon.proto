@@ -9,14 +9,19 @@ message TransportBundle {
 
 message Ny {
   message Update {
-    Source Source = 1;
-    uint32 Metric = 2;
-    bool SeqnoPush = 3;
+    string RouterId = 1;
+    string ServiceId = 2;
+    uint32 Seqno = 3;
+    uint32 Metric = 4;
   }
-
-  message Source {
-    string Id = 1;
-    uint32 Seqno = 2;
+  message AckRetract {
+    string ServiceId = 1;
+  }
+  message SeqnoRequest {
+    string RouterId = 1;
+    string ServiceId = 2;
+    uint32 Seqno = 3;
+    uint32 HopCount = 4;
   }
 
   message Probe {
@@ -26,7 +31,8 @@ message Ny {
 
   oneof type {
     Update RouteOp = 1;
-    Source SeqnoRequestOp = 2;
+    SeqnoRequest SeqnoRequestOp = 2;
     Probe ProbeOp = 3;
+    AckRetract AckRetractOp = 4;
   }
 }

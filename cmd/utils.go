@@ -3,14 +3,15 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"github.com/encodeous/nylon/state"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"maps"
 	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
+
+	"github.com/encodeous/nylon/state"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var genKey = false
@@ -62,14 +63,11 @@ var hostsCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+		state.ExpandCentralConfig(&cfg)
 		hosts := make(map[string][]string)
-		for _, node := range cfg.GetNodes() {
-			primaryIp := node.Address.String()
-			hosts[primaryIp] = append(hosts[primaryIp], string(node.Id))
-		}
-		for domain, node := range cfg.Hosts {
-			primaryIp := cfg.GetNode(state.NodeId(node)).Address.String()
-			hosts[primaryIp] = append(hosts[primaryIp], domain)
+		for domain, prefix := range cfg.Services {
+			primaryIp := prefix.Addr().String()
+			hosts[primaryIp] = append(hosts[primaryIp], string(domain))
 		}
 		sb := strings.Builder{}
 		for _, ip := range slices.Sorted(maps.Keys(hosts)) {

@@ -1,15 +1,16 @@
 package core
 
 import (
+	"bufio"
 	"cmp"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
+	"slices"
+
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/state"
-	"net/netip"
-	"slices"
-	"sort"
 )
 
 func (n *Nylon) initWireGuard(s *state.State) error {
@@ -27,8 +28,12 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	n.Tun = tdev
 	n.itfName = itfName
 
-	n.InstallTC()
+	n.InstallTC(s)
 	s.Log.Info("installed nylon traffic control filter for polysock")
+
+	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
+		return HandleNylonIPCGet(s, writer)
+	}
 
 	// TODO: fully convert to code-based api
 	err = dev.IpcSet(
@@ -45,7 +50,7 @@ listen_port=%d
 	}
 
 	// add peers
-	peers := s.GetPeers()
+	peers := s.GetPeers(s.Id)
 	for _, peer := range peers {
 		s.Log.Debug("adding", "peer", peer)
 		ncfg := s.GetNode(peer)
@@ -79,12 +84,26 @@ listen_port=%d
 	// configure system networking
 
 	if !s.NoNetConfigure {
-		prefixes := make([]netip.Prefix, 0)
-		prefixes = append(prefixes)
-
 		// configure self
-		selfAddr := s.GetRouter(s.Id).Address
-		err = ConfigureAlias(itfName, AddrToPrefix(selfAddr))
+		selfSvc := make(map[state.ServiceId]struct{})
+
+		var defaultAddr *netip.Addr
+		for _, svc := range s.GetRouter(s.Id).Services {
+			prefix := s.GetSvcPrefix(svc)
+			if defaultAddr == nil {
+				addr := prefix.Addr()
+				defaultAddr = &addr
+			}
+			selfSvc[svc] = struct{}{}
+			err = ConfigureAlias(itfName, prefix)
+			if err != nil {
+				return err
+			}
+		}
+
+		if defaultAddr == nil {
+			return fmt.Errorf("no address configured for self")
+		}
 
 		err = InitInterface(itfName)
 
@@ -92,12 +111,12 @@ listen_port=%d
 			return err
 		}
 
-		// configure other nodes
-		for _, peer := range s.CentralCfg.GetNodes() {
-			if peer.Id == s.Id {
+		// configure services
+		for svc, prefix := range s.Services {
+			if _, ok := selfSvc[svc]; ok {
 				continue
 			}
-			err = ConfigureRoute(n.Tun, itfName, AddrToPrefix(peer.Address), selfAddr)
+			err = ConfigureRoute(n.Tun, itfName, prefix, *defaultAddr)
 			if err != nil {
 				return err
 			}
@@ -116,48 +135,11 @@ func (n *Nylon) cleanupWireGuard(s *state.State) error {
 }
 
 func UpdateWireGuard(s *state.State) error {
-	r := Get[*Router](s)
 	n := Get[*Nylon](s)
 	dev := n.Device
 
-	routesToNeigh := make(map[state.NodeId][]*state.Route)
-	for _, route := range r.Routes {
-		routesToNeigh[route.Nh] = append(routesToNeigh[route.Nh], route)
-	}
-
-	// configure peers/routing
-	for neigh, routes := range routesToNeigh {
-		if neigh == s.Id {
-			// set client allowedIps individually
-			for _, route := range routes {
-				nid := route.Src.Id
-				if s.IsClient(nid) {
-					ccfg := s.GetClient(nid)
-					peer := dev.LookupPeer(device.NoisePublicKey(ccfg.PubKey))
-					dev.Allowedips.Insert(AddrToPrefix(ccfg.Address), peer)
-				}
-			}
-		} else {
-			allowedIps := make([]string, 0)
-			pcfg := s.GetNode(neigh)
-			for _, route := range routes {
-				cfg := s.TryGetNode(route.Src.Id)
-				if cfg == nil {
-					continue // config might not always be synced
-				}
-				allowedIps = append(allowedIps, AddrToPrefix(cfg.Address).String())
-			}
-			sort.Strings(allowedIps)
-
-			peer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
-			for _, allowedIp := range allowedIps {
-				dev.Allowedips.Insert(netip.MustParsePrefix(allowedIp), peer)
-			}
-		}
-	}
-
 	// configure endpoints
-	for _, peer := range slices.Sorted(slices.Values(s.GetPeers())) {
+	for _, peer := range slices.Sorted(slices.Values(s.GetPeers(s.Id))) {
 		if s.IsClient(peer) {
 			continue
 		}
@@ -167,17 +149,12 @@ func UpdateWireGuard(s *state.State) error {
 
 		if nhNeigh != nil {
 			links := slices.Clone(nhNeigh.Eps)
-			slices.SortStableFunc(links, func(a, b *state.DynamicEndpoint) int {
+			slices.SortStableFunc(links, func(a, b state.Endpoint) int {
 				return cmp.Compare(a.Metric(), b.Metric())
 			})
 			for _, ep := range links {
-				eps = append(eps, ep.NetworkEndpoint().GetWgEndpoint(n.Device))
+				eps = append(eps, ep.AsNylonEndpoint().GetWgEndpoint(n.Device))
 			}
-			//if nhNeigh.Id == "melon" {
-			//	for _, link := range links {
-			//		fmt.Printf("link: %s, %d\n", link.NetworkEndpoint().Ep, link.Metric())
-			//	}
-			//}
 		}
 
 		// add endpoint if it is not in the list

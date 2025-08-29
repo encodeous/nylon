@@ -1,13 +1,13 @@
 package core
 
 import (
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/protocol"
-	"github.com/encodeous/nylon/state"
-	"github.com/jellydator/ttlcache/v3"
 	"net"
 	"time"
+
+	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/state"
+	"github.com/jellydator/ttlcache/v3"
 )
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
@@ -26,18 +26,14 @@ func (n *Nylon) Init(s *state.State) error {
 	s.Log.Debug("init nylon")
 
 	// add neighbours
-	for _, peer := range s.GetPeers() {
+	for _, peer := range s.GetPeers(s.Id) {
 		if !s.IsRouter(peer) {
 			continue
 		}
 		stNeigh := &state.Neighbour{
 			Id:     peer,
-			Routes: make(map[state.NodeId]state.PubRoute),
-			Eps:    make([]*state.DynamicEndpoint, 0),
-			IO: state.IOPending{
-				SeqnoReq: make(map[state.Source]struct{}),
-				Updates:  make(map[state.NodeId]*protocol.Ny_Update),
-			},
+			Routes: make(map[state.Source]state.NeighRoute),
+			Eps:    make([]state.Endpoint, 0),
 		}
 		cfg := s.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {
@@ -54,7 +50,6 @@ func (n *Nylon) Init(s *state.State) error {
 	go n.PingBuf.Start()
 
 	s.Env.RepeatTask(nylonGc, state.GcDelay)
-	//s.Env.RepeatTask(otelUpdate, state.OtelDelay)
 
 	// wireguard configuration
 	err := n.initWireGuard(s)

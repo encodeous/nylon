@@ -1,44 +1,93 @@
 package state
 
 import (
-	"github.com/encodeous/nylon/protocol"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
 type NodeId string
 
-type IOPending struct {
-	SeqnoReq map[Source]struct{}
-	Updates  map[NodeId]*protocol.Ny_Update
+// ServiceId maps to a real network prefix
+type ServiceId string
+
+// Source is a pair of a router-id and a prefix (Babel Section 2.7). In this case, we use a service identifier
+type Source struct {
+	NodeId
+	ServiceId
+}
+
+func (s Source) String() string {
+	return fmt.Sprintf("(router: %s, svc: %s)", s.NodeId, s.ServiceId)
+}
+
+type Advertisement struct {
+	NodeId
+	Expiry time.Time
+}
+type RouterState struct {
+	Id         NodeId
+	Seqno      uint16
+	Routes     map[ServiceId]SelRoute
+	Sources    map[Source]FD
+	Neighbours []*Neighbour
+	// Advertised is a map tracking the service id and the time it will be advertised until
+	Advertised map[ServiceId]Advertisement
+	// DisableRouting indicates that this node should not route traffic for other nodes
+	DisableRouting bool
+}
+
+func (s *RouterState) StringRoutes() string {
+	buf := make([]string, 0)
+	for svc, route := range s.Routes {
+		buf = append(buf, fmt.Sprintf("%s via %s", svc, route))
+	}
+	slices.Sort(buf)
+	return strings.Join(buf, "\n")
 }
 
 type Neighbour struct {
 	Id     NodeId
-	Routes map[NodeId]PubRoute
-	Eps    []*DynamicEndpoint
-	IO     IOPending
+	Routes map[Source]NeighRoute
+	Eps    []Endpoint
 }
 
-type Source struct {
-	Id    NodeId
-	Seqno uint16 // Sequence Number
+type FD struct {
+	Seqno  uint16
+	Metric uint16
 }
 
 type PubRoute struct {
-	Src           Source
-	PubMetric     uint16
-	Retracted     bool
-	LastPublished time.Time
+	Source
+	// FD will depend on which table the route is in. In the neighbour table,
+	// it represents the metric advertised by the neighbour.
+	// In the selected route table, it represents the metric that
+	// the route will be advertised with.
+	FD
 }
 
-type Route struct {
+func (r PubRoute) String() string {
+	return fmt.Sprintf("(router: %s, svc: %s, seqno: %d, metric: %d)", r.NodeId, r.ServiceId, r.Seqno, r.Metric)
+}
+
+type NeighRoute struct {
 	PubRoute
-	Fd uint16 // feasibility distance
-	Nh NodeId // next hop node
+	ExpireAt time.Time // when the route expires
 }
 
-func (s *State) GetNeighbour(node NodeId) *Neighbour {
+type SelRoute struct {
+	PubRoute
+	Nh          NodeId    // next hop node
+	ExpireAt    time.Time // when the route expires
+	RetractedBy []NodeId
+}
+
+func (r SelRoute) String() string {
+	return fmt.Sprintf("(nh: %s, router: %s, svc: %s, seqno: %d, metric: %d)", r.Nh, r.NodeId, r.ServiceId, r.Seqno, r.Metric)
+}
+
+func (s *RouterState) GetNeighbour(node NodeId) *Neighbour {
 	nIdx := slices.IndexFunc(s.Neighbours, func(neighbour *Neighbour) bool {
 		return neighbour.Id == node
 	})

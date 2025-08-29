@@ -6,7 +6,9 @@ func TestGetNeighbour(t *testing.T) {
 	n1 := &Neighbour{Id: "node1"}
 	n2 := &Neighbour{Id: "node2"}
 	st := &State{
-		Neighbours: []*Neighbour{n1, n2},
+		RouterState: &RouterState{
+			Neighbours: []*Neighbour{n1, n2},
+		},
 	}
 
 	if got := st.GetNeighbour("node1"); got != n1 {
