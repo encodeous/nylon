@@ -52,6 +52,11 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		sb.WriteString("Neighbours:\n")
 		for _, n := range s.Neighbours {
 			sb.WriteString(fmt.Sprintf(" - %s\n", n.Id))
+			met := state.INF
+			if n.BestEndpoint() != nil {
+				met = n.BestEndpoint().Metric()
+			}
+			sb.WriteString(fmt.Sprintf("   Metric: %d\n", met))
 			sb.WriteString(fmt.Sprintf("   Published Routes:\n"))
 			rt := make([]string, 0)
 			if len(n.Routes) == 0 {
