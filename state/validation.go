@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -57,6 +58,14 @@ func NodeConfigValidator(node *LocalCfg) error {
 	return nil
 }
 
+func AddrToPrefix(addr netip.Addr) netip.Prefix {
+	res, err := addr.Prefix(addr.BitLen())
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
 func CentralConfigValidator(cfg *CentralCfg) error {
 	nodes := make([]string, 0)
 	for _, node := range cfg.Routers {
@@ -84,19 +93,40 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		return err
 	}
 
-	//prefixes := make([]netip.Prefix, 0)
+	prefixes := make([]netip.Prefix, 0)
 
-	// ensure prefixes do not overlap
-	//for _, node := range cfg.Routers {
-	//	for _, prefix := range node.Prefixes {
-	//		for _, oPrefix := range prefixes {
-	//			if oPrefix.Overlaps(prefix) {
-	//				return fmt.Errorf("node %s's prefix %s overlaps with existing prefix %s", node, oPrefix.String(), prefix.String())
-	//			}
-	//		}
-	//		prefixes = append(prefixes, prefix)
-	//	}
-	//}
+	//ensure prefixes of services do not overlap
+	for svc, prefix := range cfg.Services {
+		if slices.Contains(nodes, string(svc)) {
+			return fmt.Errorf("service id %s conflicts with a node id", svc)
+		}
+		if slices.Contains(prefixes, prefix) {
+			return fmt.Errorf("service %s's prefix %s is identical to an existing prefix", svc, prefix.String())
+		}
+		prefixes = append(prefixes, prefix)
+	}
+
+	// ensure the current node contains unique services
+	for _, router := range cfg.Routers {
+		svc := make(map[ServiceId]struct{})
+		for _, s := range router.Services {
+			if _, ok := svc[s]; ok {
+				return fmt.Errorf("router %s has duplicate service %s", router.Id, s)
+			}
+			svc[s] = struct{}{}
+		}
+		for _, p := range cfg.GetPeers(router.Id) {
+			if cfg.IsClient(p) {
+				client := cfg.GetClient(p)
+				for _, cs := range client.Services {
+					if _, ok := svc[cs]; ok {
+						return fmt.Errorf("router %s has duplicate service %s (provided by client %s)", router.Id, cs, client.Id)
+					}
+					svc[cs] = struct{}{}
+				}
+			}
+		}
+	}
 
 	if cfg.Dist != nil {
 		// validate repos
@@ -107,15 +137,5 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			}
 		}
 	}
-
-	for domain, node := range cfg.Hosts {
-		if !slices.Contains(nodes, node) {
-			return fmt.Errorf("destination node %s not found for %s. nodes: %v", node, domain, nodes)
-		}
-		if slices.Contains(nodes, domain) {
-			return fmt.Errorf("domain name %s cannot be the same name as node %s", domain, node)
-		}
-	}
-
 	return nil
 }

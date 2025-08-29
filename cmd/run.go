@@ -1,15 +1,16 @@
 package cmd
 
 import (
-	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/state"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"runtime/trace"
+
+	"github.com/encodeous/nylon/core"
+	"github.com/encodeous/nylon/state"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 import _ "net/http/pprof" // remove in stable version of nylon
@@ -70,6 +71,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+		state.ExpandCentralConfig(&centralCfg)
 		err = state.NodeConfigValidator(&nodeCfg)
 		if err != nil {
 			panic(err)
@@ -96,7 +98,6 @@ func init() {
 
 	runCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
 	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "lprobe", "p", false, "Write probes to console")
-	runCmd.Flags().BoolVarP(&state.DBG_log_router, "lroute", "r", false, "Write router updates to console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "lwg", "w", false, "Outputs wireguard logs to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")

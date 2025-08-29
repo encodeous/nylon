@@ -1,22 +1,24 @@
 package core
 
 import (
-	"github.com/encodeous/nylon/state"
 	"reflect"
+
+	"github.com/encodeous/nylon/state"
 )
 
 func AddMetric(a, b uint16) uint16 {
 	if a == state.INF || b == state.INF {
 		return state.INF
 	} else {
-		return uint16(min(int64(state.INF-1), int64(a)+int64(b)))
+		return uint16(min(uint32(state.INFM), uint32(a)+uint32(b)))
 	}
 }
 
 func SeqnoLt(a, b uint16) bool {
-	x := (b - a + 63336) % 63336
+	x := b - a
 	return 0 < x && x < 32768
 }
+
 func SeqnoLe(a, b uint16) bool {
 	return a == b || SeqnoLt(a, b)
 }
@@ -27,24 +29,14 @@ func SeqnoGe(a, b uint16) bool {
 	return !SeqnoLt(a, b)
 }
 
-func IsFeasible(curRoute *state.Route, newRoute state.PubRoute, metric uint16) bool {
-	if SeqnoLt(newRoute.Src.Seqno, curRoute.Src.Seqno) {
-		return false
-	}
-
-	if metric == state.INF {
-		return false
-	}
-
-	if metric < curRoute.Fd ||
-		SeqnoLt(curRoute.Src.Seqno, newRoute.Src.Seqno) ||
-		(metric == curRoute.Fd && (curRoute.PubMetric == state.INF || curRoute.Retracted)) {
-		return true
-	}
-	return false
-}
-
 func Get[T state.NyModule](s *state.State) T {
 	t := reflect.TypeFor[T]()
 	return s.Modules[t.String()].(T)
+}
+
+func abs(a int) int {
+	if a < 0 {
+		return -a
+	}
+	return a
 }

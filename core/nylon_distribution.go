@@ -2,12 +2,14 @@ package core
 
 import (
 	"errors"
-	"github.com/encodeous/nylon/state"
-	"gopkg.in/yaml.v3"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+
+	"github.com/encodeous/nylon/state"
+	"gopkg.in/yaml.v3"
 )
 
 // responsible for central config distribution
@@ -67,7 +69,7 @@ func checkForConfigUpdates(s *state.State) error {
 				err:
 					s.Updating.Store(false)
 				} else if state.DBG_log_repo_updates {
-					e.Log.Debug("found old update bundle, skipping")
+					e.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo.String()))
 				}
 				return nil
 			}()

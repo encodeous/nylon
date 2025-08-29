@@ -2,15 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/state"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"log/slog"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/encodeous/nylon/state"
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var newCmd = &cobra.Command{
@@ -114,8 +114,8 @@ var clientCmd = &cobra.Command{
 			sb.WriteString("Endpoint = <specify endpoint>\n")
 		}
 		allowedIps := make([]string, 0)
-		for _, node := range centralCfg.GetNodes() {
-			allowedIps = append(allowedIps, core.AddrToPrefix(node.Address).String())
+		for _, prefix := range centralCfg.Services {
+			allowedIps = append(allowedIps, prefix.String())
 		}
 		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n\n", strings.Join(allowedIps, ", ")))
 

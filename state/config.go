@@ -9,9 +9,10 @@ import (
 )
 
 type NodeCfg struct {
-	Id      NodeId
-	PubKey  NyPublicKey
-	Address netip.Addr
+	Id       NodeId
+	PubKey   NyPublicKey
+	Address  netip.Addr
+	Services []ServiceId `yaml:",omitempty"`
 }
 
 // RouterCfg represents a central representation of a node that can route
@@ -34,7 +35,15 @@ type CentralCfg struct {
 	Clients   []ClientCfg
 	Graph     []string
 	Timestamp int64
-	Hosts     map[string]string `yaml:",omitempty"`
+	Services  map[ServiceId]netip.Prefix
+}
+
+func (c *CentralCfg) RegisterService(svcId ServiceId, prefix netip.Prefix) ServiceId {
+	if c.Services == nil {
+		c.Services = make(map[ServiceId]netip.Prefix)
+	}
+	c.Services[svcId] = prefix
+	return svcId
 }
 
 func (c *CentralCfg) GetNodes() []NodeCfg {
@@ -61,21 +70,6 @@ type LocalCfg struct {
 	NoNetConfigure   bool `yaml:",omitempty"`
 	InterfaceName    string
 	LogPath          string
-}
-
-func (n LocalCfg) NewRouterCfg(extIp netip.Addr, port uint16, nylonIp netip.Addr) RouterCfg {
-	extDp := netip.AddrPortFrom(extIp, port)
-	cfg := RouterCfg{
-		NodeCfg: NodeCfg{
-			Id:      n.Id,
-			Address: nylonIp,
-		},
-		Endpoints: []netip.AddrPort{
-			extDp,
-		},
-	}
-	cfg.PubKey = n.Key.Pubkey()
-	return cfg
 }
 
 func parseSymbolList(s string, validSymbols []string) ([]string, error) {
@@ -281,21 +275,7 @@ func MakeSortedPair[T cmp.Ordered](a, b T) Pair[T, T] {
 	}
 }
 
-func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
-	for _, n := range e.Routers {
-		if n.PubKey == pkey {
-			return &n.Id
-		}
-	}
-	for _, n := range e.Clients {
-		if n.PubKey == pkey {
-			return &n.Id
-		}
-	}
-	return nil
-}
-
-func (e *Env) GetPeers() []NodeId {
+func (e *CentralCfg) GetPeers(curId NodeId) []NodeId {
 	allNodes := make([]string, 0)
 	for _, node := range e.Routers {
 		allNodes = append(allNodes, string(node.Id))
@@ -310,17 +290,43 @@ func (e *Env) GetPeers() []NodeId {
 	nodes := make([]NodeId, 0)
 	for _, edge := range graph {
 		var neighNode NodeId
-		if edge.V1 == e.Id {
+		if edge.V1 == curId {
 			neighNode = edge.V2
 		}
-		if edge.V2 == e.Id {
+		if edge.V2 == curId {
 			neighNode = edge.V1
 		}
-		if neighNode != e.Id && neighNode != "" {
+		if neighNode != curId && neighNode != "" {
 			nodes = append(nodes, neighNode)
 		}
 	}
 	return nodes
+}
+
+func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
+	for _, n := range e.Routers {
+		if n.PubKey == pkey {
+			return &n.Id
+		}
+	}
+	for _, n := range e.Clients {
+		if n.PubKey == pkey {
+			return &n.Id
+		}
+	}
+	return nil
+}
+
+func ExpandCentralConfig(cfg *CentralCfg) {
+	// compatibility & convenience: add a default service for a node
+	for idx, node := range cfg.Routers {
+		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		cfg.Routers[idx] = node
+	}
+	for idx, node := range cfg.Clients {
+		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		cfg.Clients[idx] = node
+	}
 }
 
 func (e *CentralCfg) IsRouter(node NodeId) bool {
@@ -374,6 +380,10 @@ func (e *CentralCfg) GetRouter(node NodeId) RouterCfg {
 	}
 
 	return e.Routers[idx]
+}
+
+func (e *CentralCfg) GetSvcPrefix(svc ServiceId) netip.Prefix {
+	return e.Services[svc]
 }
 
 func (e *CentralCfg) GetClient(node NodeId) ClientCfg {

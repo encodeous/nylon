@@ -7,6 +7,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math/rand/v2"
+	"net"
+	"net/netip"
+	"runtime/pprof"
+	"slices"
+	"sync"
+	"time"
+
 	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/conn/bindtest"
@@ -14,13 +23,6 @@ import (
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/polyamide/tun/tuntest"
 	"github.com/encodeous/nylon/state"
-	"log/slog"
-	"math/rand/v2"
-	"net"
-	"net/netip"
-	"slices"
-	"sync"
-	"time"
 )
 
 type Signal chan bool
@@ -127,9 +129,11 @@ func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
-			Id:      id,
-			PubKey:  privKey.Pubkey(),
-			Address: netip.MustParsePrefix(virtPrefix).Addr(),
+			Id:     id,
+			PubKey: privKey.Pubkey(),
+			Services: []state.ServiceId{
+				v.Central.RegisterService(state.ServiceId(id), netip.MustParsePrefix(virtPrefix)),
+			},
 		},
 	}
 	v.Central.Routers = append(v.Central.Routers, ncfg)
@@ -172,20 +176,23 @@ func (v *VirtualHarness) Start() chan error {
 		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, netip.MustParseAddrPort(e))
 	}
 	startDelay := 0 * time.Millisecond
-	for idx, _ := range v.Central.Routers {
+	for idx, rt := range v.Central.Routers {
 		sd := startDelay
 		go func() {
 			time.Sleep(sd)
-			restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
-				"vnet": vn,
-			}, &v.States[idx])
-			if cErr != nil {
-				errChan <- cErr
-				return
-			}
-			if restart {
-				panic(fmt.Sprintf("node restart is not implemented"))
-			}
+			labels := pprof.Labels("nylon node", string(rt.Id))
+			pprof.Do(context.Background(), labels, func(_ context.Context) {
+				restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
+					"vnet": vn,
+				}, &v.States[idx])
+				if cErr != nil {
+					errChan <- cErr
+					return
+				}
+				if restart {
+					panic(fmt.Sprintf("node restart is not implemented"))
+				}
+			})
 		}()
 		startDelay += time.Millisecond * 500 // add a tiny delay so they don't try to handshake at the exact same time
 	}
@@ -244,9 +251,18 @@ type InMemoryNetwork struct {
 }
 
 func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
-	if i.cfg.Central.GetNode(node).Address == dst || pkt[8] == 0 { // handle self if ttl is 0 as well
+	curCfg := i.cfg.Central.GetNode(node)
+	if pkt[8] == 0 { // handle self if ttl is 0 as well
 		if i.SelfHandler.TryApply(node, src, dst, data) {
 			return true
+		}
+	}
+	for _, svc := range curCfg.Services {
+		prefix := i.cfg.Central.GetSvcPrefix(svc)
+		if prefix.Contains(dst) {
+			if i.SelfHandler.TryApply(node, src, dst, data) {
+				return true
+			}
 		}
 	}
 	curIdx := i.cfg.IndexOf(node)
@@ -257,13 +273,17 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			if node == n.Id {
 				continue
 			}
-			if n.Address == dst {
-				select {
-				case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
-					return true
-				default:
-					fmt.Printf("%s's tun is not ready to accept data\n", n.Id)
-					return true
+			for _, p := range n.Services {
+				prefix := i.cfg.Central.GetSvcPrefix(p)
+				if prefix.Contains(dst) {
+					// route to this node
+					select {
+					case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide
+						return true
+					default:
+						fmt.Printf("%s's tun is not ready to accept data\n", n.Id)
+						return true
+					}
 				}
 			}
 		}
