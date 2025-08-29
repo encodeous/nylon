@@ -18,11 +18,11 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 	h := &RouterHarness{}
 	rs := state.RouterState{
 		Id:         "a",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("b", "c", "d"),
-		Advertised: map[state.ServiceId]state.Advertisement{"a": {state.NodeId("a"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"a": {state.NodeId("a"), maxTime, false}},
 	}
 	ComputeRoutes(&rs, h)
 	// we should have only routes to ourselves
@@ -50,11 +50,11 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	sr := AddLink(rs, NewMockEndpoint("S", 1))
@@ -147,11 +147,11 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "S",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("A", "B"),
-		Advertised: map[state.ServiceId]state.Advertisement{"S": {state.NodeId("S"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"S": {state.NodeId("S"), maxTime, false}},
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
@@ -249,11 +249,11 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -325,11 +325,11 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -403,11 +403,11 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -499,11 +499,11 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -578,11 +578,11 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -641,11 +641,11 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 	h := &RouterHarness{}
 	rs := &state.RouterState{
 		Id:         "A",
-		Seqno:      0,
+		SelfSeqno:  make(map[state.ServiceId]uint16),
 		Routes:     make(map[state.ServiceId]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime}},
+		Advertised: map[state.ServiceId]state.Advertisement{"A": {state.NodeId("A"), maxTime, false}},
 	}
 
 	AB := AddLink(rs, NewMockEndpoint("B", 1))

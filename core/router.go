@@ -162,7 +162,7 @@ func (r *NylonRouter) Init(s *state.State) error {
 	r.ForwardTable = bart.Table[RouteTableEntry]{}
 	s.RouterState = &state.RouterState{
 		Id:             s.Env.LocalCfg.Id,
-		Seqno:          0,
+		SelfSeqno:      make(map[state.ServiceId]uint16),
 		Routes:         make(map[state.ServiceId]state.SelRoute),
 		Sources:        make(map[state.Source]state.FD),
 		Neighbours:     make([]*state.Neighbour, 0),
@@ -171,7 +171,7 @@ func (r *NylonRouter) Init(s *state.State) error {
 	}
 	maxTime := time.Unix(1<<63-62135596801, 999999999)
 	for _, svc := range s.Env.GetRouter(s.Id).Services {
-		s.RouterState.Advertised[svc] = state.Advertisement{NodeId: s.Id, Expiry: maxTime}
+		s.RouterState.Advertised[svc] = state.Advertisement{NodeId: s.Id, Expiry: maxTime, IsPassiveHold: false}
 	}
 
 	s.Log.Debug("schedule router tasks")
@@ -189,12 +189,21 @@ func (r *NylonRouter) Init(s *state.State) error {
 	return nil
 }
 
-func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId, node state.NodeId) {
+func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId, node state.NodeId, passiveHold bool) {
 	// inserts an artificial route into the table
 	s.Advertised[client] = state.Advertisement{
-		NodeId: node,
-		Expiry: time.Now().Add(state.ClientKeepaliveInterval),
+		NodeId:        node,
+		Expiry:        time.Now().Add(state.ClientKeepaliveInterval),
+		IsPassiveHold: passiveHold,
 	}
+}
+
+func (r *NylonRouter) hasRecentlyAdvertised(svc state.ServiceId) bool {
+	adv, ok := r.RouterState.Advertised[svc]
+	if !ok {
+		return false
+	}
+	return time.Now().Before(adv.Expiry)
 }
 
 func checkNeigh(s *state.State, id state.NodeId) bool {
