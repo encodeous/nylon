@@ -149,6 +149,30 @@ func RunGC(s *state.RouterState, r Router) {
 		}
 	}
 
+	// if no route table contains a source, remove it from the source table
+	for src := range s.Sources {
+		found := false
+		for _, neigh := range s.Neighbours {
+			if _, ok := neigh.Routes[src]; ok {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if selRoute, ok := s.Routes[src.ServiceId]; ok && selRoute.Source == src {
+				found = true
+			}
+		}
+		if !found {
+			if adv, ok := s.Advertised[src.ServiceId]; ok && adv.NodeId == src.NodeId {
+				found = true
+			}
+		}
+		if !found {
+			delete(s.Sources, src)
+		}
+	}
+
 	// Re-run route selection
 	ComputeRoutes(s, r)
 }
