@@ -309,7 +309,7 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 	a.AssertContains(t, "ACK_RETRACT", state.NodeId("B"), state.ServiceId("D"))
 
 	// D via C is feasible as C advertises D with a cost of 1, which is less than B's 2
-	assert.Equal(t, uint16(4), rs.Routes["D"].Metric)
+	assert.Equal(t, uint32(4), rs.Routes["D"].Metric)
 }
 
 func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
@@ -368,8 +368,8 @@ X via (nh: S, router: S, svc: X, seqno: 0, metric: 1)`, rs.StringRoutes())
 	RemoveLink(rs, SA)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 65535)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, svc: S, seqno: 0, metric: 4294967295)
+BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 4294967295)`, a.String())
 	HandleAckRetract(rs, h, "B", "S")
 	HandleAckRetract(rs, h, "B", "X")
 	ComputeRoutes(rs, h)
@@ -387,7 +387,7 @@ BROADCAST_UPDATE_ROUTE (router: S, svc: X, seqno: 0, metric: 65535)`, a.String()
 	a = h.GetActions()
 	assert.Equal(t, `ACK_RETRACT B D
 ACK_RETRACT B X
-BROADCAST_UPDATE_ROUTE (router: D, svc: X, seqno: 0, metric: 65535)`, a.String())
+BROADCAST_UPDATE_ROUTE (router: D, svc: X, seqno: 0, metric: 4294967295)`, a.String())
 }
 
 func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
@@ -616,9 +616,9 @@ D via (nh: B, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 
 	RunGC(rs, h) // expired routes are not held, so we do not need to wait for retraction ACK
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 65535)
-BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 65535)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 4294967295)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 4294967295)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 4294967295)`, a.String())
 
 	RunGC(rs, h)
 	for _, neigh := range rs.Neighbours {
@@ -716,16 +716,17 @@ B via (nh: B, router: B, svc: B, seqno: 0, metric: 1)
 C via (nh: C, router: C, svc: C, seqno: 0, metric: 2)
 D via (nh: C, router: D, svc: D, seqno: 0, metric: 3)`, rs.StringRoutes())
 
-	// Now, AC degrades to 10000, and AB degrades to 12000
-	AC.metric = 10000
-	AB.metric = 12000
+	// Now, AC degrades to 10000000, and AB degrades to 12000000
+	AC.metric = 10_000_000
+	AB.metric = 12_000_000
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 12000)
-BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 10000)
-BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 10001)`, a.String())
+	// this is a significant change, so we should broadcast
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, svc: B, seqno: 0, metric: 12000000)
+BROADCAST_UPDATE_ROUTE (router: C, svc: C, seqno: 0, metric: 10000000)
+BROADCAST_UPDATE_ROUTE (router: D, svc: D, seqno: 0, metric: 10000001)`, a.String())
 	assert.Equal(t, `A via (nh: A, router: A, svc: A, seqno: 0, metric: 0)
-B via (nh: B, router: B, svc: B, seqno: 0, metric: 12000)
-C via (nh: C, router: C, svc: C, seqno: 0, metric: 10000)
-D via (nh: C, router: D, svc: D, seqno: 0, metric: 10001)`, rs.StringRoutes())
+B via (nh: B, router: B, svc: B, seqno: 0, metric: 12000000)
+C via (nh: C, router: C, svc: C, seqno: 0, metric: 10000000)
+D via (nh: C, router: D, svc: D, seqno: 0, metric: 10000001)`, rs.StringRoutes())
 }

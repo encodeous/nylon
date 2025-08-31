@@ -20,7 +20,7 @@ func ConfigureConstants() {
 
 type MockEndpoint struct {
 	node   state.NodeId
-	metric uint16
+	metric uint32
 	active bool
 	remote bool
 }
@@ -30,10 +30,10 @@ func (m MockEndpoint) Node() state.NodeId {
 }
 
 func (m MockEndpoint) UpdatePing(ping time.Duration) {
-	m.metric = min(uint16(ping.Microseconds()/100), state.INF) // convert to multiples of 100 microseconds
+	m.metric = min(uint32(ping.Microseconds()), state.INF)
 }
 
-func (m MockEndpoint) Metric() uint16 {
+func (m MockEndpoint) Metric() uint32 {
 	return m.metric
 }
 
@@ -49,7 +49,7 @@ func (m MockEndpoint) AsNylonEndpoint() *state.NylonEndpoint {
 	panic("MockEndpoint is not a NylonEndpoint")
 }
 
-func NewMockEndpoint(node state.NodeId, metric uint16) *MockEndpoint {
+func NewMockEndpoint(node state.NodeId, metric uint32) *MockEndpoint {
 	return &MockEndpoint{
 		node:   node,
 		metric: metric,
@@ -182,7 +182,7 @@ func MakeNeighbours(ids ...state.NodeId) []*state.Neighbour {
 	return neighs
 }
 
-func MakePubRoute(nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint16) state.PubRoute {
+func MakePubRoute(nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint32) state.PubRoute {
 	return state.PubRoute{
 		Source: state.Source{
 			nodeId, svc,
@@ -217,10 +217,10 @@ func RemoveLink(r *state.RouterState, ep state.Endpoint) {
 	}
 }
 
-func (h *RouterHarness) NeighUpdate(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, seqno uint16, metric uint16) {
+func (h *RouterHarness) NeighUpdate(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, seqno uint16, metric uint32) {
 	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, state.ServiceId(nodeId), seqno, metric))
 }
 
-func (h *RouterHarness) NeighUpdateSvc(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint16) {
+func (h *RouterHarness) NeighUpdateSvc(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint32) {
 	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, svc, seqno, metric))
 }

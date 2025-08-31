@@ -3,14 +3,14 @@ package state
 import "time"
 
 const (
-	INF = (uint16)(65535)
+	INF = ^(uint32)(0)
 	// INFM is the maximum value for a metric that is not a retraction.
-	INFM = (uint16)(65535 - 1)
+	INFM = INF - 1
 )
 
 var (
-	HopCost               = (uint16)(5)    // add a 500 microsecond hop cost to prevent loops on ultra-fast networks.
-	LargeChangeThreshold  = (uint16)(1000) // 100 milliseconds change
+	HopCost               = (uint32)(5)          // add a 5 microsecond hop cost to prevent loops on ultra-fast networks.
+	LargeChangeThreshold  = (uint32)(100 * 1000) // 100 milliseconds change
 	SeqnoRequestHopCount  = (uint8)(64)
 	RouteUpdateDelay      = time.Second * 5
 	ProbeDelay            = time.Millisecond * 1000

@@ -68,7 +68,7 @@ type Neighbour struct {
 
 type FD struct {
 	Seqno  uint16
-	Metric uint16
+	Metric uint32
 }
 
 type PubRoute struct {
