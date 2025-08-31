@@ -14,7 +14,7 @@ import (
 type Endpoint interface {
 	Node() NodeId
 	UpdatePing(ping time.Duration)
-	Metric() uint16
+	Metric() uint32
 	IsRemote() bool
 	IsActive() bool
 	AsNylonEndpoint() *NylonEndpoint
@@ -149,12 +149,12 @@ func (u *NylonEndpoint) UpdatePing(ping time.Duration) {
 	u.dirty = true
 }
 
-func (u *NylonEndpoint) Metric() uint16 {
+func (u *NylonEndpoint) Metric() uint32 {
 	// if link is dead, return INF
 	if !u.IsActive() {
 		return INF
 	}
-	return uint16(min(u.StabilizedPing().Microseconds()/100, int64(INF)-1))
+	return uint32(min(u.StabilizedPing().Microseconds(), int64(INF)-1))
 }
 
 func (u *NylonEndpoint) IsRemote() bool {

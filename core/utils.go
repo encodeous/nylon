@@ -6,11 +6,11 @@ import (
 	"github.com/encodeous/nylon/state"
 )
 
-func AddMetric(a, b uint16) uint16 {
+func AddMetric(a, b uint32) uint32 {
 	if a == state.INF || b == state.INF {
 		return state.INF
 	} else {
-		return uint16(min(uint32(state.INFM), uint32(a)+uint32(b)))
+		return uint32(min(uint64(state.INFM), uint64(a)+uint64(b)))
 	}
 }
 

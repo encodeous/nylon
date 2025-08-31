@@ -51,7 +51,7 @@ func (r *NylonRouter) SendRouteUpdate(neigh state.NodeId, advRoute state.PubRout
 		RouterId:  string(advRoute.NodeId),
 		ServiceId: string(advRoute.ServiceId),
 		Seqno:     uint32(advRoute.Seqno),
-		Metric:    uint32(advRoute.Metric),
+		Metric:    advRoute.Metric,
 	}
 }
 
@@ -247,7 +247,7 @@ func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol
 		},
 		FD: state.FD{
 			Seqno:  uint16(update.Seqno),
-			Metric: uint16(update.Metric),
+			Metric: update.Metric,
 		},
 	})
 	return nil
