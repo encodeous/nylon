@@ -32,8 +32,8 @@ var (
 	RouteExpiryTime   = 5 * RouteUpdateDelay
 
 	// client configuration
-	ClientKeepaliveInterval = 25 * time.Second
-	ClientDeadThreshold     = 3 * ClientKeepaliveInterval
+	ClientKeepaliveInterval = 3 * ProbeDelay
+	ClientDeadThreshold     = 2 * ClientKeepaliveInterval
 
 	// central updates
 	CentralUpdateDelay = time.Second * 10
