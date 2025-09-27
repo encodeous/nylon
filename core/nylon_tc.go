@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	NyProtoId  = 8
-	NyPriority = 10
+	NyProtoId = 8
 )
 
 // polyamide traffic control for nylon
