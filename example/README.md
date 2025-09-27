@@ -1,0 +1,105 @@
+## Simple Network
+
+Here, we will set up a simple network consisting of 5 nodes.
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice --- |1| bob
+```
+
+*Here, the number on the edges represent some network Metric, usually latency.*
+
+Notice that the network does not need to be fully connected for Nylon function! Each nylon node is capable of forwarding packets to its neighbours (can also be disabled in config).
+
+### Installing
+
+... TBA
+
+### Setting up the network
+
+On every node, run `./nylon new <node-name>`. This will create the file `node.yaml`. The output of this command is the public key of the node. Take note of this, as we will need paste it into the `pubkey` field of every node.
+
+Now, on every node, copy the same `central.yaml` file. It should look similar to this:
+```yaml
+routers:
+  - id: alice
+    pubkey: afIhSoe95Fr5plativMyZL3QZslSHOBl8GWIKeqw7kg=
+    address: 10.0.0.1
+  - id: bob
+    pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
+    address: 10.0.0.2
+    endpoints:
+      - '192.168.1.1:57175'
+  - id: eve
+    pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
+    address: 10.0.0.3
+  - id: public
+    pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
+    address: 10.0.0.4
+    endpoints:
+      - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
+      - '123.123.123.124:57175'
+  - id: charlie
+    pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
+    address: 10.0.0.5
+graph:
+  - InternetAccess = charlie, eve, alice # groups charlie, eve, and alice which all have internet access together
+  - vps, InternetAccess # connects the group InternetAccess with the node vps
+  - bob, eve
+  - bob, alice
+```
+
+You can now sync this file across all the nodes using `rsync` or any other method you prefer. Nylon comes with a built-in way to update the central config automatically, but you will need to set up the network first.
+
+Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try to reach out to neighbours with published endpoints, and pick the most optimal endpoint (e.g we might have a public ip and a LAN ip).
+
+### Running the network
+
+Before running Nylon, make sure to open UDP port `57175` so that Nylon can communicate. Without further to do, simply run `./nylon run` (more privileges may be required).
+
+After a while, you will notice that the network has converged!
+
+For our toy example, if we observe from node `alice`, our packet forwarding graph will look like this:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    bob --> |1| eve
+    alice --> |1| bob
+```
+
+Nylon will ensure packets get delivered through the path of least metric, currently, this means latency.
+
+### Fault recovery
+
+What happens if one of our links go down? Nylon can handle it!
+
+For example, we will disconnect `alice` and `bob`:
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice -.- bob
+```
+
+After a few moments, the network will automatically reconfigure itself. If we observe from `alice` again, our forwarding graph will look like:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    vps --> |5| eve
+    eve --> |1| bob
+```
+
+Currently, Nylon is tuned to react quickly to network degradation, but converge comparably slower. This is to reduce potential fluctuations in the network.
+
+Happy Networking!
