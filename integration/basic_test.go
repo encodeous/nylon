@@ -3,18 +3,16 @@
 package integration
 
 import (
-	"github.com/encodeous/nylon/state"
-	"go.uber.org/goleak"
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/encodeous/nylon/state"
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
 	state.DBG_log_wireguard = true
-	state.DBG_log_route_table = true
-	state.DBG_log_route_changes = true
-	//state.DBG_log_probe = true
 	m.Run()
 }
 

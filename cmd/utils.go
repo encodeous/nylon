@@ -3,44 +3,60 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"maps"
 	"os"
 	"runtime/debug"
-	"slices"
-	"strings"
 
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
-var genKey = false
+var genKeyCmd = &cobra.Command{
+	Use:   "genkey",
+	Short: "Generates a new Nylon private key.",
+	Run: func(cmd *cobra.Command, args []string) {
+		privKey := state.GenerateKey()
+		privKeyStr, err := privKey.MarshalText()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(privKeyStr))
+	},
+	GroupID: "init",
+}
+
+var pubKeyCmd = &cobra.Command{
+	Use:   "pubkey",
+	Short: "Derives the public key from a provided private key.",
+	Run: func(cmd *cobra.Command, args []string) {
+		in := bufio.NewReader(os.Stdin)
+		ln, err := in.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		privKey := state.NyPrivateKey{}
+		err = privKey.UnmarshalText([]byte(ln))
+		if err != nil {
+			panic(err)
+		}
+		pubKeyStr, err := privKey.Pubkey().MarshalText()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(pubKeyStr))
+	},
+	GroupID: "init",
+}
 
 var keyCmd = &cobra.Command{
 	Use:   "key",
 	Short: "Generates a new Nylon Keypair. Outputs Private Key to stdout, Public Key to Stderr.",
 	Run: func(cmd *cobra.Command, args []string) {
-		privKey := state.NyPrivateKey{}
-		if !genKey {
-			in := bufio.NewReader(os.Stdin)
-			ln, err := in.ReadString('\n')
-			if err != nil {
-				panic(err)
-			}
-
-			err = privKey.UnmarshalText([]byte(ln))
-			if err != nil {
-				return
-			}
-		} else {
-			privKey = state.GenerateKey()
-			privKeyStr, err := privKey.MarshalText()
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(string(privKeyStr))
+		privKey := state.GenerateKey()
+		privKeyStr, err := privKey.MarshalText()
+		if err != nil {
+			panic(err)
 		}
-
+		fmt.Println(string(privKeyStr))
 		pubKeyStr, err := privKey.Pubkey().MarshalText()
 		_, err = fmt.Fprintln(os.Stderr, string(pubKeyStr))
 		if err != nil {
@@ -48,39 +64,6 @@ var keyCmd = &cobra.Command{
 		}
 	},
 	GroupID: "init",
-}
-
-var hostsCmd = &cobra.Command{
-	Use:   "hosts",
-	Short: "Generates a static hosts override for hosts on the network",
-	Run: func(cmd *cobra.Command, args []string) {
-		cfgFile, err := os.ReadFile(cmd.Flag("config").Value.String())
-		if err != nil {
-			panic(err)
-		}
-		cfg := state.CentralCfg{}
-		err = yaml.Unmarshal(cfgFile, &cfg)
-		if err != nil {
-			panic(err)
-		}
-		state.ExpandCentralConfig(&cfg)
-		hosts := make(map[string][]string)
-		for domain, prefix := range cfg.Services {
-			primaryIp := prefix.Addr().String()
-			hosts[primaryIp] = append(hosts[primaryIp], string(domain))
-		}
-		sb := strings.Builder{}
-		for _, ip := range slices.Sorted(maps.Keys(hosts)) {
-			sb.WriteString(ip)
-			domains := hosts[ip]
-			for _, domain := range slices.Sorted(slices.Values(domains)) {
-				sb.WriteString(fmt.Sprintf("\t%s", domain))
-			}
-			sb.WriteString("\n")
-		}
-		fmt.Print(sb.String())
-	},
-	GroupID: "cfg",
 }
 
 var versionCmd = &cobra.Command{
@@ -98,11 +81,12 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(hostsCmd)
-	hostsCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
+	// wireguard-style key generation
+	rootCmd.AddCommand(genKeyCmd)
+	rootCmd.AddCommand(pubKeyCmd)
 
+	// combined key generation and pubkey derivation
 	rootCmd.AddCommand(keyCmd)
-	keyCmd.Flags().BoolVarP(&genKey, "gen", "g", false, "generate a new keypair")
 
 	rootCmd.AddCommand(versionCmd)
 }
