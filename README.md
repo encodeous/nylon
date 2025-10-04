@@ -1,6 +1,6 @@
 # Nylon
 
-Nylon is a [Resilient Overlay Network](https://dl.acm.org/doi/10.1145/502034.502048) built on top of WireGuard, designed to be performant, secure, reliable, and most importantly, easy to use.
+Nylon is a [Resilient Overlay Network](https://dl.acm.org/doi/10.1145/502034.502048) forked from WireGuard, designed to be performant, secure, reliable, and most importantly, easy to use.
 
 <details>
 
