@@ -104,4 +104,5 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_trace, "dbg-trace", "", false, "Enables trace to trace.out")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")
+	runCmd.Flags().StringP("log", "l", "", "Path to the log file (overrides config)")
 }
