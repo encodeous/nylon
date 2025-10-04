@@ -19,7 +19,7 @@ import _ "net/http/pprof" // remove in stable version of nylon
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run nylon",
-	Long:  `This will run nylon on the current host. Ensure it has enough permissions to interact with in-kernel WireGuard.`,
+	Long:  `This will run nylon`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if state.DBG_trace {
 			f, err := os.Create("trace.out")
@@ -97,14 +97,11 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	runCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
-	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "lprobe", "p", false, "Write probes to console")
-	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "lwg", "w", false, "Outputs wireguard logs to the console")
-	runCmd.Flags().BoolVarP(&state.DBG_log_route_table, "ltable", "t", false, "Outputs route table to the console")
-	runCmd.Flags().BoolVarP(&state.DBG_log_route_changes, "lrchange", "g", false, "Outputs route changes to the console")
-	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "lrepo", "", false, "Outputs repo updates to the console")
-	runCmd.Flags().BoolVarP(&state.DBG_pprof, "prof", "", false, "Enables pprof on port 6060")
-	runCmd.Flags().BoolVarP(&state.DBG_trace, "trace", "", false, "Enables trace to trace.out")
-	runCmd.Flags().String("log", DefaultLogPath, "Log file path")
+	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "dbg-probe", "p", false, "Write probes to console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "dbg-wg", "w", false, "Outputs wireguard logs to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "dbg-repo", "", false, "Outputs repo updates to the console")
+	runCmd.Flags().BoolVarP(&state.DBG_pprof, "dbg-pprof", "", false, "Enables pprof on port 6060")
+	runCmd.Flags().BoolVarP(&state.DBG_trace, "dbg-trace", "", false, "Enables trace to trace.out")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")
 }

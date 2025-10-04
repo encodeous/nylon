@@ -3,12 +3,14 @@ dist:
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
   # Nylon will frequently check these repos/files for updates
   repos:
-    - file:central.nybundle
-    - https://static.example.com/network1.nybundle
+    - file:central.nybundle # use local file system
+    - https://static.example.com/network1.nybundle # GET from a server
 routers:
   - id: alice
     pubkey: xmfAovAKN4AY5ocK5s+/VsG9I27KrQ13Vzb0HOsLKAs==
-    address: 10.0.0.1
+    address: 10.0.0.1 # this is the primary address of the node within the Nylon network
+    services:
+      - some-dns-server
   - id: bob
     pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
     address: 10.0.0.2
@@ -17,26 +19,29 @@ routers:
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
     address: 10.0.0.3
+    services:
+      - linux-machine # This node will provide the "linux-machine" service defined below
   - id: public
     pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
     address: 10.0.0.4
     endpoints:
       - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
       - '123.123.123.124:57175'
+    services:
+      - some-dns-server
   - id: charlie
     pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
     address: 10.0.0.5
-clients:
+clients: # external "vanilla" WireGuard clients must be defined separately
   - id: client1
     pubkey: SBI+yvF30Ba4xo0GKTtKHSSfbXAnRNFTBwydJyJp6Rk=
     address: 10.0.0.7
 graph: # The graph determines which nodes will attempt/can peer with each other. Nodes will only connect to each other once they have been connected directly in the graph.
   - Group1 = alice, bob # Groups are a convenient way to connect many nodes. Nodes within groups are not automatically connected
   - Group1, Group1 # You can emulate that behaviour by connecting a group to its self
-  - Group2 = Group1, client1 # You can use groups within groups, just make sure there are no cycles
-  # - Bad = Bad, bob
-  - client1, eve, alice # You can interconnect multiple nodes at the same time
+  - Group2 = Group1, client1 # You can use groups within groups
+  - client1, eve, alice # Here, client1, eve and alice will all connect to each other
+services: # service can be mapped to multiple nodes, using anycast (based on lowest latency)
+  linux-machine: 10.0.1.1/32 # here "linux-machine" is unicast, as only eve provides it
+  some-dns-server: 6.6.6.6/32
 timestamp: 1740832962209309000 # The timestamp is updated by "./nylon seal" and is used as a version number when checking for config updates.
-# Here is a list of domain name overrides that Nylon considers when running the "./nylon hosts" command.
-hosts:
-  nylon.encodeous.ca: public

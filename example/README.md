@@ -1,105 +1,43 @@
-## Simple Network
+# Nylon Setup
 
-Here, we will set up a simple network consisting of 5 nodes.
+#### Node Setup
+On every node, copy the `sample-node.yaml`, and fill in the relevant details. run `./nylon key` to generate the keypair. The first key printed (stdout) is the private key, and the second key printed (stderr) is the public key. Fill the private key in the node config, and put the public key in the central config later.
 
-```mermaid
-graph LR
-    vps --- |2| charlie
-    vps --- |2| alice
-    eve --- |1| bob
-    vps --- |5| eve
-    alice --- |1| bob
-```
+#### Distribution
+(Optional) To setup key distribution, you can also generate a keypair. Save the private key into `central.key` (this will be used by `nylon seal`). You can put the public key into the central config under `dist/key`.
 
-*Here, the number on the edges represent some network Metric, usually latency.*
+> [!IMPORTANT]
+> Do not share this **public** key with anyone outside the network, as it can be used to decrypt the central config. Leaking this public key will compromise the confidentiality of your network topology, but it will not compromise the security of the network itself.
 
-Notice that the network does not need to be fully connected for Nylon function! Each nylon node is capable of forwarding packets to its neighbours (can also be disabled in config).
+If you run `nylon seal` on the central config, it will encrypt and sign the config using this public key. You may then distribute the sealed config to any http server, S3 bucket, etc (which supports GET), and put the URL in the node config under `dist/url`. Nylon will automatically download and verify the config before starting up. The config is versioned with a timestamp.
 
-### Installing
+#### Central Config
 
-... TBA
+You can modify the `sample-central.yaml` to define your network topology. Here are a few things you should configure **for each node**:
+- `id`: A unique identifier for the node, this will also be used as a service id for the node.
+- `pubkey`: The public key of the node, used to identify the node in the network, and to encrypt traffic to the node.
+- `endpoints`: A list of endpoints that the node can be reached at (whether over LAN or internet). Each endpoint should be in the format of `host:port`. You can specify multiple endpoints for a node, and Nylon will automatically pick the best one to use.
+- `address`: The primary IP address of the node in the Nylon network.
+- `services`: An additional list of services that the node provides. This is used to define other addresses associated with the node, and to allow anycast routing. Multiple nodes can provide the same service, and Nylon will automatically route to the nearest one. Each service should have a unique `id`, and an `address`, which is declared at the end of the file.
 
-### Setting up the network
+> [!NOTE]
+> **Difference between routers and clients:**
+> - A router is an active nylon node that participates in routing, and can forward packets to other nodes. Routers should have at least one endpoint that is reachable by other nodes.
+> - A client is a vanilla WireGuard client that does not participate in routing, and must connect through a router. Clients should not have any endpoints.
 
-On every node, run `./nylon new <node-name>`. This will create the file `node.yaml`. The output of this command is the public key of the node. Take note of this, as we will need paste it into the `pubkey` field of every node.
+You must declare a graph, which defines your network topology. Each edge in the graph represents a bidirectional link between two nodes. You may simply connect every node to every other node, but this is always not necessary.
 
-Now, on every node, copy the same `central.yaml` file. It should look similar to this:
-```yaml
-routers:
-  - id: alice
-    pubkey: afIhSoe95Fr5plativMyZL3QZslSHOBl8GWIKeqw7kg=
-    address: 10.0.0.1
-  - id: bob
-    pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
-    address: 10.0.0.2
-    endpoints:
-      - '192.168.1.1:57175'
-  - id: eve
-    pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
-    address: 10.0.0.3
-  - id: public
-    pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
-    address: 10.0.0.4
-    endpoints:
-      - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
-      - '123.123.123.124:57175'
-  - id: charlie
-    pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
-    address: 10.0.0.5
-graph:
-  - InternetAccess = charlie, eve, alice # groups charlie, eve, and alice which all have internet access together
-  - vps, InternetAccess # connects the group InternetAccess with the node vps
-  - bob, eve
-  - bob, alice
-```
+Now, on every node, copy the same `central.yaml` file.
 
-You can now sync this file across all the nodes using `rsync` or any other method you prefer. Nylon comes with a built-in way to update the central config automatically, but you will need to set up the network first.
+You can now sync this file across all the nodes using `scp` or any other method you prefer.
 
 Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try to reach out to neighbours with published endpoints, and pick the most optimal endpoint (e.g we might have a public ip and a LAN ip).
 
 ### Running the network
 
-Before running Nylon, make sure to open UDP port `57175` so that Nylon can communicate. Without further to do, simply run `./nylon run` (more privileges may be required).
+Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further to do, simply run `./nylon run` (you may need CAP_NET_ADMIN or sudo).
 
-After a while, you will notice that the network has converged!
+After a while (5-10 seconds), you will notice that the network has converged!
 
-For our toy example, if we observe from node `alice`, our packet forwarding graph will look like this:
-
-```mermaid
-graph LR
-    vps --> |2| charlie
-    alice --> |2| vps
-    bob --> |1| eve
-    alice --> |1| bob
-```
-
-Nylon will ensure packets get delivered through the path of least metric, currently, this means latency.
-
-### Fault recovery
-
-What happens if one of our links go down? Nylon can handle it!
-
-For example, we will disconnect `alice` and `bob`:
-
-```mermaid
-graph LR
-    vps --- |2| charlie
-    vps --- |2| alice
-    eve --- |1| bob
-    vps --- |5| eve
-    alice -.- bob
-```
-
-After a few moments, the network will automatically reconfigure itself. If we observe from `alice` again, our forwarding graph will look like:
-
-```mermaid
-graph LR
-    vps --> |2| charlie
-    alice --> |2| vps
-    vps --> |5| eve
-    eve --> |1| bob
-```
-
-Currently, Nylon is tuned to react quickly to network degradation, but converge comparably slower. This is to reduce potential fluctuations in the network.
-
-Happy Networking!
+> [!TIP]
+> You can check the status of the node by running `./nylon i <interface_name>`. This will show you the current routing table, peers, and other useful information.

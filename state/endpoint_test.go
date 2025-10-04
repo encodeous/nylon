@@ -1,21 +1,13 @@
 package state
 
 import (
-	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/stretchr/testify/assert"
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/vg"
 	"math"
 	"math/rand/v2"
 	"net/netip"
 	"testing"
 	"time"
-)
 
-import (
-	"image/color"
+	"github.com/stretchr/testify/assert"
 )
 
 type DataSource struct {
@@ -23,41 +15,41 @@ type DataSource struct {
 	Data []time.Duration
 }
 
-func generateMultiLinePlot(dataSources []DataSource, title string) (*plot.Plot, error) {
-	p := plot.New()
-
-	p.Title.Text = title
-	p.X.Label.Text = "Sample #"
-	p.Y.Label.Text = "Duration (ms)"
-
-	// Define a color palette for the lines
-	colors := []color.Color{
-		color.RGBA{R: 255, G: 0, B: 0, A: 255},   // Red
-		color.RGBA{R: 0, G: 0, B: 255, A: 255},   // Blue
-		color.RGBA{R: 0, G: 255, B: 0, A: 255},   // Green
-		color.RGBA{R: 255, G: 0, B: 255, A: 255}, // Magenta
-		color.RGBA{R: 0, G: 255, B: 255, A: 255}, // Cyan
-	}
-
-	for i, ds := range dataSources {
-		points := make(plotter.XYs, len(ds.Data))
-		for j, d := range ds.Data {
-			points[j].X = float64(j)
-			points[j].Y = float64(d.Milliseconds())
-		}
-
-		line, err := plotter.NewLine(points)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create line for %s: %v", ds.Name, err)
-		}
-
-		line.Color = colors[i%len(colors)] // Cycle through colors
-		p.Add(line)
-		p.Legend.Add(ds.Name, line)
-	}
-
-	return p, nil
-}
+//func generateMultiLinePlot(dataSources []DataSource, title string) (*plot.Plot, error) {
+//	p := plot.New()
+//
+//	p.Title.Text = title
+//	p.X.Label.Text = "Sample #"
+//	p.Y.Label.Text = "Duration (ms)"
+//
+//	// Define a color palette for the lines
+//	colors := []color.Color{
+//		color.RGBA{R: 255, G: 0, B: 0, A: 255},   // Red
+//		color.RGBA{R: 0, G: 0, B: 255, A: 255},   // Blue
+//		color.RGBA{R: 0, G: 255, B: 0, A: 255},   // Green
+//		color.RGBA{R: 255, G: 0, B: 255, A: 255}, // Magenta
+//		color.RGBA{R: 0, G: 255, B: 255, A: 255}, // Cyan
+//	}
+//
+//	for i, ds := range dataSources {
+//		points := make(plotter.XYs, len(ds.Data))
+//		for j, d := range ds.Data {
+//			points[j].X = float64(j)
+//			points[j].Y = float64(d.Milliseconds())
+//		}
+//
+//		line, err := plotter.NewLine(points)
+//		if err != nil {
+//			return nil, fmt.Errorf("failed to create line for %s: %v", ds.Name, err)
+//		}
+//
+//		line.Color = colors[i%len(colors)] // Cycle through colors
+//		p.Add(line)
+//		p.Legend.Add(ds.Name, line)
+//	}
+//
+//	return p, nil
+//}
 
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
@@ -101,15 +93,15 @@ func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn str
 		}
 	}
 
-	dataSources := []DataSource{truth, high, low, filtered, stabilized}
+	//dataSources := []DataSource{truth, high, low, filtered, stabilized}
 
-	p, err := generateMultiLinePlot(dataSources, "Comparison of ping and stabilized ping")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := p.Save(8*vg.Inch, 6*vg.Inch, spew.Sprintf("method_comparison_%s.png", fn)); err != nil {
-		t.Fatalf("Failed to save plot: %v", err)
-	}
+	//p, err := generateMultiLinePlot(dataSources, "Comparison of ping and stabilized ping")
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//if err := p.Save(8*vg.Inch, 6*vg.Inch, spew.Sprintf("method_comparison_%s.png", fn)); err != nil {
+	//	t.Fatalf("Failed to save plot: %v", err)
+	//}
 
 	return truth, stabilized
 }

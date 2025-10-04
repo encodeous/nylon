@@ -44,3 +44,64 @@ You can download the latest release binary from the [releases page](https://gith
 
 For a more in-depth example, please refer to the [example/README.md](example/README.md).
 
+## Conceptual Overview
+
+In this section, we will go over some basic concepts of how Nylon works, and how it can recover from network failures.
+
+Here, we have a network of 5 nodes, visualized as the following graph:
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice --- |1| bob
+```
+
+*the number on the edges represent some network Metric, nylon will use latency.*
+
+> [!NOTE]
+> Notice that the network does not need to be fully connected for Nylon function! Each nylon node is capable of forwarding packets to its neighbours (can also be disabled in config).
+
+
+For our toy example, if we observe from node `alice`, our packet forwarding graph will look like this:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    bob --> |1| eve
+    alice --> |1| bob
+```
+
+Nylon will ensure packets get delivered through the path of least metric!
+
+### Fault recovery
+
+What happens if one of our links go down? Nylon can handle it!
+
+For example, we will disconnect `alice` and `bob`:
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice -.- bob
+```
+
+After a few moments, the network will automatically reconfigure itself. If we observe from `alice` again, our forwarding graph will look like:
+
+```mermaid
+graph LR
+    vps --> |2| charlie
+    alice --> |2| vps
+    vps --> |5| eve
+    eve --> |1| bob
+```
+
+Nylon is tuned to react quickly to network degradation, but converge comparably slower. This is to reduce potential fluctuations in the network.
+
+Happy Networking!
