@@ -74,8 +74,8 @@ func (n *Nylon) Init(s *state.State) error {
 	}
 
 	// check for central config updates
-	if s.Dist != nil {
-		for _, repo := range s.Dist.Repos {
+	if s.CentralCfg.Dist != nil {
+		for _, repo := range s.CentralCfg.Dist.Repos {
 			s.Log.Info("config source", "repo", repo)
 		}
 		s.Env.RepeatTask(checkForConfigUpdates, state.CentralUpdateDelay)
