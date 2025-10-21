@@ -29,6 +29,11 @@ type DistributionCfg struct {
 	Repos []string
 }
 
+type LocalDistributionCfg struct {
+	Key NyPublicKey
+	Url string
+}
+
 type CentralCfg struct {
 	Dist      *DistributionCfg `yaml:",omitempty"`
 	Routers   []RouterCfg
@@ -65,6 +70,7 @@ type LocalCfg struct {
 	Id  NodeId
 	// Address that the data plane can be accessed by
 	Port             uint16
+	Dist             *LocalDistributionCfg `yaml:",omitempty"`
 	DisableRouting   bool
 	UseSystemRouting bool
 	NoNetConfigure   bool `yaml:",omitempty"`

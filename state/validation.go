@@ -55,6 +55,12 @@ func NodeConfigValidator(node *LocalCfg) error {
 			return fmt.Errorf("interface name is invalid: %v", err)
 		}
 	}
+	if node.Dist != nil {
+		_, err := url.Parse(node.Dist.Url)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
