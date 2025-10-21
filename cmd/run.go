@@ -46,11 +46,39 @@ var runCmd = &cobra.Command{
 		var centralCfg state.CentralCfg
 		file, err := os.ReadFile(centralPath)
 		if err != nil {
-			panic(err)
-		}
-		err = yaml.Unmarshal(file, &centralCfg)
-		if err != nil {
-			panic(err)
+			if !os.IsNotExist(err) {
+				panic(err)
+			}
+			var nodeCfg state.LocalCfg
+			file, err = os.ReadFile(nodePath)
+			if err != nil {
+				panic(err)
+			}
+			err = yaml.Unmarshal(file, &nodeCfg)
+			if err != nil {
+				panic(err)
+			}
+			if nodeCfg.Dist == nil {
+				panic("central.yaml not found and node.yaml has no dist config")
+			}
+			cfg, err := core.FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key)
+			if err != nil {
+				panic(err)
+			}
+			bytes, err := yaml.Marshal(cfg)
+			if err != nil {
+				panic(err)
+			}
+			err = os.WriteFile(centralPath, bytes, 0700)
+			if err != nil {
+				panic(err)
+			}
+			centralCfg = *cfg
+		} else {
+			err = yaml.Unmarshal(file, &centralCfg)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		var nodeCfg state.LocalCfg
