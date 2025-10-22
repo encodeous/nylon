@@ -3,19 +3,147 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path"
 	"reflect"
 	"runtime"
+	"runtime/trace"
 	"syscall"
 	"time"
 
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	slogmulti "github.com/samber/slog-multi"
+	"gopkg.in/yaml.v3"
 )
+
+func setupDebugging() {
+	if state.DBG_trace {
+		f, err := os.Create("trace.out")
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = trace.Start(f)
+		defer trace.Stop()
+		if err != nil {
+			return
+		}
+		log.Println("Started tracing")
+	}
+	if state.DBG_pprof {
+		go func() {
+			log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+		}()
+	}
+}
+
+func readCentralConfig(centralPath, nodePath string) (*state.CentralCfg, error) {
+	var centralCfg state.CentralCfg
+
+	file, err := os.ReadFile(centralPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		// fallback to using dist from node config
+
+		var nodeCfg state.LocalCfg
+
+		file, err = os.ReadFile(nodePath)
+		if err != nil {
+			return nil, fmt.Errorf("central.yaml not found and failed to read node.yaml: %w", err)
+		}
+
+		err = yaml.Unmarshal(file, &nodeCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		if nodeCfg.Dist == nil {
+			return nil, fmt.Errorf("central.yaml not found and node.yaml has no dist config")
+		}
+
+		cfg, err := FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key)
+		if err != nil {
+			return nil, err
+		}
+
+		bytes, err := yaml.Marshal(cfg)
+		if err != nil {
+			return nil, err
+		}
+		err = os.WriteFile(centralPath, bytes, 0700)
+		if err != nil {
+			return nil, err
+		}
+
+		centralCfg = *cfg
+	} else {
+		err = yaml.Unmarshal(file, &centralCfg)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &centralCfg, nil
+}
+
+func readNodeConfig(nodePath string) (*state.LocalCfg, error) {
+	var nodeCfg state.LocalCfg
+	file, err := os.ReadFile(nodePath)
+	if err != nil {
+		return nil, err
+	}
+	err = yaml.Unmarshal(file, &nodeCfg)
+	if err != nil {
+		return nil, err
+	}
+	return &nodeCfg, nil
+}
+
+// Bootstrap manages the lifetime of the whole application. Nylon may be restarted multiple times, but Bootstrap is only called once.
+func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
+	setupDebugging()
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+
+	for {
+		centralCfg, err := readCentralConfig(centralPath, nodePath)
+		if err != nil {
+			panic(err)
+		}
+		nodeCfg, err := readNodeConfig(nodePath)
+		if err != nil {
+			panic(err)
+		}
+		if logPath != "" {
+			nodeCfg.LogPath = logPath
+		}
+
+		err = state.CentralConfigValidator(centralCfg)
+		if err != nil {
+			panic(err)
+		}
+		state.ExpandCentralConfig(centralCfg)
+		err = state.NodeConfigValidator(nodeCfg)
+		if err != nil {
+			panic(err)
+		}
+		restart, err := Start(*centralCfg, *nodeCfg, level, centralPath, nil, nil)
+		if err != nil {
+			panic(err)
+		}
+		if !restart {
+			break
+		}
+	}
+}
 
 func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initState **state.State) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
