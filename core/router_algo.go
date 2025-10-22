@@ -24,6 +24,8 @@ const (
 const (
 	RouteChanged RouterEvent = iota + 2000
 	RouteExpired
+	RoutePushed
+	RouteStarved
 )
 
 // Router is an interface that defines the underlying router operations
@@ -130,13 +132,13 @@ func RunGC(s *state.RouterState, r Router) {
 				if route.Metric == state.INF {
 					// route expired and is INF, delete it
 					delete(neigh.Routes, src)
-					r.Log(RouteExpired, "route expired and removed", "neigh", neigh.Id, "src", src)
+					r.Log(RouteExpired, "expired and removed", "neigh", neigh.Id, "src", src)
 				} else {
 					// route expired, set metric to INF
 					route.Metric = state.INF
 					route.ExpireAt = time.Now().Add(state.RouteExpiryTime) // reset expiry time
 					neigh.Routes[src] = route                              // update the route
-					r.Log(RouteExpired, "route expired and marked", "neigh", neigh.Id, "src", src)
+					r.Log(RouteExpired, "expired and marked", "neigh", neigh.Id, "src", src)
 				}
 			}
 		}
@@ -571,10 +573,10 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		oldRoute, exists := s.Routes[svc]
 		if !exists {
 			r.TableInsertRoute(svc, newRoute)
-			r.Log(RouteChanged, "route inserted", "svc", svc, "new", newRoute)
+			r.Log(RouteChanged, "inserted", "svc", svc, "new", newRoute)
 		} else if oldRoute.Nh != newRoute.Nh {
 			r.TableInsertRoute(svc, newRoute)
-			r.Log(RouteChanged, "route updated", "svc", svc, "old", oldRoute, "new", newRoute)
+			r.Log(RouteChanged, "updated", "svc", svc, "old", oldRoute, "new", newRoute)
 		}
 		if !exists ||
 			oldRoute.Source.NodeId != newRoute.Source.NodeId ||
@@ -582,6 +584,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(state.LargeChangeThreshold) && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
+			r.Log(RoutePushed, "major change", "svc", svc, "old", oldRoute, "new", newRoute)
 			r.BroadcastSendRouteUpdate(newRoute.PubRoute)
 		}
 	}
@@ -594,7 +597,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			if oldRoute.Metric != state.INF {
 				retract(s, r, svc)
 				r.TableDeleteRoute(svc)
-				r.Log(RouteChanged, "route retracted", "svc", svc, "old", oldRoute)
+				r.Log(RouteChanged, "retracted", "svc", svc, "old", oldRoute)
 			}
 		}
 	}
@@ -646,6 +649,7 @@ func SolveStarvation(router *state.RouterState, r Router) {
 	for src, feasible := range isFeasible {
 		if !feasible && src.NodeId != router.Id {
 			r.BroadcastRequestSeqno(src, router.Sources[src].Seqno+1, state.SeqnoRequestHopCount)
+			r.Log(RouteStarved, "requested seqno", "src", src, "seqno", router.Sources[src].Seqno+1)
 		}
 	}
 

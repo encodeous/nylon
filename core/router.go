@@ -95,7 +95,7 @@ func (r *NylonRouter) BroadcastRequestSeqno(src state.Source, seqno uint16, hopC
 }
 
 func (r *NylonRouter) Log(event RouterEvent, desc string, args ...any) {
-	r.Env.Log.Warn(fmt.Sprintf("%d %s", event, desc), args...)
+	r.Env.Log.Debug(fmt.Sprintf("%s %s", event.String(), desc), args...)
 }
 
 func (r *NylonRouter) UpdateNeighbour(neigh state.NodeId) {
@@ -191,6 +191,19 @@ func (r *NylonRouter) Init(s *state.State) error {
 
 func (r *NylonRouter) updatePassiveClient(s *state.State, client state.ServiceId, node state.NodeId, passiveHold bool) {
 	// inserts an artificial route into the table
+
+	hasPassiveHold := false
+	old, ok := s.RouterState.Advertised[client]
+	if ok && old.NodeId == node {
+		hasPassiveHold = old.IsPassiveHold
+	}
+
+	if passiveHold && !hasPassiveHold {
+		// the first time we enter passive hold, we should increment the seqno to prevent other nodes from switching away from the route
+		// this reduces a lot of route flapping when the client wakes up, sends some traffic and then goes back to sleep
+		r.SetSeqno(client, s.RouterState.GetSeqno(client)+1)
+	}
+
 	s.Advertised[client] = state.Advertisement{
 		NodeId:        node,
 		Expiry:        time.Now().Add(state.ClientKeepaliveInterval),

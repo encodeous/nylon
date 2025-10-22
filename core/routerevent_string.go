@@ -12,16 +12,18 @@ func _() {
 	_ = x[NoEpToNeighbour-1001]
 	_ = x[RouteChanged-2000]
 	_ = x[RouteExpired-2001]
+	_ = x[RoutePushed-2002]
+	_ = x[RouteStarved-2003]
 }
 
 const (
 	_RouterEvent_name_0 = "InconsistentStateNoEpToNeighbour"
-	_RouterEvent_name_1 = "RouteChangedRouteExpired"
+	_RouterEvent_name_1 = "RouteChangedRouteExpiredRoutePushedRouteStarved"
 )
 
 var (
 	_RouterEvent_index_0 = [...]uint8{0, 17, 32}
-	_RouterEvent_index_1 = [...]uint8{0, 12, 24}
+	_RouterEvent_index_1 = [...]uint8{0, 12, 24, 35, 47}
 )
 
 func (i RouterEvent) String() string {
@@ -29,7 +31,7 @@ func (i RouterEvent) String() string {
 	case 1000 <= i && i <= 1001:
 		i -= 1000
 		return _RouterEvent_name_0[_RouterEvent_index_0[i]:_RouterEvent_index_0[i+1]]
-	case 2000 <= i && i <= 2001:
+	case 2000 <= i && i <= 2003:
 		i -= 2000
 		return _RouterEvent_name_1[_RouterEvent_index_1[i]:_RouterEvent_index_1[i+1]]
 	default:
