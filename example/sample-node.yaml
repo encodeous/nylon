@@ -6,6 +6,6 @@ usesystemrouting: false # Default: false - if enabled, Nylon will use the system
 logpath: "" # Default: "" - If set, Nylon will log to this file
 interfacename: "" # Default: "" - If set, Nylon will use this interface name instead of the default "nylon" or utunx on macOS
 disablerouting: false # Default: false - If true, Nylon will not route traffic through this node
-dist: # Optional: If set, Nylon will bootstrap central.yaml from this URL on first run
+dist: # Optional: If set, Nylon will bootstrap central.yaml from this URL if it does not exist already
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
