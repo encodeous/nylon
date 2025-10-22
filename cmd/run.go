@@ -1,16 +1,9 @@
 package cmd
 
 import (
-	"log"
-	"log/slog"
-	"net/http"
-	"os"
-	"runtime/trace"
-
 	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/state"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 import _ "net/http/pprof" // remove in stable version of nylon
@@ -21,102 +14,16 @@ var runCmd = &cobra.Command{
 	Short: "Run nylon",
 	Long:  `This will run nylon`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if state.DBG_trace {
-			f, err := os.Create("trace.out")
-			if err != nil {
-				log.Fatal(err)
-			}
-			err = trace.Start(f)
-			defer trace.Stop()
-			if err != nil {
-				return
-			}
-			log.Println("Started tracing")
-		}
-		if state.DBG_pprof {
-			go func() {
-				log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-			}()
-		}
-
 		centralPath := cmd.Flag("config").Value.String()
 		nodePath := cmd.Flag("node").Value.String()
 		logPath := cmd.Flag("log").Value.String()
-	start:
-		var centralCfg state.CentralCfg
-		file, err := os.ReadFile(centralPath)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				panic(err)
-			}
-			var nodeCfg state.LocalCfg
-			file, err = os.ReadFile(nodePath)
-			if err != nil {
-				panic(err)
-			}
-			err = yaml.Unmarshal(file, &nodeCfg)
-			if err != nil {
-				panic(err)
-			}
-			if nodeCfg.Dist == nil {
-				panic("central.yaml not found and node.yaml has no dist config")
-			}
-			cfg, err := core.FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key)
-			if err != nil {
-				panic(err)
-			}
-			bytes, err := yaml.Marshal(cfg)
-			if err != nil {
-				panic(err)
-			}
-			err = os.WriteFile(centralPath, bytes, 0700)
-			if err != nil {
-				panic(err)
-			}
-			centralCfg = *cfg
-		} else {
-			err = yaml.Unmarshal(file, &centralCfg)
-			if err != nil {
-				panic(err)
-			}
-		}
 
-		var nodeCfg state.LocalCfg
-		file, err = os.ReadFile(nodePath)
-		if err != nil {
-			panic(err)
-		}
-		err = yaml.Unmarshal(file, &nodeCfg)
-		if err != nil {
-			panic(err)
-		}
-
-		if logPath != "" {
-			nodeCfg.LogPath = logPath
-		}
-
-		err = state.CentralConfigValidator(&centralCfg)
-		if err != nil {
-			panic(err)
-		}
-		state.ExpandCentralConfig(&centralCfg)
-		err = state.NodeConfigValidator(&nodeCfg)
-		if err != nil {
-			panic(err)
-		}
-
-		level := slog.LevelInfo
+		isVerbose := false
 		if ok, _ := cmd.Flags().GetBool("verbose"); ok {
-			level = slog.LevelDebug
+			isVerbose = true
 		}
 
-		restart, err := core.Start(centralCfg, nodeCfg, level, centralPath, nil, nil)
-		if err != nil {
-			panic(err)
-		}
-		if restart {
-			goto start
-		}
+		core.Bootstrap(centralPath, nodePath, logPath, isVerbose)
 	},
 	GroupID: "ny",
 }
