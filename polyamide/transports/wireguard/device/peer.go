@@ -135,30 +135,40 @@ func (peer *Peer) SendBuffers(buffers [][]byte, eps []conn.Endpoint) error {
 		for _, ep := range endpoints {
 			ep.ClearSrc()
 		}
+		for _, ep := range eps {
+			if ep != nil {
+				ep.ClearSrc()
+			}
+		}
 		peer.endpoints.clearSrcOnTx = false
 	}
 	peer.endpoints.Unlock()
 
-	// group by endpoints
-	bufByEp := make(map[conn.Endpoint][][]byte)
-	for i, buf := range buffers {
-		bufByEp[eps[i]] = append(bufByEp[eps[i]], buf)
+	// optimization, if multiple contiguous buffers share the same endpoint, send them in a single batch
+	prevIdx := 0
+	prevEp := eps[0]
+
+	var anyError error
+	for i := 0; i <= len(buffers); i++ {
+		if i == len(buffers) || eps[i] != prevEp {
+			// send batch from prevIdx to i-1
+			if prevEp == nil {
+				prevEp = endpoints[0] // default endpoint
+			}
+			err := peer.device.net.bind.Send(buffers[prevIdx:i], prevEp)
+			if err != nil {
+				anyError = err
+			}
+			prevIdx = i
+			if i < len(buffers) {
+				prevEp = eps[i]
+			}
+		}
 	}
 
 	var totalLen uint64
-	var anyError error
-	for ep, bufs := range bufByEp {
-		if ep == nil {
-			ep = endpoints[0] // default endpoint
-		}
-		err := peer.device.net.bind.Send(bufs, ep)
-		if err == nil {
-			for _, b := range bufs {
-				totalLen += uint64(len(b))
-			}
-		} else {
-			anyError = err
-		}
+	for _, b := range buffers {
+		totalLen += uint64(len(b))
 	}
 	peer.txBytes.Add(totalLen)
 	return anyError
