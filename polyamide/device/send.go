@@ -438,6 +438,54 @@ func (device *Device) RoutineEncryption(id int) {
 	}
 }
 
+/*
+This function arranges buffers and endpoints by endpoint, into contiguous
+segments of endpoints. It ensures that packets within the same endpoint group
+are stable-ordered.
+*/
+func partitionBuffersByEndpoint(bufs [][]byte, eps []conn.Endpoint, outBufs *[][]byte, outEps *[]conn.Endpoint, peer *Peer) error {
+	// use a naive O(n^2) algorithm since n is expected to be small
+
+	// replace nil endpoints with the first known endpoint
+	peer.endpoints.Lock()
+	for i := 0; i < len(eps); i++ {
+		if eps[i] == nil {
+			if len(peer.endpoints.val) == 0 {
+				peer.endpoints.Unlock()
+				return errors.New("no known endpoints for peer")
+			}
+			eps[i] = peer.endpoints.val[0]
+		}
+	}
+	peer.endpoints.Unlock()
+
+	for i := 0; i < len(bufs); i++ {
+		// If endpoint is nil, it has already been processed
+		// as part of an earlier group.
+		if eps[i] == nil {
+			continue
+		}
+
+		// This is the first item of a new group.
+		currentEp := eps[i]
+		*outBufs = append(*outBufs, bufs[i])
+		*outEps = append(*outEps, currentEp)
+		eps[i] = nil // Mark as visited
+
+		// Scan the rest of the array for other items in this group
+		for j := i + 1; j < len(bufs); j++ {
+			// Check if it's the same endpoint
+			if eps[j] == currentEp {
+				// It's part of the same group. Add it.
+				*outBufs = append(*outBufs, bufs[j])
+				*outEps = append(*outEps, currentEp)
+				eps[j] = nil // Mark as visited
+			}
+		}
+	}
+	return nil
+}
+
 func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 	device := peer.device
 	defer func() {
@@ -447,11 +495,15 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 	device.Log.Verbosef("%v - Routine: sequential sender - started", peer)
 
 	bufs := make([][]byte, 0, maxBatchSize)
+	parBufs := make([][]byte, 0, maxBatchSize)
 	eps := make([]conn.Endpoint, 0)
+	parEps := make([]conn.Endpoint, 0)
 
 	for elemsContainer := range peer.queue.outbound.c {
 		bufs = bufs[:0]
 		eps = eps[:0]
+		parBufs = parBufs[:0]
+		parEps = parEps[:0]
 		if elemsContainer == nil {
 			return
 		}
@@ -483,7 +535,12 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 		peer.timersAnyAuthenticatedPacketTraversal(false)
 		peer.timersAnyAuthenticatedPacketSent()
 
-		err := peer.SendBuffers(bufs, eps)
+		err := partitionBuffersByEndpoint(bufs, eps, &parBufs, &parEps, peer)
+		if err != nil {
+			device.Log.Errorf("%v - Failed to send data packets: %v", peer, err)
+			continue
+		}
+		err = peer.SendBuffers(parBufs, parEps)
 		if dataSent {
 			peer.timersDataSent()
 		}

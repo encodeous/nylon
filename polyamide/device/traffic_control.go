@@ -1,8 +1,9 @@
 package device
 
 import (
-	"github.com/encodeous/nylon/polyamide/conn"
 	"slices"
+
+	"github.com/encodeous/nylon/polyamide/conn"
 )
 
 // polyamide traffic control provides a facility to re-order, manipulate, and redirect packets between nylon/polyamide nodes
@@ -200,6 +201,7 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 				obe.packet = elem.Packet
 				obe.buffer = elem.Buffer
 				obec.elems = append(obec.elems, obe)
+				device.PutTCElement(elem)
 				elems[i] = nil
 			}
 			peer.StagePackets(obec)
