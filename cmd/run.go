@@ -35,7 +35,7 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_probe, "dbg-probe", "p", false, "Write probes to console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_wireguard, "dbg-wg", "w", false, "Outputs wireguard logs to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "dbg-repo", "", false, "Outputs repo updates to the console")
-	runCmd.Flags().BoolVarP(&state.DBG_pprof, "dbg-pprof", "", false, "Enables pprof on port 6060")
+	runCmd.Flags().BoolVarP(&state.DBG_debug, "dbg-perf", "", false, "Enables performance debugging server on port 6060")
 	runCmd.Flags().BoolVarP(&state.DBG_trace, "dbg-trace", "", false, "Enables trace to trace.out")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")

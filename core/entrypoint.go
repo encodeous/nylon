@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	slogmulti "github.com/samber/slog-multi"
@@ -35,7 +36,7 @@ func setupDebugging() {
 		}
 		log.Println("Started tracing")
 	}
-	if state.DBG_pprof {
+	if state.DBG_debug {
 		go func() {
 			log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 		}()
@@ -262,6 +263,7 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 				s.Cancel(err)
 			}
 			elapsed := time.Since(start)
+			perf.DispatchLatency.Add(float64(elapsed.Microseconds()))
 			if elapsed > time.Millisecond*4 {
 				s.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed, "len", len(dispatch))
 			}

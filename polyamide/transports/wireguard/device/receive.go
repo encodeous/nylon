@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/polyamide/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -445,6 +446,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		validTailPacket := -1
 		dataPacketReceived := false
 		rxBytesLen := uint64(0)
+		rxPkts := 0
 
 		for i, elem := range elemsContainer.elems {
 			if elem.packet == nil {
@@ -463,6 +465,7 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				peer.SendStagedPackets()
 			}
 			rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
+			rxPkts++
 
 			if len(elem.packet) == 0 {
 				device.Log.Verbosef("%v - Receiving keepalive packet", peer)
@@ -487,6 +490,8 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		tcBufs = tcBufs[:0]
 
 		peer.rxBytes.Add(rxBytesLen)
+		perf.RecvBytesPerSecond.Add(float64(rxBytesLen))
+		perf.RecvPacketPerSecond.Add(float64(rxPkts))
 		if validTailPacket >= 0 {
 			peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
 			peer.keepKeyFreshReceiving()

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/polyamide/conn"
 )
 
@@ -170,6 +171,8 @@ func (peer *Peer) SendBuffers(buffers [][]byte, eps []conn.Endpoint) error {
 	for _, b := range buffers {
 		totalLen += uint64(len(b))
 	}
+	perf.SentPacketPerSecond.Add(float64(len(buffers)))
+	perf.SentBytesPerSecond.Add(float64(totalLen))
 	peer.txBytes.Add(totalLen)
 	return anyError
 }
