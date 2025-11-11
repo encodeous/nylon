@@ -230,9 +230,7 @@ func (device *Device) RoutineReadFromTUN() {
 		bufs      = make([]*[MaxMessageSize]byte, batchSize)
 		count     = batchSize
 		sizes     = make([]int, batchSize)
-		tcBufs    = make([]*TCElement, 0, batchSize)
 		offset    = MessageTransportHeaderSize
-		tcs       = NewTCState()
 	)
 
 	for i := 0; i < batchSize; i++ {
@@ -249,16 +247,13 @@ func (device *Device) RoutineReadFromTUN() {
 			}
 			tce := device.GetTCElement()
 			tce.Buffer = bufs[i]
-			tcBufs = append(tcBufs, tce)
+
+			// pass to traffic control
+			device.TCProcess(tce)
 
 			bufs[i] = device.GetMessageBuffer()
 			rBufs[i] = bufs[i][:]
 		}
-
-		// pass to traffic control
-		device.TCBatch(tcBufs, tcs)
-
-		tcBufs = tcBufs[:0]
 
 		if readErr != nil {
 			if errors.Is(readErr, tun.ErrTooManySegments) {

@@ -112,9 +112,7 @@ func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint conn.End
 
 	// TODO: Optimize? is it worth it?
 
-	tcs := device.NewTCState()
-
-	n.Device.TCBatch([]*device.TCElement{tce}, tcs)
+	n.Device.TCProcess(tce)
 	return nil
 }
 

@@ -433,11 +433,6 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	}()
 	device.Log.Verbosef("%v - Routine: sequential receiver - started", peer)
 
-	var (
-		tcBufs = make([]*TCElement, 0, maxBatchSize)
-		tcs    = NewTCState()
-	)
-
 	for elemsContainer := range peer.queue.inbound.c {
 		if elemsContainer == nil {
 			return
@@ -481,13 +476,9 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			tce.FromEp = elem.endpoint
 			tce.FromPeer = peer
 
-			tcBufs = append(tcBufs, tce)
+			// pass to traffic control
+			device.TCProcess(tce)
 		}
-
-		// pass to traffic control
-		device.TCBatch(tcBufs, tcs)
-
-		tcBufs = tcBufs[:0]
 
 		peer.rxBytes.Add(rxBytesLen)
 		perf.RecvBytesPerSecond.Add(float64(rxBytesLen))
