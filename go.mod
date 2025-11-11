@@ -1,6 +1,6 @@
 module github.com/encodeous/nylon
 
-go 1.24.4
+go 1.25.1
 
 require (
 	github.com/encodeous/tint v1.2.0
@@ -25,7 +25,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/encodeous/metric v0.0.0-20251109204822-7c14a5a4eedb // indirect
+	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
