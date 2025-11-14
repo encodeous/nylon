@@ -23,6 +23,33 @@ func TestNameValidator_Invalid(t *testing.T) {
 	assert.Error(t, NameValidator(strings.Repeat("a", 200)))
 }
 
+func TestNodeConfigValidator_DnsResolver(t *testing.T) {
+	assert.NoError(t, NodeConfigValidator(&LocalCfg{
+		Id:          "valid-node",
+		Port:        5,
+		Key:         [32]byte{1},
+		DnsResolver: "1.1.1.1:53",
+	}))
+	assert.Error(t, NodeConfigValidator(&LocalCfg{
+		Id:          "invalid-node",
+		Port:        5,
+		Key:         [32]byte{1},
+		DnsResolver: "google.com",
+	}))
+	assert.Error(t, NodeConfigValidator(&LocalCfg{
+		Id:          "invalid-node",
+		Port:        5,
+		Key:         [32]byte{1},
+		DnsResolver: "google.com:53",
+	}))
+	assert.Error(t, NodeConfigValidator(&LocalCfg{
+		Id:          "invalid-node",
+		Port:        5,
+		Key:         [32]byte{1},
+		DnsResolver: "1.1.1.1",
+	}))
+}
+
 func TestCentralConfigValidator_OverlappingService(t *testing.T) {
 	cfg := &CentralCfg{
 		Services: map[ServiceId]netip.Prefix{

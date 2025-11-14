@@ -74,6 +74,7 @@ type LocalCfg struct {
 	DisableRouting   bool
 	UseSystemRouting bool
 	NoNetConfigure   bool `yaml:",omitempty"`
+	DnsResolvers     []string
 	InterfaceName    string
 	LogPath          string
 }
