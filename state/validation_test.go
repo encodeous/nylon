@@ -25,28 +25,33 @@ func TestNameValidator_Invalid(t *testing.T) {
 
 func TestNodeConfigValidator_DnsResolver(t *testing.T) {
 	assert.NoError(t, NodeConfigValidator(&LocalCfg{
-		Id:          "valid-node",
-		Port:        5,
-		Key:         [32]byte{1},
-		DnsResolver: "1.1.1.1:53",
+		Id:           "valid-node",
+		Port:         5,
+		Key:          [32]byte{1},
+		DnsResolvers: []string{"1.1.1.1:53"},
+	}))
+	assert.NoError(t, NodeConfigValidator(&LocalCfg{
+		Id:   "valid-node",
+		Port: 5,
+		Key:  [32]byte{1},
 	}))
 	assert.Error(t, NodeConfigValidator(&LocalCfg{
-		Id:          "invalid-node",
-		Port:        5,
-		Key:         [32]byte{1},
-		DnsResolver: "google.com",
+		Id:           "invalid-node",
+		Port:         5,
+		Key:          [32]byte{1},
+		DnsResolvers: []string{"google.com"},
 	}))
 	assert.Error(t, NodeConfigValidator(&LocalCfg{
-		Id:          "invalid-node",
-		Port:        5,
-		Key:         [32]byte{1},
-		DnsResolver: "google.com:53",
+		Id:           "invalid-node",
+		Port:         5,
+		Key:          [32]byte{1},
+		DnsResolvers: []string{"google.com:53"},
 	}))
 	assert.Error(t, NodeConfigValidator(&LocalCfg{
-		Id:          "invalid-node",
-		Port:        5,
-		Key:         [32]byte{1},
-		DnsResolver: "1.1.1.1",
+		Id:           "invalid-node",
+		Port:         5,
+		Key:          [32]byte{1},
+		DnsResolvers: []string{"1.1.1.1"},
 	}))
 }
 
