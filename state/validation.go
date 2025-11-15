@@ -61,6 +61,13 @@ func NodeConfigValidator(node *LocalCfg) error {
 			return err
 		}
 	}
+	if len(node.DnsResolvers) != 0 {
+		for _, resolver := range node.DnsResolvers {
+			if _, err := netip.ParseAddrPort(resolver); err != nil {
+				return fmt.Errorf("dns resolver %s is not a valid ip:port: %v", resolver, err)
+			}
+		}
+	}
 	return nil
 }
 

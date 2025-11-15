@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"net"
 	"time"
 
@@ -24,6 +25,27 @@ func (n *Nylon) Init(s *state.State) error {
 	n.env = s.Env
 
 	s.Log.Debug("init nylon")
+
+	if len(s.DnsResolvers) != 0 {
+		s.Log.Debug("setting custom DNS resolvers", "resolvers", s.DnsResolvers)
+		net.DefaultResolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: time.Second * 10,
+				}
+				var err error
+				var conn net.Conn
+				for _, resolver := range s.DnsResolvers {
+					conn, err = d.DialContext(ctx, network, resolver)
+					if err == nil {
+						return conn, nil
+					}
+				}
+				return conn, err
+			},
+		}
+	}
 
 	// add neighbours
 	for _, peer := range s.GetPeers(s.Id) {
