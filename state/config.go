@@ -73,7 +73,8 @@ type LocalCfg struct {
 	Dist             *LocalDistributionCfg `yaml:",omitempty"`
 	DisableRouting   bool
 	UseSystemRouting bool
-	NoNetConfigure   bool `yaml:",omitempty"`
+	NoNetConfigure   bool     `yaml:",omitempty"`
+	DnsResolvers     []string `yaml:",omitempty"`
 	InterfaceName    string
 	LogPath          string
 }
