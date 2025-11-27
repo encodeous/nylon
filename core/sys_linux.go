@@ -45,10 +45,10 @@ func ConfigureAlias(ifName string, prefix netip.Prefix) error {
 	return Exec("ip", "addr", "add", prefix.String(), "dev", ifName)
 }
 
-func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix, via netip.Addr) error {
+func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix) error {
 	err := Exec("ip", "route", "flush", route.String())
 	if err != nil {
 		return err
 	}
-	return Exec("ip", "route", "add", route.String(), "via", via.String(), "dev", itfName)
+	return Exec("ip", "route", "add", route.String(), "dev", itfName)
 }

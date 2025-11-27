@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"encoding/hex"
 	"fmt"
-	"net/netip"
 	"slices"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -87,13 +86,8 @@ listen_port=%d
 		// configure self
 		selfSvc := make(map[state.ServiceId]struct{})
 
-		var defaultAddr *netip.Addr
 		for _, svc := range s.GetRouter(s.Id).Services {
 			prefix := s.GetSvcPrefix(svc)
-			if defaultAddr == nil {
-				addr := prefix.Addr()
-				defaultAddr = &addr
-			}
 			selfSvc[svc] = struct{}{}
 			err = ConfigureAlias(itfName, prefix)
 			if err != nil {
@@ -101,7 +95,7 @@ listen_port=%d
 			}
 		}
 
-		if defaultAddr == nil {
+		if len(s.GetRouter(s.Id).Services) == 0 {
 			return fmt.Errorf("no address configured for self")
 		}
 
@@ -116,7 +110,7 @@ listen_port=%d
 			if _, ok := selfSvc[svc]; ok {
 				continue
 			}
-			err = ConfigureRoute(n.Tun, itfName, prefix, *defaultAddr)
+			err = ConfigureRoute(n.Tun, itfName, prefix)
 			if err != nil {
 				return err
 			}
