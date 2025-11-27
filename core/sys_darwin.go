@@ -2,13 +2,14 @@ package core
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/ipc"
-	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/state"
 	"net"
 	"net/netip"
 	"os/exec"
 	"strings"
+
+	"github.com/encodeous/nylon/polyamide/ipc"
+	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/state"
 )
 
 func VerifyForwarding() error {
@@ -46,6 +47,6 @@ func ConfigureAlias(ifName string, prefix netip.Prefix) error {
 	}
 }
 
-func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix, via netip.Addr) error {
-	return Exec("/sbin/route", "-n", "add", "-net", route.String(), via.String())
+func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix) error {
+	return Exec("/sbin/route", "-n", "add", "-net", route.String(), "-interface", itfName)
 }
