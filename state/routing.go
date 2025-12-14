@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -9,17 +10,14 @@ import (
 
 type NodeId string
 
-// ServiceId maps to a real network prefix
-type ServiceId string
-
-// Source is a pair of a router-id and a prefix (Babel Section 2.7). In this case, we use a service identifier
+// Source is a pair of a router-id and a prefix (Babel Section 2.7).
 type Source struct {
 	NodeId
-	ServiceId
+	netip.Prefix
 }
 
 func (s Source) String() string {
-	return fmt.Sprintf("(router: %s, svc: %s)", s.NodeId, s.ServiceId)
+	return fmt.Sprintf("(router: %s, prefix: %s)", s.NodeId, s.Prefix)
 }
 
 type Advertisement struct {
@@ -29,32 +27,30 @@ type Advertisement struct {
 }
 type RouterState struct {
 	Id         NodeId
-	SelfSeqno  map[ServiceId]uint16
-	Routes     map[ServiceId]SelRoute
+	SelfSeqno  map[netip.Prefix]uint16
+	Routes     map[netip.Prefix]SelRoute
 	Sources    map[Source]FD
 	Neighbours []*Neighbour
-	// Advertised is a map tracking the service id and the time it will be advertised until
-	Advertised map[ServiceId]Advertisement
-	// DisableRouting indicates that this node should not route traffic for other nodes
-	DisableRouting bool
+	// Advertised is a map tracking the prefix and the time it will be advertised until
+	Advertised map[netip.Prefix]Advertisement
 }
 
-func (s *RouterState) GetSeqno(id ServiceId) uint16 {
-	seq, ok := s.SelfSeqno[id]
+func (s *RouterState) GetSeqno(prefix netip.Prefix) uint16 {
+	seq, ok := s.SelfSeqno[prefix]
 	if !ok {
 		return 0
 	}
 	return seq
 }
 
-func (s *RouterState) SetSeqno(id ServiceId, seqno uint16) {
-	s.SelfSeqno[id] = seqno
+func (s *RouterState) SetSeqno(prefix netip.Prefix, seqno uint16) {
+	s.SelfSeqno[prefix] = seqno
 }
 
 func (s *RouterState) StringRoutes() string {
 	buf := make([]string, 0)
-	for svc, route := range s.Routes {
-		buf = append(buf, fmt.Sprintf("%s via %s", svc, route))
+	for prefix, route := range s.Routes {
+		buf = append(buf, fmt.Sprintf("%s via %s", prefix, route))
 	}
 	slices.Sort(buf)
 	return strings.Join(buf, "\n")
@@ -81,7 +77,7 @@ type PubRoute struct {
 }
 
 func (r PubRoute) String() string {
-	return fmt.Sprintf("(router: %s, svc: %s, seqno: %d, metric: %d)", r.NodeId, r.ServiceId, r.Seqno, r.Metric)
+	return fmt.Sprintf("(router: %s, prefix: %s, seqno: %d, metric: %d)", r.NodeId, r.Prefix, r.Seqno, r.Metric)
 }
 
 type NeighRoute struct {
@@ -97,7 +93,7 @@ type SelRoute struct {
 }
 
 func (r SelRoute) String() string {
-	return fmt.Sprintf("(nh: %s, router: %s, svc: %s, seqno: %d, metric: %d)", r.Nh, r.NodeId, r.ServiceId, r.Seqno, r.Metric)
+	return fmt.Sprintf("(nh: %s, router: %s, prefix: %s, seqno: %d, metric: %d)", r.Nh, r.NodeId, r.Prefix, r.Seqno, r.Metric)
 }
 
 func (s *RouterState) GetNeighbour(node NodeId) *Neighbour {

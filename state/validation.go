@@ -106,36 +106,23 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		return err
 	}
 
-	prefixes := make([]netip.Prefix, 0)
-
-	//ensure prefixes of services do not overlap
-	for svc, prefix := range cfg.Services {
-		if slices.Contains(nodes, string(svc)) {
-			return fmt.Errorf("service id %s conflicts with a node id", svc)
-		}
-		if slices.Contains(prefixes, prefix) {
-			return fmt.Errorf("service %s's prefix %s is identical to an existing prefix", svc, prefix.String())
-		}
-		prefixes = append(prefixes, prefix)
-	}
-
-	// ensure the current node contains unique services
+	// ensure each node contains unique prefixes (anycast routing allows duplicate prefixes across nodes)
 	for _, router := range cfg.Routers {
-		svc := make(map[ServiceId]struct{})
-		for _, s := range router.Services {
-			if _, ok := svc[s]; ok {
-				return fmt.Errorf("router %s has duplicate service %s", router.Id, s)
+		routerPrefixes := make(map[netip.Prefix]struct{})
+		for _, p := range router.Prefixes {
+			if _, ok := routerPrefixes[p]; ok {
+				return fmt.Errorf("router %s has duplicate prefix %s", router.Id, p)
 			}
-			svc[s] = struct{}{}
+			routerPrefixes[p] = struct{}{}
 		}
-		for _, p := range cfg.GetPeers(router.Id) {
-			if cfg.IsClient(p) {
-				client := cfg.GetClient(p)
-				for _, cs := range client.Services {
-					if _, ok := svc[cs]; ok {
-						return fmt.Errorf("router %s has duplicate service %s (provided by client %s)", router.Id, cs, client.Id)
+		for _, peer := range cfg.GetPeers(router.Id) {
+			if cfg.IsClient(peer) {
+				client := cfg.GetClient(peer)
+				for _, cp := range client.Prefixes {
+					if _, ok := routerPrefixes[cp]; ok {
+						return fmt.Errorf("router %s has duplicate prefix %s (provided by client %s)", router.Id, cp, client.Id)
 					}
-					svc[cs] = struct{}{}
+					routerPrefixes[cp] = struct{}{}
 				}
 			}
 		}

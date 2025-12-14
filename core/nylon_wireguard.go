@@ -83,36 +83,54 @@ listen_port=%d
 	// configure system networking
 
 	if !s.NoNetConfigure {
-		// configure self
-		selfSvc := make(map[state.ServiceId]struct{})
-
-		for _, svc := range s.GetRouter(s.Id).Services {
-			prefix := s.GetSvcPrefix(svc)
-			selfSvc[svc] = struct{}{}
-			err = ConfigureAlias(itfName, prefix)
+		// run pre-up commands
+		for _, cmd := range s.PreUp {
+			err = ExecSplit(s.Log, cmd)
 			if err != nil {
-				return err
+				s.Log.Error("failed to run pre-up command", "err", err)
 			}
 		}
 
-		if len(s.GetRouter(s.Id).Services) == 0 {
-			return fmt.Errorf("no address configured for self")
+		for _, addr := range s.GetRouter(s.Id).Addresses {
+			err := ConfigureAlias(s.Log, itfName, addr)
+			if err != nil {
+				s.Log.Error("failed to configure alias", "err", err)
+			}
 		}
 
-		err = InitInterface(itfName)
+		err = InitInterface(s.Log, itfName)
 
 		if err != nil {
 			return err
 		}
 
-		// configure services
-		for svc, prefix := range s.Services {
-			if _, ok := selfSvc[svc]; ok {
-				continue
-			}
-			err = ConfigureRoute(n.Tun, itfName, prefix)
+		// configure prefixes
+		include := append(s.GetPrefixes(), s.IncludeIPs...)
+		if len(s.IncludeIPs) != 0 {
+			include = s.IncludeIPs
+		}
+		for _, inc := range include {
+			s.Log.Debug("Include Prefix", "prefix", inc.String())
+		}
+		for _, excl := range s.ExcludeIPs {
+			s.Log.Debug("Exclude Prefix", "prefix", excl.String())
+		}
+		computed := state.ComputeSplitTunnel(include, s.ExcludeIPs)
+		for _, pre := range computed {
+			s.Log.Debug("Computed Prefix", "prefix", pre.String())
+		}
+		for _, prefix := range computed {
+			err := ConfigureRoute(s.Log, n.Tun, itfName, prefix)
 			if err != nil {
-				return err
+				s.Log.Error("failed to configure route", "err", err)
+			}
+		}
+
+		// run post-up commands
+		for _, cmd := range s.PostUp {
+			err = ExecSplit(s.Log, cmd)
+			if err != nil {
+				s.Log.Error("failed to run post-up command", "err", err)
 			}
 		}
 	}
@@ -125,7 +143,25 @@ listen_port=%d
 }
 
 func (n *Nylon) cleanupWireGuard(s *state.State) error {
-	return CleanupWireGuardDevice(s, n)
+	// run pre-down commands
+	for _, cmd := range s.PreUp {
+		err := ExecSplit(s.Log, cmd)
+		if err != nil {
+			s.Log.Error("failed to run pre-down command", "err", err)
+		}
+	}
+	err := CleanupWireGuardDevice(s, n)
+	if err != nil {
+		return err
+	}
+	// run post-down commands
+	for _, cmd := range s.PostDown {
+		err = ExecSplit(s.Log, cmd)
+		if err != nil {
+			s.Log.Error("failed to run post-down command", "err", err)
+		}
+	}
+	return nil
 }
 
 func UpdateWireGuard(s *state.State) error {

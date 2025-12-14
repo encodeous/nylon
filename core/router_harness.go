@@ -4,6 +4,7 @@ package core
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/encodeous/nylon/state"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func ConfigureConstants() {
@@ -74,16 +76,16 @@ type RouterHarness struct {
 	actions []HarnessEvent
 }
 
-func (h *RouterHarness) TableInsertRoute(svc state.ServiceId, route state.SelRoute) {
+func (h *RouterHarness) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 
 }
 
-func (h *RouterHarness) TableDeleteRoute(svc state.ServiceId) {
+func (h *RouterHarness) TableDeleteRoute(prefix netip.Prefix) {
 
 }
 
-func (h *RouterHarness) SendAckRetract(neigh state.NodeId, svc state.ServiceId) {
-	h.actions = append(h.actions, MakeEvent("ACK_RETRACT", neigh, svc))
+func (h *RouterHarness) SendAckRetract(neigh state.NodeId, prefix netip.Prefix) {
+	h.actions = append(h.actions, MakeEvent("ACK_RETRACT", neigh, prefix))
 }
 
 func (h *RouterHarness) SendRouteUpdate(neigh state.NodeId, advRoute state.PubRoute) {
@@ -143,7 +145,7 @@ func (e HarnessEvents) contains(msg string, args ...any) bool {
 			if len(event.Args) >= len(args) {
 				match := true
 				for i, arg := range args {
-					if !cmp.Equal(event.Args[i], arg) {
+					if !cmp.Equal(event.Args[i], arg, cmpopts.EquateComparable(netip.Prefix{})) {
 						match = false
 						break
 					}
@@ -182,10 +184,11 @@ func MakeNeighbours(ids ...state.NodeId) []*state.Neighbour {
 	return neighs
 }
 
-func MakePubRoute(nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint32) state.PubRoute {
+func MakePubRoute(nodeId state.NodeId, prefix netip.Prefix, seqno uint16, metric uint32) state.PubRoute {
 	return state.PubRoute{
 		Source: state.Source{
-			nodeId, svc,
+			NodeId: nodeId,
+			Prefix: prefix,
 		},
 		FD: state.FD{
 			Seqno:  seqno,
@@ -217,10 +220,10 @@ func RemoveLink(r *state.RouterState, ep state.Endpoint) {
 	}
 }
 
-func (h *RouterHarness) NeighUpdate(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, seqno uint16, metric uint32) {
-	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, state.ServiceId(nodeId), seqno, metric))
+func (h *RouterHarness) NeighUpdate(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, prefix netip.Prefix, seqno uint16, metric uint32) {
+	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, prefix, seqno, metric))
 }
 
-func (h *RouterHarness) NeighUpdateSvc(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, svc state.ServiceId, seqno uint16, metric uint32) {
-	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, svc, seqno, metric))
+func (h *RouterHarness) NeighUpdateSvc(rs *state.RouterState, neighId state.NodeId, nodeId state.NodeId, prefix netip.Prefix, seqno uint16, metric uint32) {
+	HandleNeighbourUpdate(rs, h, neighId, MakePubRoute(nodeId, prefix, seqno, metric))
 }

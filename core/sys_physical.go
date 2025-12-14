@@ -4,23 +4,16 @@ package core
 
 import (
 	"fmt"
+	"runtime"
+	"strings"
+
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
-	"runtime"
-	"strings"
 )
 
 func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
-	if s.UseSystemRouting {
-		err = VerifyForwarding()
-		if err != nil {
-			s.Log.Warn("IP Forwarding is not enabled, routing disabled", "err", err.Error())
-			s.DisableRouting = true
-		}
-	}
-
 	itfName := s.InterfaceName // attempt to name the interface
 
 	if runtime.GOOS == "darwin" {

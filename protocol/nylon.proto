@@ -10,16 +10,16 @@ message TransportBundle {
 message Ny {
   message Update {
     string RouterId = 1;
-    string ServiceId = 2;
+    bytes Prefix = 2;
     uint32 Seqno = 3;
     uint32 Metric = 4;
   }
   message AckRetract {
-    string ServiceId = 1;
+    bytes Prefix = 1;
   }
   message SeqnoRequest {
     string RouterId = 1;
-    string ServiceId = 2;
+    bytes Prefix = 2;
     uint32 Seqno = 3;
     uint32 HopCount = 4;
   }

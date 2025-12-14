@@ -55,24 +55,67 @@ func TestNodeConfigValidator_DnsResolver(t *testing.T) {
 	}))
 }
 
-func TestCentralConfigValidator_OverlappingService(t *testing.T) {
+func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
 	cfg := &CentralCfg{
-		Services: map[ServiceId]netip.Prefix{
-			"svc1": netip.MustParsePrefix("10.5.0.1/32"),
-			"svc2": netip.MustParsePrefix("10.5.0.0/24"),
-			"svc3": netip.MustParsePrefix("10.5.0.1/8"),
+		Routers: []RouterCfg{
+			{
+				NodeCfg: NodeCfg{
+					Id:     "node1",
+					PubKey: NyPublicKey{},
+					Prefixes: []netip.Prefix{
+						netip.MustParsePrefix("10.5.0.1/32"),
+						netip.MustParsePrefix("10.5.0.0/24"),
+						netip.MustParsePrefix("10.5.0.1/8"),
+					},
+				},
+			},
 		},
 	}
 	assert.NoError(t, CentralConfigValidator(cfg))
 }
 
-func TestCentralConfigValidator_DuplicateService(t *testing.T) {
+func TestCentralConfigValidator_DuplicatePrefix(t *testing.T) {
 	cfg := &CentralCfg{
-		Services: map[ServiceId]netip.Prefix{
-			"svc1": netip.MustParsePrefix("10.5.0.1/32"),
-			"svc2": netip.MustParsePrefix("10.5.0.1/24"),
-			"svc3": netip.MustParsePrefix("10.5.0.1/32"),
+		Routers: []RouterCfg{
+			{
+				NodeCfg: NodeCfg{
+					Id:     "node1",
+					PubKey: NyPublicKey{},
+					Prefixes: []netip.Prefix{
+						netip.MustParsePrefix("10.5.0.1/32"),
+						netip.MustParsePrefix("10.5.0.1/24"),
+						netip.MustParsePrefix("10.5.0.1/32"), // duplicate within same node
+					},
+				},
+			},
 		},
 	}
 	assert.Error(t, CentralConfigValidator(cfg))
+}
+
+func TestCentralConfigValidator_AnycastPrefix(t *testing.T) {
+	// Anycast routing allows the same prefix to be advertised by multiple nodes
+	cfg := &CentralCfg{
+		Routers: []RouterCfg{
+			{
+				NodeCfg: NodeCfg{
+					Id:     "node1",
+					PubKey: NyPublicKey{},
+					Prefixes: []netip.Prefix{
+						netip.MustParsePrefix("10.5.0.1/32"),
+					},
+				},
+			},
+			{
+				NodeCfg: NodeCfg{
+					Id:     "node2",
+					PubKey: NyPublicKey{},
+					Prefixes: []netip.Prefix{
+						netip.MustParsePrefix("10.5.0.1/32"), // same prefix as node1 - this is valid for anycast
+					},
+				},
+			},
+		},
+	}
+	assert.NoError(t, CentralConfigValidator(cfg))
 }

@@ -8,40 +8,36 @@ dist:
 routers:
   - id: alice
     pubkey: xmfAovAKN4AY5ocK5s+/VsG9I27KrQ13Vzb0HOsLKAs==
-    address: 10.0.0.1 # this is the primary address of the node within the Nylon network
-    services:
-      - some-dns-server
+    addresses: [10.0.0.1] # this is the primary address of the nylon interface, it will be used when sending out packets from the interface
+    prefixes:
+      - 192.168.0.0/24 # you can advertise a prefix as well. make sure to exclude this on nodes where it could overlap!
+      - 10.1.0.0/24
   - id: bob
     pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
-    address: 10.0.0.2
+    addresses: [10.0.0.2, 10.1.0.2] # you can advertise multiple addresses
     endpoints:
       - '192.168.1.1:57175'
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
-    address: 10.0.0.3
-    services:
-      - linux-machine # This node will provide the "linux-machine" service defined below
+    addresses: [10.0.0.3]
   - id: public
     pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
-    address: 10.0.0.4
+    addresses: [10.0.0.4]
     endpoints:
       - '123.123.123.123:57175' # nylon supports multiple endpoints, picking the best endpoint dynamically
       - '123.123.123.124:57175'
-    services:
-      - some-dns-server
   - id: charlie
     pubkey: WcCkKijU0brYnRzxk867HTDyYFf/cqiKTTOLSxtWoFc=
-    address: 10.0.0.5
+    addresses: [10.0.0.5]
 clients: # external "vanilla" WireGuard clients must be defined separately
   - id: client1
     pubkey: SBI+yvF30Ba4xo0GKTtKHSSfbXAnRNFTBwydJyJp6Rk=
-    address: 10.0.0.7
+    addresses: [10.0.0.7]
+    prefixes:
+      - 192.168.1.0/24 # clients may also advertise prefixes, just make sure it's also added in the allowed ips in the WireGuard config
 graph: # The graph determines which nodes will attempt/can peer with each other. Nodes will only connect to each other once they have been connected directly in the graph.
   - Group1 = alice, bob # Groups are a convenient way to connect many nodes. Nodes within groups are not automatically connected
   - Group1, Group1 # You can emulate that behaviour by connecting a group to its self
   - Group2 = Group1, client1 # You can use groups within groups
   - client1, eve, alice # Here, client1, eve and alice will all connect to each other
-services: # service can be mapped to multiple nodes, using anycast (based on lowest latency)
-  linux-machine: 10.0.1.1/32 # here "linux-machine" is unicast, as only eve provides it
-  some-dns-server: 6.6.6.6/32
-timestamp: 1740832962209309000 # The timestamp is updated by "./nylon seal" and is used as a version number when checking for config updates.
+timestamp: 1740832962209309000 # The timestamp is updated by "nylon seal" and is used as a version number when checking for config updates.
