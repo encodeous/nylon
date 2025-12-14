@@ -22,8 +22,8 @@ type NylonRouter struct {
 	IO                    map[state.NodeId]*IOPending
 	// ForwardTable contains the full routing table
 	ForwardTable bart.Table[RouteTableEntry]
-	// LoopbackTable contains only routes to services hosted on this node
-	LoopbackTable bart.Table[RouteTableEntry]
+	// ExitTable contains only routes to services hosted on this node
+	ExitTable bart.Table[RouteTableEntry]
 }
 
 type RouteTableEntry struct {
@@ -113,18 +113,18 @@ func (r *NylonRouter) TableInsertRoute(prefix netip.Prefix, route state.SelRoute
 		Peer: peer,
 	})
 	if route.Nh == r.Id {
-		r.LoopbackTable.Insert(prefix, RouteTableEntry{
+		r.ExitTable.Insert(prefix, RouteTableEntry{
 			Nh:   nh,
 			Peer: peer,
 		})
 	} else {
-		r.LoopbackTable.Delete(prefix)
+		r.ExitTable.Delete(prefix)
 	}
 }
 
 func (r *NylonRouter) TableDeleteRoute(prefix netip.Prefix) {
 	r.ForwardTable.Delete(prefix)
-	r.LoopbackTable.Delete(prefix)
+	r.ExitTable.Delete(prefix)
 }
 
 type IOPending struct {
