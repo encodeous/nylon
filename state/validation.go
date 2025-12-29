@@ -68,6 +68,12 @@ func NodeConfigValidator(node *LocalCfg) error {
 			}
 		}
 	}
+	// validate prefixes
+	for _, p := range append(node.IncludeIPs, node.ExcludeIPs...) {
+		if !p.IsValid() {
+			return fmt.Errorf("invalid prefix %s", p)
+		}
+	}
 	return nil
 }
 
@@ -141,7 +147,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		}
 	}
 	// validate prefixes
-	for _, p := range cfg.GetPrefixes() {
+	for _, p := range append(cfg.GetPrefixes(), cfg.ExcludeIPs...) {
 		if !p.IsValid() {
 			return fmt.Errorf("invalid prefix %s", p)
 		}

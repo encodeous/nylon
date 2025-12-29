@@ -11,9 +11,9 @@ dns_resolvers: [] # Default: [] - If set (e.g ["1.1.1.1:53"]), nylon will use th
 dist: # Optional: If set, Nylon will bootstrap central.yaml from this URL if it does not exist already
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
-include_ips: [] # split tunnel, included ip ranges. If empty, will include all prefixes on the network
-exclude_ips: # split tunnel, excluded ip ranges. If empty, nothing is excluded
-  - 192.168.0.1/24 # e.g here, we exclude the local ip range
+include_ips: [] # split tunnel, subtracts from centrally excluded ip ranges
+exclude_ips: # split tunnel, adds to the centrally excluded ip ranges
+  - 192.168.0.0/24 # e.g here, we exclude the local ip range
 
 # for even more flexibility, you may execute commands when the interface starts or stops
 pre_up: []

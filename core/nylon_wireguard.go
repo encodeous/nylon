@@ -105,17 +105,11 @@ listen_port=%d
 		}
 
 		// configure prefixes
-		include := append(s.GetPrefixes(), s.IncludeIPs...)
-		if len(s.IncludeIPs) != 0 {
-			include = s.IncludeIPs
+		exclude := append(state.SubtractPrefix(s.CentralCfg.ExcludeIPs, s.IncludeIPs), s.LocalCfg.ExcludeIPs...)
+		for _, excl := range exclude {
+			s.Log.Debug("Computed Exclude Prefix", "prefix", excl.String())
 		}
-		for _, inc := range include {
-			s.Log.Debug("Include Prefix", "prefix", inc.String())
-		}
-		for _, excl := range s.ExcludeIPs {
-			s.Log.Debug("Exclude Prefix", "prefix", excl.String())
-		}
-		computed := state.ComputeSplitTunnel(include, s.ExcludeIPs)
+		computed := state.SubtractPrefix(s.GetPrefixes(), exclude)
 		for _, pre := range computed {
 			s.Log.Debug("Computed Prefix", "prefix", pre.String())
 		}

@@ -38,11 +38,12 @@ type LocalDistributionCfg struct {
 }
 
 type CentralCfg struct {
-	Dist      *DistributionCfg `yaml:",omitempty"`
-	Routers   []RouterCfg
-	Clients   []ClientCfg
-	Graph     []string
-	Timestamp int64
+	Dist       *DistributionCfg `yaml:",omitempty"`
+	Routers    []RouterCfg
+	Clients    []ClientCfg
+	Graph      []string
+	Timestamp  int64
+	ExcludeIPs []netip.Prefix `yaml:"exclude_ips,omitempty"` // split tunnel, default excluded ip ranges for the whole network, if empty, all advertised prefixes will be included
 }
 
 // LocalCfg represents local node-level configuration
@@ -57,8 +58,8 @@ type LocalCfg struct {
 	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // dns resolvers used by nylon, currently only for config repo
 	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
 	LogPath          string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
-	IncludeIPs       []netip.Prefix        `yaml:"include_ips,omitempty"`        // split tunnel, included ip ranges. If empty, will include all prefixes on the network
-	ExcludeIPs       []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, excluded ip ranges. If empty, nothing is excluded
+	IncludeIPs       []netip.Prefix        `yaml:"include_ips,omitempty"`        // split tunnel, subtracts from centrally excluded ip ranges
+	ExcludeIPs       []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, adds to the centrally excluded ip ranges
 	PreUp            []string              `yaml:"pre_up,omitempty"`             // a list of commands executed in order before the nylon interface is brought up
 	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
 	PostUp           []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
@@ -123,34 +124,39 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 	return line, nil
 }
 
-func ComputeSplitTunnel(includesPrefix, excludesPrefix []netip.Prefix) []netip.Prefix {
-	// Convert netip.Prefix to *net.IPNet
-	toIPNets := func(prefixes []netip.Prefix) []*net.IPNet {
-		nets := make([]*net.IPNet, 0, len(prefixes))
-		for _, p := range prefixes {
-			if p.IsValid() {
-				nets = append(nets, &net.IPNet{
-					IP:   p.Addr().AsSlice(),
-					Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen()),
-				})
-			}
+func toIPNets(prefixes []netip.Prefix) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(prefixes))
+	for _, p := range prefixes {
+		if p.IsValid() {
+			nets = append(nets, &net.IPNet{
+				IP:   p.Addr().AsSlice(),
+				Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen()),
+			})
 		}
-		return nets
 	}
+	return nets
+}
 
-	// Call the legacy functions
-	result := ip.RemoveCIDRs(toIPNets(includesPrefix), toIPNets(excludesPrefix))
-	ipv4, ipv6 := ip.CoalesceCIDRs(result)
-
-	// Convert back to netip.Prefix
-	output := make([]netip.Prefix, 0, len(ipv4)+len(ipv6))
-	for _, n := range append(ipv4, ipv6...) {
+func fromIPNets(nets []*net.IPNet) []netip.Prefix {
+	output := make([]netip.Prefix, 0, len(nets))
+	for _, n := range nets {
 		if addr, ok := netip.AddrFromSlice(n.IP); ok {
 			ones, _ := n.Mask.Size()
 			output = append(output, netip.PrefixFrom(addr.Unmap(), ones))
 		}
 	}
 	return output
+}
+
+func SubtractPrefix(includesPrefix, excludesPrefix []netip.Prefix) []netip.Prefix {
+	result := ip.RemoveCIDRs(toIPNets(includesPrefix), toIPNets(excludesPrefix))
+	ipv4, ipv6 := ip.CoalesceCIDRs(result)
+	return fromIPNets(append(ipv4, ipv6...))
+}
+
+func CoalescePrefix(prefixes []netip.Prefix) []netip.Prefix {
+	ipv4, ipv6 := ip.CoalesceCIDRs(toIPNets(prefixes))
+	return fromIPNets(append(ipv4, ipv6...))
 }
 
 /*
