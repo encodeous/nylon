@@ -76,6 +76,9 @@ func AddrToPrefix(addr netip.Addr) netip.Prefix {
 	if err != nil {
 		panic(err)
 	}
+	if !res.IsValid() {
+		panic("invalid prefix")
+	}
 	return res
 }
 
@@ -135,6 +138,12 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			if err != nil {
 				return err
 			}
+		}
+	}
+	// validate prefixes
+	for _, p := range cfg.GetPrefixes() {
+		if !p.IsValid() {
+			return fmt.Errorf("invalid prefix %s", p)
 		}
 	}
 	return nil

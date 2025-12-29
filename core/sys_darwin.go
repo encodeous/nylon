@@ -32,6 +32,33 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	}
 }
 
+func PrefixToMaskString(p netip.Prefix) string {
+	if !p.IsValid() {
+		return "Invalid Prefix"
+	}
+
+	bits := p.Bits()
+	var mask net.IPMask
+
+	if p.Addr().Is4() {
+		mask = net.CIDRMask(bits, 32)
+	} else if p.Addr().Is6() {
+		mask = net.CIDRMask(bits, 128)
+	} else {
+		// Should not happen for a valid prefix
+		return "Unknown IP version"
+	}
+
+	// Cast the net.IPMask (a []byte) to net.IP to use its String() method
+	return net.IP(mask).String()
+}
+
 func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
-	return Exec(logger, "/sbin/route", "-n", "add", "-net", route.String(), "-interface", itfName)
+	if route.Addr().Is6() {
+		return Exec(logger, "/sbin/route", "-n", "add", "-inet6", route.String(), "-interface", itfName)
+	} else {
+		addr := route.Addr()
+		netmask := PrefixToMaskString(route)
+		return Exec(logger, "/sbin/route", "-n", "add", "-net", addr.String(), "-netmask", netmask, "-interface", itfName)
+	}
 }
