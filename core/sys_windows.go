@@ -1,7 +1,7 @@
 package core
 
 import (
-	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
@@ -12,10 +12,6 @@ import (
 	"github.com/encodeous/nylon/state"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
-
-func VerifyForwarding() error {
-	return fmt.Errorf("Not implemented for Windows")
-}
 
 func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
 	uapi, err := ipc.UAPIListen(itfName)
@@ -29,18 +25,15 @@ func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
 	return uapi, nil
 }
 
-func InitInterface(ifName string) error {
+func InitInterface(logger *slog.Logger, ifName string) error {
 	return nil
 }
 
-func ConfigureAlias(ifName string, prefix netip.Prefix) error {
-	addr := prefix.Addr()
-	_, mask, _ := net.ParseCIDR(prefix.String())
-	maskStr := net.IP(mask.Mask).String()
-	return Exec("netsh", "interface", "ip", "add", "address", ifName, addr.String(), maskStr)
+func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
+	return Exec(logger, "netsh", "interface", "ip", "add", "address", ifName, addr.String())
 }
 
-func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix) error {
+func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
 	addr := route.Addr()
 	_, mask, _ := net.ParseCIDR(route.String())
 	maskStr := net.IP(mask.Mask).String()
@@ -49,5 +42,5 @@ func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix) error {
 	if err != nil {
 		return err
 	}
-	return Exec("route", "add", addr.String(), "mask", maskStr, "0.0.0.0", "IF", strconv.FormatUint(uint64(itf.InterfaceIndex), 10))
+	return Exec(logger, "route", "add", addr.String(), "mask", maskStr, "0.0.0.0", "IF", strconv.FormatUint(uint64(itf.InterfaceIndex), 10))
 }

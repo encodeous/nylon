@@ -21,8 +21,9 @@ func TestBundleUnbundle(t *testing.T) {
 		Routers: make([]RouterCfg, 0),
 		Clients: []ClientCfg{
 			{NodeCfg{
-				Id:     "blah",
-				PubKey: NyPublicKey{},
+				Id:       "blah",
+				PubKey:   NyPublicKey{},
+				Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
 			}},
 		},
 		Graph: []string{
@@ -32,9 +33,6 @@ func TestBundleUnbundle(t *testing.T) {
 			"a, b",
 		},
 		Timestamp: 0,
-		Services: map[ServiceId]netip.Prefix{
-			"test": netip.MustParsePrefix("10.0.0.1/32"),
-		},
 	}
 	txt, err := yaml.Marshal(cfg)
 	assert.NoError(t, err)
@@ -56,6 +54,11 @@ func TestBundleTamper(t *testing.T) {
 			{NodeCfg{
 				Id:     "blah",
 				PubKey: NyPublicKey{},
+				Prefixes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.1/32"),
+					netip.MustParsePrefix("10.0.0.2/32"),
+					netip.MustParsePrefix("10.0.0.3/8"),
+				},
 			}},
 		},
 		Graph: []string{
@@ -65,11 +68,6 @@ func TestBundleTamper(t *testing.T) {
 			"a, b",
 		},
 		Timestamp: 0,
-		Services: map[ServiceId]netip.Prefix{
-			"test":  netip.MustParsePrefix("10.0.0.1/32"),
-			"test1": netip.MustParsePrefix("10.0.0.2/32"),
-			"test2": netip.MustParsePrefix("10.0.0.3/8"),
-		},
 	}
 	txt, err := yaml.Marshal(cfg)
 	assert.NoError(t, err)
@@ -107,9 +105,6 @@ func TestBundleInvalidSign(t *testing.T) {
 			"a, b",
 		},
 		Timestamp: 0,
-		Services: map[ServiceId]netip.Prefix{
-			"test2": netip.MustParsePrefix("10.0.0.3/8"),
-		},
 	}
 	cfg.Timestamp = time.Now().UnixNano()
 

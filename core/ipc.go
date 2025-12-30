@@ -78,16 +78,15 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		slices.Sort(rt)
 		sb.WriteString(strings.Join(rt, "\n") + "\n")
 
-		// print services
-		sb.WriteString("\n\nAdvertised Services:\n")
+		// print advertised prefixes
+		sb.WriteString("\n\nAdvertised Prefixes:\n")
 		rt = make([]string, 0)
-		for sid, adv := range s.Advertised {
-			prefix := s.GetSvcPrefix(sid)
+		for prefix, adv := range s.Advertised {
 			timeRem := adv.Expiry.Sub(time.Now())
 			if timeRem > time.Hour*24 {
-				rt = append(rt, fmt.Sprintf(" - %s as %s expires never nh %s", sid, prefix, adv.NodeId))
+				rt = append(rt, fmt.Sprintf(" - %s expires never nh %s", prefix, adv.NodeId))
 			} else {
-				rt = append(rt, fmt.Sprintf(" - %s as %s expires %.2fs nh %s", sid, prefix, timeRem.Seconds(), adv.NodeId))
+				rt = append(rt, fmt.Sprintf(" - %s expires %.2fs nh %s", prefix, timeRem.Seconds(), adv.NodeId))
 			}
 		}
 		slices.Sort(rt)

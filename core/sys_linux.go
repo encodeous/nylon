@@ -1,27 +1,14 @@
 package core
 
 import (
-	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
-	"os"
 
 	"github.com/encodeous/nylon/polyamide/ipc"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
 )
-
-func VerifyForwarding() error {
-	forward, err := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
-	if err != nil {
-		return err
-	}
-	if string(forward) != "1\n" {
-		return fmt.Errorf("expected /proc/sys/net/ipv4/ip_forward = 1 got %s", string(forward))
-	}
-	// TODO: IPv6 forwarding
-	return nil
-}
 
 func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
 	fileUAPI, err := ipc.UAPIOpen(itfName)
@@ -33,22 +20,18 @@ func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
 	return uapi, nil
 }
 
-func InitInterface(ifName string) error {
-	err := Exec("ip", "link", "set", ifName, "up")
+func InitInterface(logger *slog.Logger, ifName string) error {
+	err := Exec(logger, "ip", "link", "set", ifName, "up")
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func ConfigureAlias(ifName string, prefix netip.Prefix) error {
-	return Exec("ip", "addr", "add", prefix.String(), "dev", ifName)
+func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
+	return Exec(logger, "ip", "addr", "add", addr.String(), "dev", ifName)
 }
 
-func ConfigureRoute(dev tun.Device, itfName string, route netip.Prefix) error {
-	err := Exec("ip", "route", "flush", route.String())
-	if err != nil {
-		return err
-	}
-	return Exec("ip", "route", "add", route.String(), "dev", itfName)
+func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+	return Exec(logger, "ip", "route", "add", route.String(), "dev", itfName)
 }
