@@ -6,13 +6,13 @@ dist:
 routers:
     - id: sample_node1
       pubkey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-      address: 10.0.0.1
+      addresses: [10.0.0.1]
       endpoints:
         - 8.8.8.8:57175
 clients:
     - id: external-client
       pubkey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-      address: 10.2.0.1
+      addresses: [10.2.0.1]
 graph:
     - Group1 = sample_node1, sample_node1
 timestamp: 1740879895918834978

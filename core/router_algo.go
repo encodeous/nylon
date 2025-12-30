@@ -4,6 +4,7 @@ package core
 // https://datatracker.ietf.org/doc/html/rfc8966
 
 import (
+	"net/netip"
 	"slices"
 	"time"
 
@@ -31,12 +32,12 @@ const (
 // Router is an interface that defines the underlying router operations
 type Router interface {
 	SendRouteUpdate(neigh state.NodeId, advRoute state.PubRoute)
-	SendAckRetract(neigh state.NodeId, svc state.ServiceId)
+	SendAckRetract(neigh state.NodeId, prefix netip.Prefix)
 	BroadcastSendRouteUpdate(advRoute state.PubRoute)
 	RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16, hopCnt uint8)
 	BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8)
-	TableInsertRoute(svc state.ServiceId, route state.SelRoute)
-	TableDeleteRoute(svc state.ServiceId)
+	TableInsertRoute(prefix netip.Prefix, route state.SelRoute)
+	TableDeleteRoute(prefix netip.Prefix)
 	Log(event RouterEvent, desc string, args ...any)
 }
 
@@ -98,9 +99,6 @@ func checkFeasibility(router *state.RouterState, advRoute state.PubRoute) bool {
 func FullTableUpdate(s *state.RouterState, r Router) {
 	// send a full table update to all neighbours
 	for _, route := range s.Routes {
-		if s.DisableRouting && route.Nh != s.Id {
-			continue // skip routes that are not ours
-		}
 		updateFeasibility(s, route.PubRoute)
 		r.BroadcastSendRouteUpdate(route.PubRoute)
 	}
@@ -109,9 +107,6 @@ func FullTableUpdate(s *state.RouterState, r Router) {
 func PushFullTable(s *state.RouterState, r Router, neigh state.NodeId) {
 	// send a full table update to one neighbour
 	for _, route := range s.Routes {
-		if s.DisableRouting && route.Nh != s.Id {
-			continue // skip routes that are not ours
-		}
 		updateFeasibility(s, route.PubRoute)
 		r.SendRouteUpdate(neigh, route.PubRoute)
 	}
@@ -161,12 +156,12 @@ func RunGC(s *state.RouterState, r Router) {
 			}
 		}
 		if !found {
-			if selRoute, ok := s.Routes[src.ServiceId]; ok && selRoute.Source == src {
+			if selRoute, ok := s.Routes[src.Prefix]; ok && selRoute.Source == src {
 				found = true
 			}
 		}
 		if !found {
-			if adv, ok := s.Advertised[src.ServiceId]; ok && adv.NodeId == src.NodeId {
+			if adv, ok := s.Advertised[src.Prefix]; ok && adv.NodeId == src.NodeId {
 				found = true
 			}
 		}
@@ -179,10 +174,10 @@ func RunGC(s *state.RouterState, r Router) {
 	ComputeRoutes(s, r)
 }
 
-func retract(s *state.RouterState, r Router, svc state.ServiceId) {
-	tblEntry, ok := s.Routes[svc]
+func retract(s *state.RouterState, r Router, prefix netip.Prefix) {
+	tblEntry, ok := s.Routes[prefix]
 	if !ok {
-		r.Log(InconsistentState, "attempted to retract non-existent route", "svc", svc)
+		r.Log(InconsistentState, "attempted to retract non-existent route", "prefix", prefix)
 		return // route does not exist
 	}
 	tblEntry.Metric = state.INF
@@ -196,7 +191,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 	//   sequence number, it checks whether its route table contains a
 	//   selected entry for that prefix.
 
-	if selRoute, ok := s.Routes[src.ServiceId]; ok {
+	if selRoute, ok := s.Routes[src.Prefix]; ok {
 		//   If a selected route for the given prefix exists and has finite metric,
 		//   and either the router-ids are different or the router-ids are equal
 		//   and the entry's sequence number is no smaller (modulo 2^(16)) than
@@ -220,7 +215,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 				//   Nylon note: We increase seqno by more than one, as we do not persist our seqno
 				//   state, so we cannot guarantee that increasing by one is enough.
 
-				s.SetSeqno(selRoute.ServiceId, reqSeqno)
+				s.SetSeqno(selRoute.Prefix, reqSeqno)
 				ComputeRoutes(s, r) // should generate an update
 			} else {
 				//   Otherwise, if the requested router-id is not its own, the received
@@ -229,14 +224,14 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 				//   neighbours, the node selects a neighbour to forward the request to as
 				//   follows:
 
-				_, isAdv := s.Routes[src.ServiceId]
+				_, isAdv := s.Routes[src.Prefix]
 				if hopCnt >= 2 && isAdv {
 					var nh *state.NodeId
 					if NeighContainsFunc(s, func(neigh state.NodeId, route state.NeighRoute) bool {
 						//   *  if the node has one or more feasible routes towards the requested
 						//      prefix with a next hop that is not the requesting node, then the
 						//      node MUST forward the request to the next hop of one such route;
-						if src.ServiceId == route.ServiceId && checkFeasibility(s, route.PubRoute) {
+						if src.Prefix == route.Prefix && checkFeasibility(s, route.PubRoute) {
 							nh = &neigh
 							return true // found a feasible route
 						}
@@ -246,7 +241,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						//      the requested prefix with a next hop that is not the requesting
 						//      node, then the node SHOULD forward the request to the next hop of
 						//      one such route.
-						if src.ServiceId == route.ServiceId && neigh != fromNeigh {
+						if src.Prefix == route.Prefix && neigh != fromNeigh {
 							nh = &neigh
 							return true // found a route
 						}
@@ -267,15 +262,15 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 
 }
 
-func HandleAckRetract(s *state.RouterState, r Router, neighId state.NodeId, svc state.ServiceId) {
-	rt, ok := s.Routes[svc]
+func HandleAckRetract(s *state.RouterState, r Router, neighId state.NodeId, prefix netip.Prefix) {
+	rt, ok := s.Routes[prefix]
 	if !ok {
-		r.Log(InconsistentState, "attempted to ack the retraction of a non-existent route", "svc", svc)
+		r.Log(InconsistentState, "attempted to ack the retraction of a non-existent route", "prefix", prefix)
 		return // route does not exist
 	}
 	if !slices.Contains(rt.RetractedBy, neighId) {
 		rt.RetractedBy = append(rt.RetractedBy, neighId)
-		s.Routes[svc] = rt // update the route table
+		s.Routes[prefix] = rt // update the route table
 		// recompute routes
 		ComputeRoutes(s, r)
 	}
@@ -294,7 +289,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 	_, ok := n.Routes[adv.Source]
 
 	if adv.Metric == state.INF {
-		r.SendAckRetract(neighId, adv.Source.ServiceId)
+		r.SendAckRetract(neighId, adv.Source.Prefix)
 	}
 
 	if !ok {
@@ -330,7 +325,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		//      the router-id of the update is equal to the router-id of the
 		//      entry, then the update MAY be ignored;
 
-		selRoute, hasSelected := s.Routes[adv.Source.ServiceId]
+		selRoute, hasSelected := s.Routes[adv.Source.Prefix]
 		isSelected := hasSelected && selRoute.Nh == neighId
 		if !checkFeasibility(s, adv) {
 			isMoreOptimal := hasSelected && ShouldSwitch(selRoute, state.SelRoute{
@@ -396,7 +391,7 @@ func isHeldRoute(s *state.RouterState, route state.SelRoute) bool {
 }
 
 func ComputeRoutes(s *state.RouterState, r Router) {
-	newTable := make(map[state.ServiceId]state.SelRoute)
+	newTable := make(map[netip.Prefix]state.SelRoute)
 
 	// 3.5.4.  Hold Time
 	//
@@ -434,27 +429,27 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	// In order to avoid routing loops, we pick the second option. Here, we will re-introduce held routes
 
-	for svc, route := range s.Routes {
+	for prefix, route := range s.Routes {
 		if isHeldRoute(s, route) {
-			newTable[svc] = route
+			newTable[prefix] = route
 		}
 	}
 
 	// add our own routes to the route table, so that we can advertise them
-	for svc, adv := range s.Advertised {
+	for prefix, adv := range s.Advertised {
 		advMetric := uint32(0)
 		if adv.IsPassiveHold {
 			// The metric should be high enough so that if the passive client connects to any other node, our route will be immediately unselected
 			advMetric = state.INFM / 2
 		}
-		newTable[svc] = state.SelRoute{
+		newTable[prefix] = state.SelRoute{
 			PubRoute: state.PubRoute{
 				Source: state.Source{
-					NodeId:    s.Id,
-					ServiceId: svc,
+					NodeId: s.Id,
+					Prefix: prefix,
 				},
 				FD: state.FD{
-					Seqno:  s.GetSeqno(svc),
+					Seqno:  s.GetSeqno(prefix),
 					Metric: advMetric,
 				},
 			},
@@ -503,15 +498,15 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 		// enumerate through neighbour advertisements
 		for S, adv := range neigh.Routes {
-			if _, ok := s.Advertised[S.ServiceId]; ok {
+			if _, ok := s.Advertised[S.Prefix]; ok {
 				continue // skip self routes
 			}
-			svc := S.ServiceId
+			prefix := S.Prefix
 
 			// Cost(A, B) + Cost(S, B)
 			totalCost := AddMetric(CAB, adv.Metric)
 
-			oldRoute, exists := newTable[svc]
+			oldRoute, exists := newTable[prefix]
 
 			retractedBy := make([]state.NodeId, 0)
 			if exists {
@@ -534,7 +529,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 			// update the route if it is currently selected
 			if exists && oldRoute.Nh == newRoute.Nh {
-				newTable[svc] = newRoute
+				newTable[prefix] = newRoute
 			}
 
 			//   *  a route with infinite metric (a retracted route) is never
@@ -550,11 +545,11 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 			if !exists {
 				// create new route
-				newTable[svc] = newRoute
+				newTable[prefix] = newRoute
 			} else {
 				// check if we should switch to this route
 				if ShouldSwitch(oldRoute, newRoute) && !isHeldRoute(s, oldRoute) {
-					newTable[svc] = newRoute
+					newTable[prefix] = newRoute
 				}
 			}
 		}
@@ -569,14 +564,14 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	// Here, we also want to send updates for new seqno, and routes that changed drastically in metric
 
-	for svc, newRoute := range newTable {
-		oldRoute, exists := s.Routes[svc]
+	for prefix, newRoute := range newTable {
+		oldRoute, exists := s.Routes[prefix]
 		if !exists {
-			r.TableInsertRoute(svc, newRoute)
-			r.Log(RouteChanged, "inserted", "svc", svc, "new", newRoute)
+			r.TableInsertRoute(prefix, newRoute)
+			r.Log(RouteChanged, "inserted", "prefix", prefix, "new", newRoute)
 		} else if oldRoute.Nh != newRoute.Nh {
-			r.TableInsertRoute(svc, newRoute)
-			r.Log(RouteChanged, "updated", "svc", svc, "old", oldRoute, "new", newRoute)
+			r.TableInsertRoute(prefix, newRoute)
+			r.Log(RouteChanged, "updated", "prefix", prefix, "old", oldRoute, "new", newRoute)
 		}
 		if !exists ||
 			oldRoute.Source.NodeId != newRoute.Source.NodeId ||
@@ -584,20 +579,20 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(state.LargeChangeThreshold) && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
-			r.Log(RoutePushed, "major change", "svc", svc, "old", oldRoute, "new", newRoute)
+			r.Log(RoutePushed, "major change", "prefix", prefix, "old", oldRoute, "new", newRoute)
 			r.BroadcastSendRouteUpdate(newRoute.PubRoute)
 		}
 	}
 
 	// scan for retractions
-	for svc, oldRoute := range s.Routes {
-		route, exists := newTable[svc]
+	for prefix, oldRoute := range s.Routes {
+		route, exists := newTable[prefix]
 		if !exists || route.Metric == state.INF {
 			// route is no longer reachable, retract it
 			if oldRoute.Metric != state.INF {
-				retract(s, r, svc)
-				r.TableDeleteRoute(svc)
-				r.Log(RouteChanged, "retracted", "svc", svc, "old", oldRoute)
+				retract(s, r, prefix)
+				r.TableDeleteRoute(prefix)
+				r.Log(RouteChanged, "retracted", "prefix", prefix, "old", oldRoute)
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 # Nylon Setup
 
 #### Node Setup
-On every node, copy the `sample-node.yaml`, and fill in the relevant details. run `./nylon key` to generate the keypair. The first key printed (stdout) is the private key, and the second key printed (stderr) is the public key. Fill the private key in the node config, and put the public key in the central config later.
+On every node, copy the `sample-node.yaml`, and fill in the relevant details. run `nylon key` to generate the keypair. The first key printed (stdout) is the private key, and the second key printed (stderr) is the public key. Fill the private key in the node config, and put the public key in the central config later.
 
 #### Distribution
 (Optional) To setup key distribution, you can also generate a keypair. Save the private key into `central.key` (this will be used by `nylon seal`). You can put the public key into the central config under `dist/key`.
@@ -17,8 +17,8 @@ You can modify the `sample-central.yaml` to define your network topology. Here a
 - `id`: A unique identifier for the node, this will also be used as a service id for the node.
 - `pubkey`: The public key of the node, used to identify the node in the network, and to encrypt traffic to the node.
 - `endpoints`: A list of endpoints that the node can be reached at (whether over LAN or internet). Each endpoint should be in the format of `host:port`. You can specify multiple endpoints for a node, and Nylon will automatically pick the best one to use.
-- `address`: The primary IP address of the node in the Nylon network.
-- `services`: An additional list of services that the node provides. This is used to define other addresses associated with the node, and to allow anycast routing. Multiple nodes can provide the same service, and Nylon will automatically route to the nearest one. Each service should have a unique `id`, and an `address`, which is declared at the end of the file.
+- `addresses`: The addresses of the current nylon node, nylon will configure the interface to use these aliases.
+- `prefixes`: An additional list of advertised prefixes on the current node. This can be used to define other networks which can connect to nylon. Multiple prefixes (or addresses) may be declared across different nylon nodes, which will be routed in an anycast manner
 
 > [!NOTE]
 > **Difference between routers and clients:**
@@ -35,9 +35,9 @@ Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try t
 
 ### Running the network
 
-Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further to do, simply run `./nylon run` (you may need CAP_NET_ADMIN or sudo).
+Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further to do, simply run `nylon run` (you may need CAP_NET_ADMIN or sudo).
 
 After a while (5-10 seconds), you will notice that the network has converged!
 
 > [!TIP]
-> You can check the status of the node by running `./nylon i <interface_name>`. This will show you the current routing table, peers, and other useful information.
+> You can check the status of the node by running `nylon i <interface_name>`. This will show you the current routing table, peers, and other useful information.

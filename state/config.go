@@ -3,16 +3,19 @@ package state
 import (
 	"cmp"
 	"fmt"
+	"net"
 	"net/netip"
 	"slices"
 	"strings"
+
+	"github.com/cilium/cilium/pkg/ip"
 )
 
 type NodeCfg struct {
-	Id       NodeId
-	PubKey   NyPublicKey
-	Address  netip.Addr
-	Services []ServiceId `yaml:",omitempty"`
+	Id        NodeId
+	PubKey    NyPublicKey
+	Addresses []netip.Addr   `yaml:",omitempty"`
+	Prefixes  []netip.Prefix `yaml:",omitempty"`
 }
 
 // RouterCfg represents a central representation of a node that can route
@@ -35,20 +38,59 @@ type LocalDistributionCfg struct {
 }
 
 type CentralCfg struct {
-	Dist      *DistributionCfg `yaml:",omitempty"`
-	Routers   []RouterCfg
-	Clients   []ClientCfg
-	Graph     []string
-	Timestamp int64
-	Services  map[ServiceId]netip.Prefix
+	Dist       *DistributionCfg `yaml:",omitempty"`
+	Routers    []RouterCfg
+	Clients    []ClientCfg
+	Graph      []string
+	Timestamp  int64
+	ExcludeIPs []netip.Prefix `yaml:"exclude_ips,omitempty"` // split tunnel, default excluded ip ranges for the whole network, if empty, all advertised prefixes will be included
 }
 
-func (c *CentralCfg) RegisterService(svcId ServiceId, prefix netip.Prefix) ServiceId {
-	if c.Services == nil {
-		c.Services = make(map[ServiceId]netip.Prefix)
+// LocalCfg represents local node-level configuration
+type LocalCfg struct {
+	// Node Private Key
+	Key              NyPrivateKey
+	Id               NodeId                // unique id for this node
+	Port             uint16                // Address that the data plane can be accessed by
+	Dist             *LocalDistributionCfg `yaml:",omitempty"`                   // distribution configuration
+	UseSystemRouting bool                  `yaml:"use_system_routing,omitempty"` // all packets from peers will come out of the TUN interface
+	NoNetConfigure   bool                  `yaml:"no_net_configure,omitempty"`   // do not configure system networking at all
+	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // dns resolvers used by nylon, currently only for config repo
+	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
+	LogPath          string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
+	IncludeIPs       []netip.Prefix        `yaml:"include_ips,omitempty"`        // split tunnel, subtracts from centrally excluded ip ranges
+	ExcludeIPs       []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, adds to the centrally excluded ip ranges
+	PreUp            []string              `yaml:"pre_up,omitempty"`             // a list of commands executed in order before the nylon interface is brought up
+	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
+	PostUp           []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
+	PostDown         []string              `yaml:"post_down,omitempty"`          // a list of commands executed in order after the nylon interface is brought down
+}
+
+// GetPrefixes returns all unique prefixes from all nodes
+func (c *CentralCfg) GetPrefixes() []netip.Prefix {
+	prefixMap := make(map[netip.Prefix]bool)
+
+	// Collect from routers
+	for _, router := range c.Routers {
+		for _, prefix := range router.Prefixes {
+			prefixMap[prefix] = true
+		}
 	}
-	c.Services[svcId] = prefix
-	return svcId
+
+	// Collect from clients
+	for _, client := range c.Clients {
+		for _, prefix := range client.Prefixes {
+			prefixMap[prefix] = true
+		}
+	}
+
+	// Convert to slice
+	prefixes := make([]netip.Prefix, 0, len(prefixMap))
+	for prefix := range prefixMap {
+		prefixes = append(prefixes, prefix)
+	}
+
+	return prefixes
 }
 
 func (c *CentralCfg) GetNodes() []NodeCfg {
@@ -60,23 +102,6 @@ func (c *CentralCfg) GetNodes() []NodeCfg {
 		nodes = append(nodes, n.NodeCfg)
 	}
 	return nodes
-}
-
-// TODO: Allow node to be configured to NOT be a router
-// LocalCfg represents local node-level configuration
-type LocalCfg struct {
-	// Node Private Key
-	Key NyPrivateKey
-	Id  NodeId
-	// Address that the data plane can be accessed by
-	Port             uint16
-	Dist             *LocalDistributionCfg `yaml:",omitempty"`
-	DisableRouting   bool
-	UseSystemRouting bool
-	NoNetConfigure   bool     `yaml:",omitempty"`
-	DnsResolvers     []string `yaml:",omitempty"`
-	InterfaceName    string
-	LogPath          string
 }
 
 func parseSymbolList(s string, validSymbols []string) ([]string, error) {
@@ -97,6 +122,41 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 	}
 	slices.Sort(line)
 	return line, nil
+}
+
+func toIPNets(prefixes []netip.Prefix) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(prefixes))
+	for _, p := range prefixes {
+		if p.IsValid() {
+			nets = append(nets, &net.IPNet{
+				IP:   p.Addr().AsSlice(),
+				Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen()),
+			})
+		}
+	}
+	return nets
+}
+
+func fromIPNets(nets []*net.IPNet) []netip.Prefix {
+	output := make([]netip.Prefix, 0, len(nets))
+	for _, n := range nets {
+		if addr, ok := netip.AddrFromSlice(n.IP); ok {
+			ones, _ := n.Mask.Size()
+			output = append(output, netip.PrefixFrom(addr.Unmap(), ones))
+		}
+	}
+	return output
+}
+
+func SubtractPrefix(includesPrefix, excludesPrefix []netip.Prefix) []netip.Prefix {
+	result := ip.RemoveCIDRs(toIPNets(includesPrefix), toIPNets(excludesPrefix))
+	ipv4, ipv6 := ip.CoalesceCIDRs(result)
+	return fromIPNets(append(ipv4, ipv6...))
+}
+
+func CoalescePrefix(prefixes []netip.Prefix) []netip.Prefix {
+	ipv4, ipv6 := ip.CoalesceCIDRs(toIPNets(prefixes))
+	return fromIPNets(append(ipv4, ipv6...))
 }
 
 /*
@@ -325,13 +385,17 @@ func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
 }
 
 func ExpandCentralConfig(cfg *CentralCfg) {
-	// compatibility & convenience: add a default service for a node
+	// compatibility & convenience: advertise address as a host address (/32 or /128)
 	for idx, node := range cfg.Routers {
-		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		for _, addr := range node.Addresses {
+			node.Prefixes = append([]netip.Prefix{AddrToPrefix(addr)}, node.Prefixes...)
+		}
 		cfg.Routers[idx] = node
 	}
 	for idx, node := range cfg.Clients {
-		node.Services = append([]ServiceId{cfg.RegisterService(ServiceId(node.Id), AddrToPrefix(node.Address))}, node.Services...)
+		for _, addr := range node.Addresses {
+			node.Prefixes = append([]netip.Prefix{AddrToPrefix(addr)}, node.Prefixes...)
+		}
 		cfg.Clients[idx] = node
 	}
 }
@@ -387,10 +451,6 @@ func (e *CentralCfg) GetRouter(node NodeId) RouterCfg {
 	}
 
 	return e.Routers[idx]
-}
-
-func (e *CentralCfg) GetSvcPrefix(svc ServiceId) netip.Prefix {
-	return e.Services[svc]
 }
 
 func (e *CentralCfg) GetClient(node NodeId) ClientCfg {

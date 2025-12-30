@@ -1,12 +1,23 @@
 key: 0NcrMcaS1tORCTA88L5ZPE+H6yUMV4e5vRp6iypnPW8=
 id: alice
 port: 57175 # Default: 57175 - UDP port that Nylon listens on
-nonetconfigure: false # Default: false - If enabled, Nylon will not configure the system network settings.
-usesystemrouting: false # Default: false - if enabled, Nylon will use the system route table to forward packets
-logpath: "" # Default: "" - If set, Nylon will log to this file
-interfacename: "" # Default: "" - If set, Nylon will use this interface name instead of the default "nylon" or utunx on macOS
-disablerouting: false # Default: false - If true, Nylon will not route traffic through this node
-dnsresolvers: [] # Default: [] - If set (e.g ["1.1.1.1:53"]), nylon will use these DNS resolvers for its own queries
+
+# the following are optional
+use_system_routing: false # Default: false - all packets from peers will come out of the TUN interface
+no_net_configure: false # Default: false - do not configure system networking at all
+log_path: "" # Default: "" - If set, Nylon will log to this file
+interface_name: "" # Default: "" - If set, Nylon will use this interface name instead of the default "nylon" or utunx on macOS
+dns_resolvers: [] # Default: [] - If set (e.g ["1.1.1.1:53"]), nylon will use these DNS resolvers for its own queries
 dist: # Optional: If set, Nylon will bootstrap central.yaml from this URL if it does not exist already
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
+include_ips: [] # split tunnel, subtracts from centrally excluded ip ranges
+exclude_ips: # split tunnel, adds to the centrally excluded ip ranges
+  - 192.168.0.0/24 # e.g here, we exclude the local ip range
+
+# for even more flexibility, you may execute commands when the interface starts or stops
+pre_up: []
+pre_down: []
+post_up:
+  - iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -d 192.168.0.0/24 -j MASQUERADE # can be used in conjunction with an advertised prefix
+post_down: []

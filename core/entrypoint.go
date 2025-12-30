@@ -127,11 +127,11 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 			nodeCfg.LogPath = logPath
 		}
 
+		state.ExpandCentralConfig(centralCfg)
 		err = state.CentralConfigValidator(centralCfg)
 		if err != nil {
 			panic(err)
 		}
-		state.ExpandCentralConfig(centralCfg)
 		err = state.NodeConfigValidator(nodeCfg)
 		if err != nil {
 			panic(err)

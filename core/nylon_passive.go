@@ -24,26 +24,29 @@ func scanPassivePeers(s *state.State) error {
 			// If this device switches to another nylon node, that node will start advertising the client, and we will stop holding the route
 
 			hasOtherAdvertisers := false
-			for _, neigh := range s.Neighbours {
-				for _, route := range neigh.Routes {
-					if route.ServiceId == state.ServiceId(*nid) && route.NodeId != s.Id && route.FD.Metric != state.INF {
-						hasOtherAdvertisers = true
-						break
+			ncfg := s.GetNode(*nid)
+			for _, prefix := range ncfg.Prefixes {
+				for _, neigh := range s.Neighbours {
+					for _, route := range neigh.Routes {
+						if route.Prefix == prefix && route.NodeId != s.Id && route.FD.Metric != state.INF {
+							hasOtherAdvertisers = true
+							goto foundAdvertiser
+						}
 					}
 				}
 			}
+		foundAdvertiser:
 
 			// TODO: we could make this expire after a longer period of time, like 24h. However, this would require our passive client to wait for the full route propagation time after 24 hours. (Might cause unexpected interruptions)
 
 			recentlyUpdated := time.Now().Sub(peer.LastReceivedPacket()) < state.ClientDeadThreshold
-			recentlyAdvertised := r.hasRecentlyAdvertised(state.ServiceId(*nid))
-
-			if s.IsClient(*nid) && (recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised) {
+			if s.IsClient(*nid) {
 				// we have a passive client
-				ncfg := s.GetNode(*nid)
-
-				for _, newSvc := range ncfg.Services {
-					r.updatePassiveClient(s, newSvc, *nid, !recentlyUpdated)
+				for _, newPrefix := range ncfg.Prefixes {
+					recentlyAdvertised := r.hasRecentlyAdvertised(newPrefix)
+					if recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised {
+						r.updatePassiveClient(s, newPrefix, *nid, !recentlyUpdated)
+					}
 				}
 			}
 		}

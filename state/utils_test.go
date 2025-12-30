@@ -21,7 +21,6 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 				"file:example.conf",
 			},
 		},
-		Services: make(map[ServiceId]netip.Prefix),
 	}
 
 	clients := make([]string, numClients)
@@ -33,7 +32,7 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 		cfg.Clients = append(cfg.Clients, ClientCfg{NodeCfg{
 			Id:       NodeId(client),
 			PubKey:   keyStore[client].Pubkey(),
-			Services: []ServiceId{cfg.RegisterService(ServiceId(client), netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx)))},
+			Prefixes: []netip.Prefix{netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx))},
 		}})
 	}
 
@@ -47,7 +46,7 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 			NodeCfg: NodeCfg{
 				Id:       NodeId(router),
 				PubKey:   keyStore[router].Pubkey(),
-				Services: []ServiceId{cfg.RegisterService(ServiceId(router), netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx)))},
+				Prefixes: []netip.Prefix{netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx))},
 			},
 			Endpoints: []netip.AddrPort{
 				netip.MustParseAddrPort(fmt.Sprintf("192.168.0.%d:25565", idx)),
@@ -56,9 +55,6 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 	}
 
 	cfg.Timestamp = time.Now().UnixNano()
-	cfg.Services = map[ServiceId]netip.Prefix{
-		"service-a": netip.MustParsePrefix("10.0.0.5/24"),
-	}
 	cfg.Graph = append(cfg.Graph, fmt.Sprintf("clients = %s", strings.Join(clients, ",")))
 	cfg.Graph = append(cfg.Graph, fmt.Sprintf("routers = %s", strings.Join(routers, ",")))
 	if fullyConnected {

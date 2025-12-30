@@ -129,11 +129,9 @@ func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
-			Id:     id,
-			PubKey: privKey.Pubkey(),
-			Services: []state.ServiceId{
-				v.Central.RegisterService(state.ServiceId(id), netip.MustParsePrefix(virtPrefix)),
-			},
+			Id:       id,
+			PubKey:   privKey.Pubkey(),
+			Prefixes: []netip.Prefix{netip.MustParsePrefix(virtPrefix)},
 		},
 	}
 	v.Central.Routers = append(v.Central.Routers, ncfg)
@@ -257,8 +255,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			return true
 		}
 	}
-	for _, svc := range curCfg.Services {
-		prefix := i.cfg.Central.GetSvcPrefix(svc)
+	for _, prefix := range curCfg.Prefixes {
 		if prefix.Contains(dst) {
 			if i.SelfHandler.TryApply(node, src, dst, data) {
 				return true
@@ -273,8 +270,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 			if node == n.Id {
 				continue
 			}
-			for _, p := range n.Services {
-				prefix := i.cfg.Central.GetSvcPrefix(p)
+			for _, prefix := range n.Prefixes {
 				if prefix.Contains(dst) {
 					// route to this node
 					select {
