@@ -62,3 +62,13 @@ func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route n
 		return Exec(logger, "/sbin/route", "-n", "add", "-net", addr.String(), "-netmask", netmask, "-interface", itfName)
 	}
 }
+
+func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+	if route.Addr().Is6() {
+		return Exec(logger, "/sbin/route", "-n", "delete", "-inet6", route.String(), "-interface", itfName)
+	} else {
+		addr := route.Addr()
+		netmask := PrefixToMaskString(route)
+		return Exec(logger, "/sbin/route", "-n", "delete", "-net", addr.String(), "-netmask", netmask, "-interface", itfName)
+	}
+}

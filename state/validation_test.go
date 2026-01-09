@@ -62,10 +62,25 @@ func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
 				NodeCfg: NodeCfg{
 					Id:     "node1",
 					PubKey: NyPublicKey{},
-					Prefixes: []netip.Prefix{
-						netip.MustParsePrefix("10.5.0.1/32"),
-						netip.MustParsePrefix("10.5.0.0/24"),
-						netip.MustParsePrefix("10.5.0.1/8"),
+					Prefixes: []PrefixHealthWrapper{
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/32"),
+								Metric: 0,
+							},
+						},
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.0/24"),
+								Metric: 0,
+							},
+						},
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/8"),
+								Metric: 0,
+							},
+						},
 					},
 				},
 			},
@@ -81,10 +96,25 @@ func TestCentralConfigValidator_DuplicatePrefix(t *testing.T) {
 				NodeCfg: NodeCfg{
 					Id:     "node1",
 					PubKey: NyPublicKey{},
-					Prefixes: []netip.Prefix{
-						netip.MustParsePrefix("10.5.0.1/32"),
-						netip.MustParsePrefix("10.5.0.1/24"),
-						netip.MustParsePrefix("10.5.0.1/32"), // duplicate within same node
+					Prefixes: []PrefixHealthWrapper{
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/32"),
+								Metric: 0,
+							},
+						},
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/24"),
+								Metric: 0,
+							},
+						},
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/32"),
+								Metric: 0,
+							},
+						},
 					},
 				},
 			},
@@ -101,8 +131,13 @@ func TestCentralConfigValidator_AnycastPrefix(t *testing.T) {
 				NodeCfg: NodeCfg{
 					Id:     "node1",
 					PubKey: NyPublicKey{},
-					Prefixes: []netip.Prefix{
-						netip.MustParsePrefix("10.5.0.1/32"),
+					Prefixes: []PrefixHealthWrapper{
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/32"),
+								Metric: 0,
+							},
+						},
 					},
 				},
 			},
@@ -110,8 +145,13 @@ func TestCentralConfigValidator_AnycastPrefix(t *testing.T) {
 				NodeCfg: NodeCfg{
 					Id:     "node2",
 					PubKey: NyPublicKey{},
-					Prefixes: []netip.Prefix{
-						netip.MustParsePrefix("10.5.0.1/32"), // same prefix as node1 - this is valid for anycast
+					Prefixes: []PrefixHealthWrapper{
+						{
+							&StaticPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.5.0.1/32"), // same prefix as node1 - this is valid for anycast
+								Metric: 0,
+							},
+						},
 					},
 				},
 			},

@@ -14,8 +14,8 @@ import (
 type NodeCfg struct {
 	Id        NodeId
 	PubKey    NyPublicKey
-	Addresses []netip.Addr   `yaml:",omitempty"`
-	Prefixes  []netip.Prefix `yaml:",omitempty"`
+	Addresses []netip.Addr          `yaml:",omitempty"`
+	Prefixes  []PrefixHealthWrapper `yaml:",omitempty"`
 }
 
 // RouterCfg represents a central representation of a node that can route
@@ -58,7 +58,7 @@ type LocalCfg struct {
 	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // dns resolvers used by nylon, currently only for config repo
 	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
 	LogPath          string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
-	IncludeIPs       []netip.Prefix        `yaml:"include_ips,omitempty"`        // split tunnel, subtracts from centrally excluded ip ranges
+	UnexcludeIPs     []netip.Prefix        `yaml:"unexclude_ips,omitempty"`      // split tunnel, subtracts from centrally excluded ip ranges
 	ExcludeIPs       []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, adds to the centrally excluded ip ranges
 	PreUp            []string              `yaml:"pre_up,omitempty"`             // a list of commands executed in order before the nylon interface is brought up
 	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
@@ -73,14 +73,14 @@ func (c *CentralCfg) GetPrefixes() []netip.Prefix {
 	// Collect from routers
 	for _, router := range c.Routers {
 		for _, prefix := range router.Prefixes {
-			prefixMap[prefix] = true
+			prefixMap[prefix.GetPrefix()] = true
 		}
 	}
 
 	// Collect from clients
 	for _, client := range c.Clients {
 		for _, prefix := range client.Prefixes {
-			prefixMap[prefix] = true
+			prefixMap[prefix.GetPrefix()] = true
 		}
 	}
 
@@ -388,13 +388,21 @@ func ExpandCentralConfig(cfg *CentralCfg) {
 	// compatibility & convenience: advertise address as a host address (/32 or /128)
 	for idx, node := range cfg.Routers {
 		for _, addr := range node.Addresses {
-			node.Prefixes = append([]netip.Prefix{AddrToPrefix(addr)}, node.Prefixes...)
+			advAddress := StaticPrefixHealth{
+				Prefix: AddrToPrefix(addr),
+				Metric: 0,
+			}
+			node.Prefixes = append([]PrefixHealthWrapper{{&advAddress}}, node.Prefixes...)
 		}
 		cfg.Routers[idx] = node
 	}
 	for idx, node := range cfg.Clients {
 		for _, addr := range node.Addresses {
-			node.Prefixes = append([]netip.Prefix{AddrToPrefix(addr)}, node.Prefixes...)
+			advAddress := StaticPrefixHealth{
+				Prefix: AddrToPrefix(addr),
+				Metric: 0,
+			}
+			node.Prefixes = append([]PrefixHealthWrapper{{&advAddress}}, node.Prefixes...)
 		}
 		cfg.Clients[idx] = node
 	}

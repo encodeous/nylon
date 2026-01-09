@@ -69,7 +69,7 @@ func NodeConfigValidator(node *LocalCfg) error {
 		}
 	}
 	// validate prefixes
-	for _, p := range append(node.IncludeIPs, node.ExcludeIPs...) {
+	for _, p := range append(node.UnexcludeIPs, node.ExcludeIPs...) {
 		if !p.IsValid() {
 			return fmt.Errorf("invalid prefix %s", p)
 		}
@@ -119,19 +119,19 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 	for _, router := range cfg.Routers {
 		routerPrefixes := make(map[netip.Prefix]struct{})
 		for _, p := range router.Prefixes {
-			if _, ok := routerPrefixes[p]; ok {
+			if _, ok := routerPrefixes[p.GetPrefix()]; ok {
 				return fmt.Errorf("router %s has duplicate prefix %s", router.Id, p)
 			}
-			routerPrefixes[p] = struct{}{}
+			routerPrefixes[p.GetPrefix()] = struct{}{}
 		}
 		for _, peer := range cfg.GetPeers(router.Id) {
 			if cfg.IsClient(peer) {
 				client := cfg.GetClient(peer)
 				for _, cp := range client.Prefixes {
-					if _, ok := routerPrefixes[cp]; ok {
+					if _, ok := routerPrefixes[cp.GetPrefix()]; ok {
 						return fmt.Errorf("router %s has duplicate prefix %s (provided by client %s)", router.Id, cp, client.Id)
 					}
-					routerPrefixes[cp] = struct{}{}
+					routerPrefixes[cp.GetPrefix()] = struct{}{}
 				}
 			}
 		}
@@ -146,10 +146,47 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			}
 		}
 	}
-	// validate prefixes
-	for _, p := range append(cfg.GetPrefixes(), cfg.ExcludeIPs...) {
+	// validate excludes
+	for _, p := range cfg.ExcludeIPs {
 		if !p.IsValid() {
 			return fmt.Errorf("invalid prefix %s", p)
+		}
+	}
+	// validate prefixes
+	phs := make([]PrefixHealthWrapper, 0)
+	for _, c := range cfg.Clients {
+		phs = append(phs, c.Prefixes...)
+	}
+	for _, c := range cfg.Routers {
+		phs = append(phs, c.Prefixes...)
+	}
+	for _, p := range phs {
+		if !p.GetPrefix().IsValid() {
+			return fmt.Errorf("invalid prefix %s", p.GetPrefix())
+		}
+		switch v := p.PrefixHealth.(type) {
+		case *StaticPrefixHealth:
+			// ok
+		case *PingPrefixHealth:
+			if !v.Addr.IsValid() {
+				return fmt.Errorf("invalid ping address %s for prefix %s", v.Addr, p.GetPrefix())
+			}
+			if v.Delay <= 0 {
+				return fmt.Errorf("ping delay must be greater than 0 for prefix %s", p.GetPrefix())
+			}
+			if v.MaxFailures <= 0 {
+				return fmt.Errorf("ping max_failures must be greater than 0 for prefix %s", p.GetPrefix())
+			}
+		case *HTTPPrefixHealth:
+			_, err := url.Parse(v.URL)
+			if err != nil {
+				return fmt.Errorf("invalid HTTP URL %s for prefix %s: %v", v.URL, p.GetPrefix(), err)
+			}
+			if v.Delay <= 0 {
+				return fmt.Errorf("HTTP delay must be greater than 0 for prefix %s", p.GetPrefix())
+			}
+		default:
+			return fmt.Errorf("unknown prefix health type for prefix %s", p.GetPrefix())
 		}
 	}
 	return nil
