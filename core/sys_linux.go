@@ -35,3 +35,7 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
 	return Exec(logger, "ip", "route", "add", route.String(), "dev", itfName)
 }
+
+func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+	return Exec(logger, "ip", "route", "del", route.String(), "dev", itfName)
+}

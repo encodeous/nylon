@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/encodeous/nylon/polyamide/device"
@@ -13,12 +14,13 @@ import (
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
-	PingBuf *ttlcache.Cache[uint64, EpPing]
-	Device  *device.Device
-	Tun     tun.Device
-	wgUapi  net.Listener
-	env     *state.Env
-	itfName string
+	PingBuf             *ttlcache.Cache[uint64, EpPing]
+	Device              *device.Device
+	Tun                 tun.Device
+	wgUapi              net.Listener
+	env                 *state.Env
+	itfName             string
+	prevInstalledRoutes []netip.Prefix
 }
 
 func (n *Nylon) Init(s *state.State) error {
@@ -90,6 +92,12 @@ func (n *Nylon) Init(s *state.State) error {
 		return n.probeNew(s)
 	}, state.ProbeDiscoveryDelay)
 
+	// prefix healthcheck
+	for _, ph := range s.GetNode(s.Id).Prefixes {
+		s.Log.Info("starting prefix healthcheck", "prefix", ph.GetPrefix())
+		ph.Start(s.Log)
+	}
+
 	err = n.initPassiveClient(s)
 	if err != nil {
 		return err
@@ -107,6 +115,9 @@ func (n *Nylon) Init(s *state.State) error {
 
 func (n *Nylon) Cleanup(s *state.State) error {
 	n.PingBuf.Stop()
+	for _, ph := range s.GetNode(s.Id).Prefixes {
+		ph.Stop()
+	}
 
 	return n.cleanupWireGuard(s)
 }

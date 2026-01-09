@@ -19,8 +19,8 @@ import (
 	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
+	"github.com/goccy/go-yaml"
 	slogmulti "github.com/samber/slog-multi"
-	"gopkg.in/yaml.v3"
 )
 
 func setupDebugging() {

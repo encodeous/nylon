@@ -28,7 +28,7 @@ func scanPassivePeers(s *state.State) error {
 			for _, prefix := range ncfg.Prefixes {
 				for _, neigh := range s.Neighbours {
 					for _, route := range neigh.Routes {
-						if route.Prefix == prefix && route.NodeId != s.Id && route.FD.Metric != state.INF {
+						if route.Prefix == prefix.GetPrefix() && route.NodeId != s.Id && route.FD.Metric != state.INF {
 							hasOtherAdvertisers = true
 							goto foundAdvertiser
 						}
@@ -43,7 +43,7 @@ func scanPassivePeers(s *state.State) error {
 			if s.IsClient(*nid) {
 				// we have a passive client
 				for _, newPrefix := range ncfg.Prefixes {
-					recentlyAdvertised := r.hasRecentlyAdvertised(newPrefix)
+					recentlyAdvertised := r.hasRecentlyAdvertised(newPrefix.GetPrefix())
 					if recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised {
 						r.updatePassiveClient(s, newPrefix, *nid, !recentlyUpdated)
 					}

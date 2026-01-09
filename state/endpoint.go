@@ -154,9 +154,23 @@ func (u *NylonEndpoint) Metric() uint32 {
 	if !u.IsActive() {
 		return INF
 	}
-	return uint32(min(u.StabilizedPing().Microseconds(), int64(INF)-1))
+	return DurationToMetric(u.StabilizedPing())
 }
 
 func (u *NylonEndpoint) IsRemote() bool {
 	return u.remoteInit
+}
+
+func DurationToMetric(d time.Duration) uint32 {
+	if d == time.Duration(math.MaxInt64) {
+		return INF
+	}
+	return uint32(min(d.Microseconds(), int64(INF)-1))
+}
+
+func MetricToDuration(m uint32) time.Duration {
+	if m >= INF {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(m) * time.Microsecond
 }

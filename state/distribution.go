@@ -5,10 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"time"
+
+	"github.com/goccy/go-yaml"
 	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/chacha20poly1305"
-	"gopkg.in/yaml.v3"
-	"time"
 )
 
 func SignBundle(data []byte, key NyPrivateKey) ([]byte, error) {

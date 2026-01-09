@@ -36,7 +36,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("b", "c", "d"),
-		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {state.NodeId("a"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("a"), Expiry: maxTime}},
 	}
 	ComputeRoutes(&rs, h)
 	// we should have only routes to ourselves
@@ -70,7 +70,7 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	sr := AddLink(rs, NewMockEndpoint("S", 1))
@@ -167,7 +167,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("A", "B"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("S"): {state.NodeId("S"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("S"): {NodeId: state.NodeId("S"), Expiry: maxTime}},
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
@@ -269,7 +269,7 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -345,7 +345,7 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -423,7 +423,7 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -519,7 +519,7 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -598,7 +598,7 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -661,7 +661,7 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 		Routes:     make(map[netip.Prefix]state.SelRoute),
 		Sources:    make(map[state.Source]state.FD),
 		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {state.NodeId("A"), maxTime, false}},
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AB := AddLink(rs, NewMockEndpoint("B", 1))

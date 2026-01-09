@@ -129,9 +129,16 @@ func (v *VirtualHarness) NewNode(id state.NodeId, virtPrefix string) {
 	}
 	ncfg := state.RouterCfg{
 		NodeCfg: state.NodeCfg{
-			Id:       id,
-			PubKey:   privKey.Pubkey(),
-			Prefixes: []netip.Prefix{netip.MustParsePrefix(virtPrefix)},
+			Id:     id,
+			PubKey: privKey.Pubkey(),
+			Prefixes: []state.PrefixHealthWrapper{
+				{
+					&state.StaticPrefixHealth{
+						Prefix: netip.MustParsePrefix(virtPrefix),
+						Metric: 0,
+					},
+				},
+			},
 		},
 	}
 	v.Central.Routers = append(v.Central.Routers, ncfg)
@@ -256,7 +263,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 		}
 	}
 	for _, prefix := range curCfg.Prefixes {
-		if prefix.Contains(dst) {
+		if prefix.GetPrefix().Contains(dst) {
 			if i.SelfHandler.TryApply(node, src, dst, data) {
 				return true
 			}
@@ -271,7 +278,7 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 				continue
 			}
 			for _, prefix := range n.Prefixes {
-				if prefix.Contains(dst) {
+				if prefix.GetPrefix().Contains(dst) {
 					// route to this node
 					select {
 					case i.virtTun[curIdx].Outbound <- pkt: // send back into our tun to get routed by WireGuard/Polyamide

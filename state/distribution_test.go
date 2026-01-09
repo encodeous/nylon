@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/chacha20poly1305"
-	"gopkg.in/yaml.v3"
 )
 
 func TestBundleUnbundle(t *testing.T) {
@@ -21,9 +21,16 @@ func TestBundleUnbundle(t *testing.T) {
 		Routers: make([]RouterCfg, 0),
 		Clients: []ClientCfg{
 			{NodeCfg{
-				Id:       "blah",
-				PubKey:   NyPublicKey{},
-				Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
+				Id:     "blah",
+				PubKey: NyPublicKey{},
+				Prefixes: []PrefixHealthWrapper{
+					{
+						&StaticPrefixHealth{
+							Prefix: netip.MustParsePrefix("10.0.0.1/32"),
+							Metric: 0,
+						},
+					},
+				},
 			}},
 		},
 		Graph: []string{
@@ -54,10 +61,25 @@ func TestBundleTamper(t *testing.T) {
 			{NodeCfg{
 				Id:     "blah",
 				PubKey: NyPublicKey{},
-				Prefixes: []netip.Prefix{
-					netip.MustParsePrefix("10.0.0.1/32"),
-					netip.MustParsePrefix("10.0.0.2/32"),
-					netip.MustParsePrefix("10.0.0.3/8"),
+				Prefixes: []PrefixHealthWrapper{
+					{
+						&StaticPrefixHealth{
+							Prefix: netip.MustParsePrefix("10.0.0.1/32"),
+							Metric: 0,
+						},
+					},
+					{
+						&StaticPrefixHealth{
+							Prefix: netip.MustParsePrefix("10.0.0.2/32"),
+							Metric: 0,
+						},
+					},
+					{
+						&StaticPrefixHealth{
+							Prefix: netip.MustParsePrefix("10.0.0.3/8"),
+							Metric: 0,
+						},
+					},
 				},
 			}},
 		},
@@ -145,5 +167,5 @@ func TestBundleInvalidData2(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = UnbundleConfig(base64.StdEncoding.EncodeToString(bundle), root.Pubkey())
-	assert.ErrorContains(t, err, "yaml: unmarshal errors")
+	assert.Error(t, err)
 }

@@ -30,9 +30,16 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 		clients[idx] = client
 		keyStore[client] = GenerateKey()
 		cfg.Clients = append(cfg.Clients, ClientCfg{NodeCfg{
-			Id:       NodeId(client),
-			PubKey:   keyStore[client].Pubkey(),
-			Prefixes: []netip.Prefix{netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx))},
+			Id:     NodeId(client),
+			PubKey: keyStore[client].Pubkey(),
+			Prefixes: []PrefixHealthWrapper{
+				{
+					&StaticPrefixHealth{
+						Prefix: netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx)),
+						Metric: 0,
+					},
+				},
+			},
 		}})
 	}
 
@@ -44,9 +51,16 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 		keyStore[router] = GenerateKey()
 		cfg.Routers = append(cfg.Routers, RouterCfg{
 			NodeCfg: NodeCfg{
-				Id:       NodeId(router),
-				PubKey:   keyStore[router].Pubkey(),
-				Prefixes: []netip.Prefix{netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx))},
+				Id:     NodeId(router),
+				PubKey: keyStore[router].Pubkey(),
+				Prefixes: []PrefixHealthWrapper{
+					{
+						&StaticPrefixHealth{
+							Prefix: netip.MustParsePrefix(fmt.Sprintf("10.1.0.%d/32", idx)),
+							Metric: 0,
+						},
+					},
+				},
 			},
 			Endpoints: []netip.AddrPort{
 				netip.MustParseAddrPort(fmt.Sprintf("192.168.0.%d:25565", idx)),

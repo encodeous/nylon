@@ -84,9 +84,9 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		for prefix, adv := range s.Advertised {
 			timeRem := adv.Expiry.Sub(time.Now())
 			if timeRem > time.Hour*24 {
-				rt = append(rt, fmt.Sprintf(" - %s expires never nh %s", prefix, adv.NodeId))
+				rt = append(rt, fmt.Sprintf(" - %s expires never nh %s metric %d", prefix, adv.NodeId, adv.MetricFn()))
 			} else {
-				rt = append(rt, fmt.Sprintf(" - %s expires %.2fs nh %s", prefix, timeRem.Seconds(), adv.NodeId))
+				rt = append(rt, fmt.Sprintf(" - %s expires %.2fs nh %s metric %d", prefix, timeRem.Seconds(), adv.NodeId, adv.MetricFn()))
 			}
 		}
 		slices.Sort(rt)

@@ -34,13 +34,37 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 }
 
 func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
-	addr := route.Addr()
-	_, mask, _ := net.ParseCIDR(route.String())
-	maskStr := net.IP(mask.Mask).String()
 	ifId := wintypes.LUID((dev.(*tun.NativeTun)).LUID())
 	itf, err := ifId.Interface()
 	if err != nil {
 		return err
 	}
-	return Exec(logger, "route", "add", addr.String(), "mask", maskStr, "0.0.0.0", "IF", strconv.FormatUint(uint64(itf.InterfaceIndex), 10))
+	ifIndex := strconv.FormatUint(uint64(itf.InterfaceIndex), 10)
+
+	if route.Addr().Is6() {
+		return Exec(logger, "route", "add", route.String(), "::", "IF", ifIndex)
+	} else {
+		addr := route.Addr()
+		_, mask, _ := net.ParseCIDR(route.String())
+		maskStr := net.IP(mask.Mask).String()
+		return Exec(logger, "route", "add", addr.String(), "mask", maskStr, "0.0.0.0", "IF", ifIndex)
+	}
+}
+
+func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+	ifId := wintypes.LUID((dev.(*tun.NativeTun)).LUID())
+	itf, err := ifId.Interface()
+	if err != nil {
+		return err
+	}
+	ifIndex := strconv.FormatUint(uint64(itf.InterfaceIndex), 10)
+
+	if route.Addr().Is6() {
+		return Exec(logger, "route", "delete", route.String(), "::", "IF", ifIndex)
+	} else {
+		addr := route.Addr()
+		_, mask, _ := net.ParseCIDR(route.String())
+		maskStr := net.IP(mask.Mask).String()
+		return Exec(logger, "route", "delete", addr.String(), "mask", maskStr, "0.0.0.0", "IF", ifIndex)
+	}
 }
