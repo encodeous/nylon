@@ -24,6 +24,8 @@ type Advertisement struct {
 	NodeId
 	Expiry        time.Time
 	IsPassiveHold bool
+	MetricFn      func() uint32
+	ExpiryFn      func()
 }
 type RouterState struct {
 	Id         NodeId

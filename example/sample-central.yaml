@@ -10,8 +10,21 @@ routers:
     pubkey: xmfAovAKN4AY5ocK5s+/VsG9I27KrQ13Vzb0HOsLKAs==
     addresses: [10.0.0.1] # this is the primary address of the nylon interface, it will be used when sending out packets from the interface
     prefixes:
-      - 192.168.0.0/24 # you can advertise a prefix as well. make sure to exclude this on nodes where it could overlap!
-      - 10.1.0.0/24
+      - type: static # here, we define a static prefix advertisement
+        prefix: 192.168.0.0/24 # you can advertise a prefix as well. make sure to exclude this on nodes where it could overlap!
+        metric: 0 # optional advertisement metric, default is 0
+      - type: ping # the ping prefix healthcheck will periodically ping the specified address, and advertise the prefix with metric according to the RTT of the ping. If the ping fails more than max_failures times, the prefix will not be advertised.
+        prefix: 10.1.0.0/24
+        addr: 10.1.0.8 # address to ping
+        delay: 10s
+        max_failures: 3
+        bind_if: en10 # optional bind, if empty, we bind to all interfaces
+        # metric: 0 # optional metric, if set, this will be used instead of RTT
+      - type: http # similar to the http prefix, but uses an HTTP GET request to determine prefix health. the duration of the GET request is used as the metric.
+        prefix: 10.2.0.0/24
+        url: http://example.com/healthz # will expect a success response
+        delay: 15s
+        metric: 5 # optional static metric, overrides the GET duration
   - id: bob
     pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
     addresses: [10.0.0.2, 10.1.0.2] # you can advertise multiple addresses
@@ -33,8 +46,9 @@ clients: # external "vanilla" WireGuard clients must be defined separately
   - id: client1
     pubkey: SBI+yvF30Ba4xo0GKTtKHSSfbXAnRNFTBwydJyJp6Rk=
     addresses: [10.0.0.7]
-    prefixes:
-      - 192.168.1.0/24 # clients may also advertise prefixes, just make sure it's also added in the allowed ips in the WireGuard config
+    prefixes: # these prefixes will be advertised by the gateway which this client connects to
+      - type: static
+        prefix: 192.168.1.0/24 # clients may also advertise prefixes, just make sure it's also added in the allowed ips in the WireGuard config
 exclude_ips: # split tunnel, default excluded ip ranges for the whole network, if empty, all advertised prefixes will be included
   - 192.168.0.0/24
 graph: # The graph determines which nodes will attempt/can peer with each other. Nodes will only connect to each other once they have been connected directly in the graph.

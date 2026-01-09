@@ -170,7 +170,12 @@ func (r *NylonRouter) Init(s *state.State) error {
 	}
 	maxTime := time.Unix(1<<63-62135596801, 999999999)
 	for _, prefix := range s.Env.GetRouter(s.Id).Prefixes {
-		s.RouterState.Advertised[prefix] = state.Advertisement{NodeId: s.Id, Expiry: maxTime, IsPassiveHold: false}
+		s.RouterState.Advertised[prefix.GetPrefix()] = state.Advertisement{
+			NodeId:        s.Id,
+			Expiry:        maxTime,
+			IsPassiveHold: false,
+			MetricFn:      prefix.GetMetric,
+		}
 	}
 
 	s.Log.Debug("schedule router tasks")
@@ -188,11 +193,30 @@ func (r *NylonRouter) Init(s *state.State) error {
 	return nil
 }
 
-func (r *NylonRouter) updatePassiveClient(s *state.State, prefix netip.Prefix, node state.NodeId, passiveHold bool) {
+// ComputeSysRouteTable computes: computed = prefixes - (((r.CentralCfg.ExcludeIPs U selected self prefixes) - r.LocalCfg.UnexcludeIPs) U r.LocalCfg.ExcludeIPs)
+func (r *NylonRouter) ComputeSysRouteTable() []netip.Prefix {
+	prefixes := make([]netip.Prefix, 0)
+	selectedSelf := make(map[netip.Prefix]struct{})
+	for entry, v := range r.ForwardTable.All() {
+		prefixes = append(prefixes, entry)
+		if v.Nh == r.Id {
+			selectedSelf[entry] = struct{}{}
+		}
+	}
+
+	defaultExcludes := r.CentralCfg.ExcludeIPs
+	for p := range selectedSelf {
+		defaultExcludes = append(defaultExcludes, p)
+	}
+	exclude := append(state.SubtractPrefix(defaultExcludes, r.LocalCfg.UnexcludeIPs), r.LocalCfg.ExcludeIPs...)
+	return state.SubtractPrefix(prefixes, exclude)
+}
+
+func (r *NylonRouter) updatePassiveClient(s *state.State, prefix state.PrefixHealthWrapper, node state.NodeId, passiveHold bool) {
 	// inserts an artificial route into the table
 
 	hasPassiveHold := false
-	old, ok := s.RouterState.Advertised[prefix]
+	old, ok := s.RouterState.Advertised[prefix.GetPrefix()]
 	if ok && old.NodeId == node {
 		hasPassiveHold = old.IsPassiveHold
 	}
@@ -200,13 +224,18 @@ func (r *NylonRouter) updatePassiveClient(s *state.State, prefix netip.Prefix, n
 	if passiveHold && !hasPassiveHold {
 		// the first time we enter passive hold, we should increment the seqno to prevent other nodes from switching away from the route
 		// this reduces a lot of route flapping when the client wakes up, sends some traffic and then goes back to sleep
-		r.SetSeqno(prefix, s.RouterState.GetSeqno(prefix)+1)
+		r.SetSeqno(prefix.GetPrefix(), s.RouterState.GetSeqno(prefix.GetPrefix())+1)
 	}
 
-	s.Advertised[prefix] = state.Advertisement{
+	prefix.Start(s.Log)
+	s.Advertised[prefix.GetPrefix()] = state.Advertisement{
 		NodeId:        node,
 		Expiry:        time.Now().Add(state.ClientKeepaliveInterval),
 		IsPassiveHold: passiveHold,
+		MetricFn:      prefix.GetMetric,
+		ExpiryFn: func() {
+			prefix.Stop()
+		},
 	}
 }
 

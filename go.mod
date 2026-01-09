@@ -3,9 +3,12 @@ module github.com/encodeous/nylon
 go 1.25.4
 
 require (
+	github.com/cilium/cilium v1.18.4
+	github.com/digineo/go-ping v1.2.0
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
 	github.com/encodeous/tint v1.2.0
 	github.com/gaissmai/bart v0.25.0
+	github.com/goccy/go-yaml v1.19.1
 	github.com/google/go-cmp v0.7.0
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/kmahyyg/go-network-compo v0.2.10
@@ -19,14 +22,13 @@ require (
 	golang.org/x/sys v0.38.0
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 	google.golang.org/protobuf v1.36.10
-	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
 )
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/cilium/cilium v1.18.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/digineo/go-logwrap v0.0.0-20181106161722-a178c58ea3f0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -42,4 +44,5 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

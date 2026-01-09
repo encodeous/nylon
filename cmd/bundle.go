@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/encodeous/nylon/state"
+	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var sealCmd = &cobra.Command{

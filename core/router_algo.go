@@ -143,6 +143,9 @@ func RunGC(s *state.RouterState, r Router) {
 		if now.After(exp.Expiry) {
 			// advertised route expired, remove it
 			delete(s.Advertised, svc)
+			if exp.ExpiryFn != nil {
+				exp.ExpiryFn()
+			}
 		}
 	}
 
@@ -437,7 +440,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	// add our own routes to the route table, so that we can advertise them
 	for prefix, adv := range s.Advertised {
-		advMetric := uint32(0)
+		advMetric := adv.MetricFn()
 		if adv.IsPassiveHold {
 			// The metric should be high enough so that if the passive client connects to any other node, our route will be immediately unselected
 			advMetric = state.INFM / 2
@@ -498,9 +501,6 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 		// enumerate through neighbour advertisements
 		for S, adv := range neigh.Routes {
-			if _, ok := s.Advertised[S.Prefix]; ok {
-				continue // skip self routes
-			}
 			prefix := S.Prefix
 
 			// Cost(A, B) + Cost(S, B)

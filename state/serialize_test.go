@@ -1,9 +1,10 @@
 package state
 
 import (
-	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v3"
 	"testing"
+
+	"github.com/goccy/go-yaml"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSerialize(t *testing.T) {
@@ -35,5 +36,5 @@ port: abcd
 `
 	y1 := LocalCfg{}
 	err := yaml.Unmarshal([]byte(x1), &y1)
-	assert.ErrorContains(t, err, "line 3: cannot unmarshal !!str `abcd` into uint16")
+	assert.ErrorContains(t, err, "cannot unmarshal string")
 }

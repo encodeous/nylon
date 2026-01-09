@@ -82,15 +82,15 @@ listen_port=%d
 
 	// configure system networking
 
-	if !s.NoNetConfigure {
-		// run pre-up commands
-		for _, cmd := range s.PreUp {
-			err = ExecSplit(s.Log, cmd)
-			if err != nil {
-				s.Log.Error("failed to run pre-up command", "err", err)
-			}
+	// run pre-up commands
+	for _, cmd := range s.PreUp {
+		err = ExecSplit(s.Log, cmd)
+		if err != nil {
+			s.Log.Error("failed to run pre-up command", "err", err)
 		}
+	}
 
+	if !s.NoNetConfigure {
 		for _, addr := range s.GetRouter(s.Id).Addresses {
 			err := ConfigureAlias(s.Log, itfName, addr)
 			if err != nil {
@@ -99,44 +99,33 @@ listen_port=%d
 		}
 
 		err = InitInterface(s.Log, itfName)
-
 		if err != nil {
 			return err
 		}
+	}
 
-		// configure prefixes
-		exclude := append(state.SubtractPrefix(s.CentralCfg.ExcludeIPs, s.IncludeIPs), s.LocalCfg.ExcludeIPs...)
-		for _, excl := range exclude {
-			s.Log.Debug("Computed Exclude Prefix", "prefix", excl.String())
-		}
-		computed := state.SubtractPrefix(s.GetPrefixes(), exclude)
-		for _, pre := range computed {
-			s.Log.Debug("Computed Prefix", "prefix", pre.String())
-		}
-		for _, prefix := range computed {
-			err := ConfigureRoute(s.Log, n.Tun, itfName, prefix)
-			if err != nil {
-				s.Log.Error("failed to configure route", "err", err)
-			}
-		}
-
-		// run post-up commands
-		for _, cmd := range s.PostUp {
-			err = ExecSplit(s.Log, cmd)
-			if err != nil {
-				s.Log.Error("failed to run post-up command", "err", err)
-			}
+	// run post-up commands
+	for _, cmd := range s.PostUp {
+		err = ExecSplit(s.Log, cmd)
+		if err != nil {
+			s.Log.Error("failed to run post-up command", "err", err)
 		}
 	}
 
 	// init wireguard related tasks
-
 	s.RepeatTask(UpdateWireGuard, state.ProbeDelay)
 
 	return nil
 }
 
 func (n *Nylon) cleanupWireGuard(s *state.State) error {
+	// remove routes
+	for _, route := range n.prevInstalledRoutes {
+		err := RemoveRoute(s.Log, n.Tun, n.itfName, route)
+		if err != nil {
+			s.Log.Error("failed to remove route", "err", err)
+		}
+	}
 	// run pre-down commands
 	for _, cmd := range s.PreUp {
 		err := ExecSplit(s.Log, cmd)
@@ -196,6 +185,34 @@ func UpdateWireGuard(s *state.State) error {
 
 		wgPeer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
 		wgPeer.SetEndpoints(eps)
+	}
+
+	// configure changed route table entries
+	if !s.NoNetConfigure {
+		router := Get[*NylonRouter](s)
+		newEntries := router.ComputeSysRouteTable()
+		oldEntries := n.prevInstalledRoutes
+		for _, oldEntry := range oldEntries {
+			if !slices.Contains(newEntries, oldEntry) {
+				// uninstall route
+				s.Log.Debug("removing old route", "prefix", oldEntry.String())
+				err := RemoveRoute(s.Log, n.Tun, n.itfName, oldEntry)
+				if err != nil {
+					s.Log.Error("failed to remove route", "err", err)
+				}
+			}
+		}
+		for _, newEntry := range newEntries {
+			if !slices.Contains(oldEntries, newEntry) {
+				// install route
+				s.Log.Debug("installing new route", "prefix", newEntry.String())
+				err := ConfigureRoute(s.Log, n.Tun, n.itfName, newEntry)
+				if err != nil {
+					s.Log.Error("failed to configure route", "err", err)
+				}
+			}
+		}
+		n.prevInstalledRoutes = newEntries
 	}
 	return nil
 }

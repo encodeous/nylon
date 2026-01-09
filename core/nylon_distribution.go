@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/encodeous/nylon/state"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // fetches and unbundles central config from url
