@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 import (
@@ -103,6 +105,7 @@ func NewHarness(t *testing.T, subnet, gateway string) *Harness {
 	})
 	return h
 }
+
 func (h *Harness) buildImage() {
 	h.t.Log("Pre-building nylon-debug:latest image...")
 	req := testcontainers.ContainerRequest{
@@ -241,7 +244,6 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 	for {
 		select {
 		case <-timeout:
-			h.t.Logf("buffer: %s", buffer.String())
 			h.t.Fatalf("timed out waiting for log pattern %q in node %s", pattern, nodeName)
 		case <-ticker.C:
 			if strings.Contains(buffer.String(), pattern) {
@@ -259,6 +261,9 @@ func (h *Harness) Cleanup() {
 		if err := c.Terminate(h.ctx); err != nil {
 			h.t.Logf("failed to terminate container %s: %v", name, err)
 		}
+	}
+	if err := h.Network.Remove(context.Background()); err != nil {
+		h.t.Logf("failed to remove network: %v", err)
 	}
 }
 func (h *Harness) Exec(nodeName string, cmd []string) (string, string, error) {

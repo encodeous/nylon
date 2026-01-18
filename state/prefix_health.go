@@ -40,12 +40,12 @@ func (s *StaticPrefixHealth) Start(log *slog.Logger) {
 }
 
 type PingPrefixHealth struct {
-	Prefix      netip.Prefix  `yaml:"prefix"`
-	Addr        netip.Addr    `yaml:"addr"`                   // the address to ping
-	MaxFailures int           `yaml:"max_failures,omitempty"` // number of failures before returning infinite metric
-	Delay       time.Duration `yaml:"delay,omitempty"`        // delay between pings
-	BindIf      string        `yaml:"bind_if,omitempty"`      // local interface to bind to
-	Metric      *uint32       `yaml:"metric,omitempty"`       // metric override
+	Prefix      netip.Prefix   `yaml:"prefix"`
+	Addr        netip.Addr     `yaml:"addr"`                   // the address to ping
+	MaxFailures *int           `yaml:"max_failures,omitempty"` // number of failures before returning infinite metric
+	Delay       *time.Duration `yaml:"delay,omitempty"`        // delay between pings
+	BindIf      string         `yaml:"bind_if,omitempty"`      // local interface to bind to
+	Metric      *uint32        `yaml:"metric,omitempty"`       // metric override
 	lastMetric  uint32
 	running     atomic.Bool
 }
@@ -88,10 +88,16 @@ func (p *PingPrefixHealth) GetPrefix() netip.Prefix {
 }
 func (p *PingPrefixHealth) Start(log *slog.Logger) {
 	p.running.Swap(true)
+	if p.Delay == nil {
+		p.Delay = &HealthCheckDelay
+	}
+	if p.MaxFailures == nil {
+		p.MaxFailures = &HealthCheckMaxFailures
+	}
 	go func() {
-		ticker := time.NewTicker(p.Delay)
+		ticker := time.NewTicker(*p.Delay)
 		for p.running.Load() {
-			time.Sleep(p.Delay)
+			time.Sleep(*p.Delay)
 			p.lastMetric = INF
 			bind4 := ""
 			bind6 := ""
@@ -122,7 +128,7 @@ func (p *PingPrefixHealth) Start(log *slog.Logger) {
 				<-ticker.C
 				// ICMP ping
 				addr := &net.IPAddr{IP: net.IP(p.Addr.AsSlice())}
-				rtt, err := pinger.PingAttempts(addr, time.Duration(int64(p.Delay)/int64(p.MaxFailures)), p.MaxFailures)
+				rtt, err := pinger.PingAttempts(addr, time.Duration(int64(*p.Delay)/int64(*p.MaxFailures)), *p.MaxFailures)
 				if err != nil {
 					// failed
 					p.lastMetric = INF
@@ -139,10 +145,10 @@ func (p *PingPrefixHealth) Start(log *slog.Logger) {
 }
 
 type HTTPPrefixHealth struct {
-	Prefix     netip.Prefix  `yaml:"prefix"`
-	URL        string        `yaml:"url"`              // the URL to check
-	Delay      time.Duration `yaml:"delay,omitempty"`  // delay between probes
-	Metric     *uint32       `yaml:"metric,omitempty"` // metric override
+	Prefix     netip.Prefix   `yaml:"prefix"`
+	URL        string         `yaml:"url"`              // the URL to check
+	Delay      *time.Duration `yaml:"delay,omitempty"`  // delay between probes
+	Metric     *uint32        `yaml:"metric,omitempty"` // metric override
 	lastMetric uint32
 	running    atomic.Bool
 }
@@ -163,8 +169,11 @@ func (h *HTTPPrefixHealth) GetPrefix() netip.Prefix {
 func (h *HTTPPrefixHealth) Start(log *slog.Logger) {
 	h.lastMetric = INF
 	h.running.Swap(true)
+	if h.Delay == nil {
+		h.Delay = &HealthCheckDelay
+	}
 	go func() {
-		ticker := time.NewTicker(h.Delay)
+		ticker := time.NewTicker(*h.Delay)
 		defer ticker.Stop()
 		for h.running.Load() { // TODO: add a way to interrupt this sleep, if ticker has a high delay
 			<-ticker.C

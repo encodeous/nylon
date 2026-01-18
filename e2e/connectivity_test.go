@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 import (
@@ -11,6 +13,7 @@ func TestConnectivity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
+	t.Parallel()
 
 	// Use a specific subnet for this test to avoid conflicts
 	subnet := "172.30.0.0/24"
@@ -71,8 +74,8 @@ func TestConnectivity(t *testing.T) {
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForLog("node3", "installing new route")
-	h.WaitForLog("node1", "installing new route")
+	h.WaitForLog("node3", "installing new route prefix=10.0.0.1/32")
+	h.WaitForLog("node1", "installing new route prefix=10.0.0.2/31")
 
 	// 6. Test Connectivity
 	// Ping from node1 to node2's Nylon IP

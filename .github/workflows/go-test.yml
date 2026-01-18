@@ -23,8 +23,6 @@ jobs:
       - name: Build
         run: go build
 
-      - name: Run unit tests
-        run: go test -v -tags=router_test ./...
-      - name: Run integration tests
-        run: go test -v -tags=integration ./...
+      - name: Run all tests
+        run: go test -v -tags=router_test,integration,e2e ./...
 

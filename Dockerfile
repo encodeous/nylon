@@ -15,7 +15,10 @@ ENTRYPOINT ["/usr/local/bin/nylon", "run", "-v"]
 
 FROM ubuntu:latest AS debug
 
-RUN apt-get update && apt-get install -y \
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     iputils-ping \
     iperf3 \
     curl \
@@ -23,8 +26,8 @@ RUN apt-get update && apt-get install -y \
     net-tools \
     tcpdump \
     dnsutils \
-    vim \
-    && rm -rf /var/lib/apt/lists/*
+    netcat-openbsd && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /nylon /usr/local/bin/nylon
 
