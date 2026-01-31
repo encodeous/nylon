@@ -11,7 +11,7 @@ COPY --from=builder /nylon /usr/local/bin/nylon
 
 WORKDIR /app/config
 
-ENTRYPOINT ["/usr/local/bin/nylon", "run", "-v"]
+ENTRYPOINT ["/usr/local/bin/nylon", "run"]
 
 FROM ubuntu:latest AS debug
 
@@ -33,4 +33,4 @@ COPY --from=builder /nylon /usr/local/bin/nylon
 
 WORKDIR /app/config
 
-ENTRYPOINT ["/usr/local/bin/nylon", "run", "-v"]
+ENTRYPOINT ["/usr/local/bin/nylon", "run", "-v", "-w", "--dbg-trace-tc"]

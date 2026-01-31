@@ -3,11 +3,14 @@
 package e2e
 
 import (
+	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/encodeous/nylon/state"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHealthcheckPing(t *testing.T) {
@@ -104,8 +107,8 @@ func TestHealthcheckPing(t *testing.T) {
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForLog("node3", "installing new route prefix=10.0.1.4/32")
-	h.WaitForLog("node1", "installing new route prefix=10.0.0")
+	h.WaitForMatch("node3", ".+old.router=node2.+old.prefix=10.0.1.4\\/32.+new.router=node1.+new.prefix=10.0.1.4\\/32.+")
+	h.WaitForLog("node1", "prefix=10.0.0.3/32")
 
 	// ping from 3 to 10.0.0.4
 	stdout, stderr, err := h.Exec("node3", []string{"ping", "-c", "3", "10.0.1.4"})
@@ -114,15 +117,18 @@ func TestHealthcheckPing(t *testing.T) {
 	}
 	t.Logf("Ping output:\n%s", stdout)
 
+	msg := "hello from node 3"
 	// listen on node 1
-	stdout, stderr, err = h.Exec("node1", []string{"bash", "-c", "nc -l -p 8888 &"})
-	if err != nil {
-		t.Fatalf("Failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
-	}
+	bg := h.ExecBackground("node1", []string{"nc", "-l", "8888"})
 	// send on node 3
-	stdout, stderr, err = h.Exec("node3", []string{"bash", "-c", "echo 'hello from node 3'"})
+	stdout, stderr, err = h.Exec("node3", []string{"bash", "-c", fmt.Sprintf("echo '%s' | nc -N 10.0.1.4 8888", msg)})
 	if err != nil {
 		t.Fatalf("Failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
-	h.WaitForLog("node1", "hello from node 3")
+	//time.Sleep(time.Hour)
+	stdout, stderr, err = bg.Wait()
+	if err != nil {
+		t.Fatalf("Failed to listen: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+	}
+	assert.Equal(t, msg, strings.TrimSpace(stdout))
 }

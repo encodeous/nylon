@@ -56,7 +56,7 @@ func (n *Nylon) Init(s *state.State) error {
 		}
 		stNeigh := &state.Neighbour{
 			Id:     peer,
-			Routes: make(map[state.Source]state.NeighRoute),
+			Routes: make(map[netip.Prefix]state.NeighRoute),
 			Eps:    make([]state.Endpoint, 0),
 		}
 		cfg := s.GetRouter(peer)

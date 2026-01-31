@@ -197,7 +197,7 @@ func (r *NylonRouter) Init(s *state.State) error {
 func (r *NylonRouter) ComputeSysRouteTable() []netip.Prefix {
 	prefixes := make([]netip.Prefix, 0)
 	selectedSelf := make(map[netip.Prefix]struct{})
-	for entry, v := range r.ForwardTable.All() {
+	for entry, v := range r.Routes {
 		prefixes = append(prefixes, entry)
 		if v.Nh == r.Id {
 			selectedSelf[entry] = struct{}{}

@@ -213,6 +213,7 @@ func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfi
 				}
 			}
 		},
+		Name: h.t.Name() + "-" + name,
 	}
 	container, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -247,6 +248,39 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 			h.t.Fatalf("timed out waiting for log pattern %q in node %s", pattern, nodeName)
 		case <-ticker.C:
 			if strings.Contains(buffer.String(), pattern) {
+				return
+			}
+		case <-h.ctx.Done():
+			h.t.Fatal("context canceled")
+		}
+	}
+}
+func (h *Harness) WaitForMatch(nodeName string, pattern string) {
+	h.mu.Lock()
+	buffer, ok := h.LogBuffers[nodeName]
+	h.mu.Unlock()
+	if !ok {
+		h.t.Fatalf("log buffer for node %s not found", nodeName)
+	}
+
+	// Compile the regex once before the loop
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		h.t.Fatalf("invalid regex pattern %q: %v", pattern, err)
+	}
+
+	// Poll the buffer
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			h.t.Fatalf("timed out waiting for regex match %q in node %s", pattern, nodeName)
+		case <-ticker.C:
+			// Check against the compiled regex
+			if re.MatchString(buffer.String()) {
 				return
 			}
 		case <-h.ctx.Done():
@@ -297,6 +331,34 @@ func (h *Harness) Exec(nodeName string, cmd []string) (string, string, error) {
 	}
 
 	return stdout, stderr, nil
+}
+
+type BackgroundExec struct {
+	Stdout string
+	Stderr string
+	Err    error
+	done   chan struct{}
+}
+
+func (e *BackgroundExec) Wait() (string, string, error) {
+	select {
+	case <-e.done:
+		break
+	case <-time.After(15 * time.Second):
+		return "", "", fmt.Errorf("timed out waiting for command to finish")
+	}
+	return e.Stdout, e.Stderr, e.Err
+}
+
+func (h *Harness) ExecBackground(nodeName string, cmd []string) *BackgroundExec {
+	bg := &BackgroundExec{
+		done: make(chan struct{}),
+	}
+	go func() {
+		defer close(bg.done)
+		bg.Stdout, bg.Stderr, bg.Err = h.Exec(nodeName, cmd)
+	}()
+	return bg
 }
 
 // GetIP returns the IP address of the node in the test network
