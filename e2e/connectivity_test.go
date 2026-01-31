@@ -16,10 +16,7 @@ func TestConnectivity(t *testing.T) {
 	t.Parallel()
 
 	// Use a specific subnet for this test to avoid conflicts
-	subnet := "172.30.0.0/24"
-	gateway := "172.30.0.1"
-
-	h := NewHarness(t, subnet, gateway)
+	h := NewHarness(t)
 
 	// Generate keys
 	node1Key := state.GenerateKey()
@@ -27,9 +24,9 @@ func TestConnectivity(t *testing.T) {
 	node3Key := state.GenerateKey()
 
 	// IPs in the docker network
-	node1IP := "172.30.0.10"
-	node2IP := "172.30.0.11"
-	node3IP := "172.30.0.12"
+	node1IP := GetIP(h.Subnet, 10)
+	node2IP := GetIP(h.Subnet, 11)
+	node3IP := GetIP(h.Subnet, 12)
 
 	// Internal Nylon IPs
 	node1NylonIP := "10.0.0.1"

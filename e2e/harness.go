@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -25,8 +24,9 @@ import (
 )
 
 const (
-	ImageName = "nylon-debug:latest"
-	AppPort   = "57175/udp"
+	ImageName   = "nylon-debug:latest"
+	AppPort     = "57175/udp"
+	WaitTimeout = 2 * time.Minute
 )
 
 type Harness struct {
@@ -38,6 +38,8 @@ type Harness struct {
 	LogBuffers map[string]*LogBuffer
 	ImageName  string
 	RootDir    string
+	Subnet     string
+	Gateway    string
 }
 type LogBuffer struct {
 	mu  sync.Mutex
@@ -55,8 +57,8 @@ func (l *LogBuffer) String() string {
 	return l.buf.String()
 }
 
-// NewHarness creates a test harness with a specific subnet to avoid collisions
-func NewHarness(t *testing.T, subnet, gateway string) *Harness {
+// NewHarness creates a test harness with a unique subnet
+func NewHarness(t *testing.T) *Harness {
 	ctx := context.Background()
 	// Find root directory (assuming we are in e2e/<test_name>)
 	wd, err := os.Getwd()
@@ -75,6 +77,10 @@ func NewHarness(t *testing.T, subnet, gateway string) *Harness {
 		}
 		rootDir = parent
 	}
+
+	subnet, gateway := GlobalNetworkAllocator.Allocate()
+	t.Logf("Allocated subnet: %s, gateway: %s", subnet, gateway)
+
 	// Create network with specific subnet
 	newNetwork, err := tcnetwork.New(ctx,
 		tcnetwork.WithAttachable(),
@@ -98,42 +104,14 @@ func NewHarness(t *testing.T, subnet, gateway string) *Harness {
 		Nodes:      make(map[string]testcontainers.Container),
 		LogBuffers: make(map[string]*LogBuffer),
 		RootDir:    rootDir,
+		Subnet:     subnet,
+		Gateway:    gateway,
 	}
-	h.buildImage()
+	// Image building is handled in MainTest
 	t.Cleanup(func() {
 		h.Cleanup()
 	})
 	return h
-}
-
-func (h *Harness) buildImage() {
-	h.t.Log("Pre-building nylon-debug:latest image...")
-	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    h.RootDir,
-			Dockerfile: "Dockerfile",
-			KeepImage:  true,
-			Repo:       "nylon-debug",
-			Tag:        "latest",
-			BuildOptionsModifier: func(buildOptions *build.ImageBuildOptions) {
-				buildOptions.Target = "debug"
-			},
-		},
-	}
-
-	// Creating the container triggers the build
-	c, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          false,
-	})
-	if err != nil {
-		h.t.Fatalf("Failed to build image: %v", err)
-	}
-
-	// We don't need this container, just the image.
-	if err := c.Terminate(h.ctx); err != nil {
-		h.t.Logf("Warning: failed to terminate builder container: %v", err)
-	}
 }
 
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
@@ -239,7 +217,7 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 		h.t.Fatalf("log buffer for node %s not found", nodeName)
 	}
 	// Poll the buffer
-	timeout := time.After(15 * time.Second)
+	timeout := time.After(WaitTimeout)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -270,7 +248,7 @@ func (h *Harness) WaitForMatch(nodeName string, pattern string) {
 	}
 
 	// Poll the buffer
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(WaitTimeout)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -344,7 +322,7 @@ func (e *BackgroundExec) Wait() (string, string, error) {
 	select {
 	case <-e.done:
 		break
-	case <-time.After(15 * time.Second):
+	case <-time.After(WaitTimeout):
 		return "", "", fmt.Errorf("timed out waiting for command to finish")
 	}
 	return e.Stdout, e.Stderr, e.Err
