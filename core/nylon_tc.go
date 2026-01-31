@@ -1,6 +1,8 @@
 package core
 
 import (
+	"net/netip"
+
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/protocol"
@@ -17,6 +19,27 @@ const (
 func (n *Nylon) InstallTC(s *state.State) {
 	r := Get[*NylonRouter](s)
 
+	if state.DBG_trace_tc {
+		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
+			if packet.Validate() { // make sure it's an IP packet
+				peer := packet.FromPeer
+				if peer == nil {
+					peer = packet.ToPeer
+				}
+				src := packet.GetSrc()
+				dst := packet.GetDst()
+				if src.IsValid() &&
+					dst.IsValid() &&
+					peer != nil &&
+					src != netip.IPv4Unspecified() && src != netip.IPv6Unspecified() &&
+					dst != netip.IPv4Unspecified() && dst != netip.IPv6Unspecified() {
+					dev.Log.Verbosef("Unhandled TC packet: %v -> %v, peer %s", packet.GetSrc(), packet.GetDst(), peer)
+				}
+			}
+			return device.TcPass, nil
+		})
+	}
+
 	// bounce back packets if using system routing
 	if n.env.UseSystemRouting {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
@@ -32,7 +55,9 @@ func (n *Nylon) InstallTC(s *state.State) {
 			entry, ok := r.ForwardTable.Lookup(packet.GetDst())
 			if ok && !packet.Incoming() {
 				packet.ToPeer = entry.Peer
-				//dev.Log.Verbosef("Fwd packet: %v -> %v, via %s", packet.GetSrc(), packet.GetDst(), entry.Nh)
+				if state.DBG_trace_tc {
+					dev.Log.Verbosef("Fwd packet: %v -> %v, via %s", packet.GetSrc(), packet.GetDst(), entry.Nh)
+				}
 				return device.TcForward, nil
 			}
 			return device.TcPass, nil
@@ -43,6 +68,9 @@ func (n *Nylon) InstallTC(s *state.State) {
 			entry, ok := r.ForwardTable.Lookup(packet.GetDst())
 			if ok {
 				packet.ToPeer = entry.Peer
+				if state.DBG_trace_tc {
+					dev.Log.Verbosef("Fwd packet: %v -> %v, via %s", packet.GetSrc(), packet.GetDst(), entry.Nh)
+				}
 				return device.TcForward, nil
 			}
 			return device.TcPass, nil
@@ -58,6 +86,9 @@ func (n *Nylon) InstallTC(s *state.State) {
 					packet.DecrementTTL()
 				}
 				if ttl == 0 {
+					if state.DBG_trace_tc {
+						dev.Log.Verbosef("TTL Expired: %v -> %v, via %s", packet.GetSrc(), packet.GetDst())
+					}
 					return device.TcBounce, nil
 				}
 			}

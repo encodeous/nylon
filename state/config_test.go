@@ -1,9 +1,11 @@
 package state
 
 import (
-	"github.com/stretchr/testify/assert"
+	"net/netip"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseGraph_SimpleGraph(t *testing.T) {
@@ -147,4 +149,33 @@ func TestParseGraph_InvalidGraph(t *testing.T) {
 	failGraph(t, `1,2,3,4,5,6,7,8,9,10,11,12,13,14,15`)
 	failGraph(t, `,,,,,,,,,,,,,,,,`)
 	failGraph(t, `a=a`)
+}
+
+func TestSubtractPrefixDirect(t *testing.T) {
+	includes := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.1/32"),
+		netip.MustParsePrefix("10.0.0.2/32"),
+		netip.MustParsePrefix("10.0.0.3/32"),
+	}
+	excludes := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.3/32"),
+	}
+	result := SubtractPrefix(includes, excludes)
+	assert.ElementsMatch(t, result, []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.1/32"),
+		netip.MustParsePrefix("10.0.0.2/32"),
+	})
+}
+
+func TestSubtractPrefixLargerRange(t *testing.T) {
+	includes := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.1/32"),
+		netip.MustParsePrefix("10.0.0.2/32"),
+		netip.MustParsePrefix("10.0.0.3/32"),
+	}
+	excludes := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/24"),
+	}
+	result := SubtractPrefix(includes, excludes)
+	assert.ElementsMatch(t, result, []netip.Prefix{})
 }

@@ -178,7 +178,7 @@ func MakeNeighbours(ids ...state.NodeId) []*state.Neighbour {
 	for _, id := range ids {
 		neighs = append(neighs, &state.Neighbour{
 			Id:     id,
-			Routes: make(map[state.Source]state.NeighRoute),
+			Routes: make(map[netip.Prefix]state.NeighRoute),
 		})
 	}
 	return neighs

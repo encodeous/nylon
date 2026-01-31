@@ -37,4 +37,8 @@ var (
 
 	// central updates
 	CentralUpdateDelay = time.Second * 10
+
+	// healthcheck defaults
+	HealthCheckDelay       = time.Second * 15
+	HealthCheckMaxFailures = 3
 )

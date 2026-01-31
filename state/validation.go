@@ -171,10 +171,10 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			if !v.Addr.IsValid() {
 				return fmt.Errorf("invalid ping address %s for prefix %s", v.Addr, p.GetPrefix())
 			}
-			if v.Delay <= 0 {
+			if v.Delay != nil && *v.Delay <= 0 {
 				return fmt.Errorf("ping delay must be greater than 0 for prefix %s", p.GetPrefix())
 			}
-			if v.MaxFailures <= 0 {
+			if v.MaxFailures != nil && *v.MaxFailures <= 0 {
 				return fmt.Errorf("ping max_failures must be greater than 0 for prefix %s", p.GetPrefix())
 			}
 		case *HTTPPrefixHealth:
@@ -182,7 +182,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 			if err != nil {
 				return fmt.Errorf("invalid HTTP URL %s for prefix %s: %v", v.URL, p.GetPrefix(), err)
 			}
-			if v.Delay <= 0 {
+			if v.Delay != nil && *v.Delay <= 0 {
 				return fmt.Errorf("HTTP delay must be greater than 0 for prefix %s", p.GetPrefix())
 			}
 		default:

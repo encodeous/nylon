@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"slices"
 	"strings"
@@ -14,6 +15,13 @@ type NodeId string
 type Source struct {
 	NodeId
 	netip.Prefix
+}
+
+func (s Source) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("router", string(s.NodeId)),
+		slog.String("prefix", s.Prefix.String()),
+	)
 }
 
 func (s Source) String() string {
@@ -60,7 +68,7 @@ func (s *RouterState) StringRoutes() string {
 
 type Neighbour struct {
 	Id     NodeId
-	Routes map[Source]NeighRoute
+	Routes map[netip.Prefix]NeighRoute
 	Eps    []Endpoint
 }
 
@@ -82,6 +90,15 @@ func (r PubRoute) String() string {
 	return fmt.Sprintf("(router: %s, prefix: %s, seqno: %d, metric: %d)", r.NodeId, r.Prefix, r.Seqno, r.Metric)
 }
 
+func (r PubRoute) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("router", string(r.NodeId)),
+		slog.String("prefix", r.Prefix.String()),
+		slog.Uint64("seqno", uint64(r.Seqno)),
+		slog.Uint64("metric", uint64(r.Metric)),
+	)
+}
+
 type NeighRoute struct {
 	PubRoute
 	ExpireAt time.Time // when the route expires
@@ -96,6 +113,16 @@ type SelRoute struct {
 
 func (r SelRoute) String() string {
 	return fmt.Sprintf("(nh: %s, router: %s, prefix: %s, seqno: %d, metric: %d)", r.Nh, r.NodeId, r.Prefix, r.Seqno, r.Metric)
+}
+
+func (r SelRoute) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Any("nh", r.Nh), // Use Any if Nh is an object/interface
+		slog.String("router", string(r.NodeId)),
+		slog.String("prefix", r.Prefix.String()),
+		slog.Uint64("seqno", uint64(r.Seqno)),
+		slog.Uint64("metric", uint64(r.Metric)),
+	)
 }
 
 func (s *RouterState) GetNeighbour(node NodeId) *Neighbour {

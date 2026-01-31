@@ -153,7 +153,7 @@ func RunGC(s *state.RouterState, r Router) {
 	for src := range s.Sources {
 		found := false
 		for _, neigh := range s.Neighbours {
-			if _, ok := neigh.Routes[src]; ok {
+			if nSrc, ok := neigh.Routes[src.Prefix]; ok && nSrc.Source == src {
 				found = true
 				break
 			}
@@ -289,7 +289,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 
 	n := s.GetNeighbour(neighId)
 
-	_, ok := n.Routes[adv.Source]
+	_, ok := n.Routes[adv.Prefix]
 
 	if adv.Metric == state.INF {
 		r.SendAckRetract(neighId, adv.Source.Prefix)
@@ -317,7 +317,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		//      metric carried by the update.
 
 		// create the route
-		n.Routes[adv.Source] = state.NeighRoute{
+		n.Routes[adv.Prefix] = state.NeighRoute{
 			PubRoute: adv,
 			ExpireAt: time.Now().Add(state.RouteExpiryTime),
 		}
@@ -366,13 +366,13 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		//      update (possibly a retraction) MUST be sent in a timely manner as
 		//      described in Section 3.7.2.
 
-		nr := n.Routes[adv.Source]
+		nr := n.Routes[adv.Prefix]
 		nr.PubRoute = adv
 
 		if adv.Metric != state.INF {
 			nr.ExpireAt = time.Now().Add(state.RouteExpiryTime)
 		}
-		n.Routes[adv.Source] = nr
+		n.Routes[adv.Prefix] = nr
 	}
 }
 
@@ -502,9 +502,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		}
 
 		// enumerate through neighbour advertisements
-		for S, adv := range neigh.Routes {
-			prefix := S.Prefix
-
+		for prefix, adv := range neigh.Routes {
 			// Cost(A, B) + Cost(S, B)
 			totalCost := AddMetric(CAB, adv.Metric)
 
@@ -568,7 +566,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	for prefix, newRoute := range newTable {
 		oldRoute, exists := s.Routes[prefix]
-		if !exists {
+		if !exists || oldRoute.Metric == state.INF {
 			r.TableInsertRoute(prefix, newRoute)
 			r.Log(RouteChanged, "inserted", "prefix", prefix, "new", newRoute)
 		} else if oldRoute.Nh != newRoute.Nh {

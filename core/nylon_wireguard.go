@@ -127,7 +127,7 @@ func (n *Nylon) cleanupWireGuard(s *state.State) error {
 		}
 	}
 	// run pre-down commands
-	for _, cmd := range s.PreUp {
+	for _, cmd := range s.PreDown {
 		err := ExecSplit(s.Log, cmd)
 		if err != nil {
 			s.Log.Error("failed to run pre-down command", "err", err)

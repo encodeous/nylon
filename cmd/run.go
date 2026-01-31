@@ -37,6 +37,7 @@ func init() {
 	runCmd.Flags().BoolVarP(&state.DBG_log_repo_updates, "dbg-repo", "", false, "Outputs repo updates to the console")
 	runCmd.Flags().BoolVarP(&state.DBG_debug, "dbg-perf", "", false, "Enables performance debugging server on port 6060")
 	runCmd.Flags().BoolVarP(&state.DBG_trace, "dbg-trace", "", false, "Enables trace to trace.out")
+	runCmd.Flags().BoolVarP(&state.DBG_trace_tc, "dbg-trace-tc", "", false, "Enables logging of packet routing")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")
 	runCmd.Flags().StringP("log", "l", "", "Path to the log file (overrides config)")
