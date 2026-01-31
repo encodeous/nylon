@@ -9,7 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
@@ -24,9 +23,6 @@ jobs:
       - name: Build
         run: go build
 
-      - name: Run unit tests with coverage
-        run: bash unit-test-coverage.sh
-      - name: Run integration tests
-        run: go test -v -tags=integration ./...
-      - name: Run smoke tests
-        run: bash smoke/smoke-test.sh
+      - name: Run all tests
+        run: go test -v -tags=router_test,integration,e2e ./...
+

@@ -10,6 +10,9 @@ import (
 )
 
 func TestPrefixHealthSerialization(t *testing.T) {
+	threeFails := 3
+	tenSecond := 10 * time.Second
+	fiveSecond := 5 * time.Second
 	tests := []struct {
 		name    string
 		wrapper PrefixHealthWrapper
@@ -34,8 +37,8 @@ metric: 100
 				PrefixHealth: &PingPrefixHealth{
 					Prefix:      netip.MustParsePrefix("192.168.1.0/24"),
 					Addr:        netip.MustParseAddr("8.8.8.8"),
-					MaxFailures: 3,
-					Delay:       10 * time.Second,
+					MaxFailures: &threeFails,
+					Delay:       &tenSecond,
 				},
 			},
 			yamlStr: `type: ping
@@ -51,7 +54,7 @@ delay: 10s
 				PrefixHealth: &HTTPPrefixHealth{
 					Prefix: netip.MustParsePrefix("172.16.0.0/16"),
 					URL:    "http://example.com/health",
-					Delay:  5 * time.Second,
+					Delay:  &fiveSecond,
 				},
 			},
 			yamlStr: `type: http

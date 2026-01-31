@@ -100,6 +100,25 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		}
 		slices.Sort(rt)
 		sb.WriteString(strings.Join(rt, "\n") + "\n")
+
+		// print forward table
+		sb.WriteString("\n\nForward Table:\n")
+		rt = make([]string, 0)
+		for prefix, route := range Get[*NylonRouter](s).ForwardTable.All() {
+			rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
+		}
+		slices.Sort(rt)
+		sb.WriteString(strings.Join(rt, "\n") + "\n")
+
+		// print exit table
+		sb.WriteString("\n\nExit Table:\n")
+		rt = make([]string, 0)
+		for prefix, route := range Get[*NylonRouter](s).ExitTable.All() {
+			rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
+		}
+		slices.Sort(rt)
+		sb.WriteString(strings.Join(rt, "\n") + "\n")
+
 		sb.WriteRune(0)
 		_, err = rw.WriteString(sb.String())
 		if err != nil {
