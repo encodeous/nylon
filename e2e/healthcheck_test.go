@@ -5,6 +5,7 @@ package e2e
 import (
 	"fmt"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,4 +129,136 @@ func TestHealthcheckPing(t *testing.T) {
 		t.Fatalf("Failed to listen: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 	assert.Equal(t, msg, strings.TrimSpace(stdout))
+}
+
+func TestHealthcheckHTTP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	t.Parallel()
+
+	h := NewHarness(t)
+
+	// IPs
+	clientIP := GetIP(h.Subnet, 20)
+	primaryIP := GetIP(h.Subnet, 21)
+	backupIP := GetIP(h.Subnet, 22)
+
+	// Keys
+	clientKey := state.GenerateKey()
+	primaryKey := state.GenerateKey()
+	backupKey := state.GenerateKey()
+
+	configDir := h.SetupTestDir()
+
+	// Service IP that we are load balancing / checking
+	serviceIP := "10.0.3.1"
+	servicePrefixStr := serviceIP + "/32"
+	servicePrefix := netip.MustParsePrefix(servicePrefixStr)
+
+	// 1. Central Config
+	central := state.CentralCfg{
+		Routers: []state.RouterCfg{
+			SimpleRouter("client", clientKey.Pubkey(), "10.0.0.10", clientIP),
+			SimpleRouter("primary", primaryKey.Pubkey(), "10.0.0.11", primaryIP),
+			SimpleRouter("backup", backupKey.Pubkey(), "10.0.0.12", backupIP),
+		},
+		Graph: []string{
+			"client, primary",
+			"client, backup",
+		},
+		Timestamp: time.Now().UnixNano(),
+	}
+
+	// Configure Primary with HTTP check (Metric 10)
+	// primMetric := uint32(10)
+	checkDelay := 1 * time.Second
+	central.Routers[1].Prefixes = []state.PrefixHealthWrapper{
+		{
+			&state.HTTPPrefixHealth{
+				Prefix: servicePrefix,
+				URL:    fmt.Sprintf("http://%s:8080/health", serviceIP),
+				Delay:  &checkDelay,
+				// Metric: &primMetric, // Remove override to use dynamic metric (RTT or INF)
+			},
+		},
+	}
+
+	// Configure Backup with Static check (Metric 1000)
+	backupMetric := uint32(1000)
+	central.Routers[2].Prefixes = []state.PrefixHealthWrapper{
+		{
+			&state.StaticPrefixHealth{
+				Prefix: servicePrefix,
+				Metric: backupMetric,
+			},
+		},
+	}
+
+	centralPath := h.WriteConfig(configDir, "central.yaml", central)
+
+	// 2. Local Configs
+	clientCfg := SimpleLocal("client", clientKey)
+
+	primaryCfg := SimpleLocal("primary", primaryKey)
+	primaryCfg.PreUp = append(primaryCfg.PreUp, fmt.Sprintf("ip addr add %s dev lo", servicePrefixStr))
+
+	backupCfg := SimpleLocal("backup", backupKey)
+	backupCfg.PreUp = append(backupCfg.PreUp, fmt.Sprintf("ip addr add %s dev lo", servicePrefixStr))
+
+	// Write configs
+	h.WriteConfig(configDir, "client.yaml", clientCfg)
+	h.WriteConfig(configDir, "primary.yaml", primaryCfg)
+	h.WriteConfig(configDir, "backup.yaml", backupCfg)
+
+	// 3. Start Nodes
+	h.StartNodes(
+		NodeSpec{Name: "client", IP: clientIP, CentralConfigPath: centralPath, NodeConfigPath: filepath.Join(configDir, "client.yaml")},
+		NodeSpec{Name: "primary", IP: primaryIP, CentralConfigPath: centralPath, NodeConfigPath: filepath.Join(configDir, "primary.yaml")},
+		NodeSpec{Name: "backup", IP: backupIP, CentralConfigPath: centralPath, NodeConfigPath: filepath.Join(configDir, "backup.yaml")},
+	)
+
+	// 4. Verification
+
+	// A. Initial state: HTTP server is DOWN on primary.
+	// Primary health check should fail (Metric INF).
+	// Client should route to Backup (Metric 1000).
+
+	t.Log("Step A: Waiting for routing to fallback (Primary DOWN)")
+	h.WaitForMatch("client", "prefix=10\\.0\\.3\\.1/32.+new.nh=backup")
+
+	// B. Start HTTP Server on Primary
+	t.Log("Step B: Starting HTTP server on Primary")
+	// Use python3 http.server. Create 'health' file so /health returns 200.
+	// exec replaces the shell, so pkill python3 works or just killing the container process.
+	serverCmd := `touch health && python3 -m http.server 8080`
+	bg := h.ExecBackground("primary", []string{"/bin/sh", "-c", serverCmd})
+
+	// C. Wait for Primary to become healthy
+	// Primary should advertise Metric 10.
+	// Client should switch to Primary.
+	t.Log("Step C: Waiting for routing to switch to Primary (Primary UP)")
+	h.WaitForMatch("client", "prefix=10\\.0\\.3\\.1/32.+new.nh=primary")
+
+	// D. Stop HTTP Server
+	t.Log("Step D: Stopping HTTP server")
+	h.Exec("primary", []string{"pkill", "python3"})
+	bg.Wait()
+
+	// E. Wait for fallback to Backup
+
+	time.Sleep(5 * time.Second)
+
+	h.mu.Lock()
+	logs := h.LogBuffers["client"].String()
+	h.mu.Unlock()
+
+	idxPrimary := strings.LastIndex(logs, "new.nh=primary")
+	idxBackup := strings.LastIndex(logs, "new.nh=backup")
+
+	if idxBackup > idxPrimary {
+		t.Log("Verified: Route switched back to backup")
+	} else {
+		t.Fatalf("Route failed to switch back to backup. Logs:\n%s", logs)
+	}
 }
