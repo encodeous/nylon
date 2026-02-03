@@ -23,10 +23,12 @@ RUN apt-get update && \
     iperf3 \
     curl \
     iproute2 \
+    wireguard-tools \
     net-tools \
     tcpdump \
     dnsutils \
-    netcat-openbsd && \
+    netcat-openbsd \
+    python3 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /nylon /usr/local/bin/nylon
