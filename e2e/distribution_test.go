@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +49,7 @@ func TestDistribution(t *testing.T) {
 					Id:     state.NodeId(nodeId),
 					PubKey: nodeKey.Pubkey(),
 				},
-				Endpoints: []netip.AddrPort{},
+				Endpoints: []*state.DynamicEndpoint{},
 			},
 		},
 		Clients: []state.ClientCfg{},

@@ -15,7 +15,7 @@ func nylonGc(s *state.State) error {
 				neigh.Eps[n] = x
 				n++
 			} else {
-				s.Log.Debug("removed dead endpoint", "ep", x.Ep, "to", x.Node())
+				s.Log.Debug("removed dead endpoint", "ep", x.DynEP.String(), "to", neigh.Id)
 			}
 		}
 		neigh.Eps = neigh.Eps[:n]

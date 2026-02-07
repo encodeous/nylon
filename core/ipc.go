@@ -17,6 +17,7 @@ func IPCGet(itf string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer conn.Close()
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 	_, err = rw.WriteString("get=nylon\n")
@@ -37,7 +38,7 @@ func IPCGet(itf string) (string, error) {
 	if err != nil && err != io.EOF {
 		return "", err
 	}
-	return res, nil
+	return strings.TrimSuffix(res, "\x00"), nil
 }
 
 func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
@@ -57,6 +58,12 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 				met = n.BestEndpoint().Metric()
 			}
 			sb.WriteString(fmt.Sprintf("   Metric: %d\n", met))
+			sb.WriteString(fmt.Sprintf("   Endpoints:\n"))
+			for _, ep := range n.Eps {
+				nep := ep.AsNylonEndpoint()
+				ap, _ := nep.DynEP.Resolve()
+				sb.WriteString(fmt.Sprintf("    - %s (resolved: %s) active=%v metric=%d\n", nep.DynEP.Value, ap.String(), nep.IsActive(), nep.Metric()))
+			}
 			sb.WriteString(fmt.Sprintf("   Published Routes:\n"))
 			rt := make([]string, 0)
 			if len(n.Routes) == 0 {
@@ -119,11 +126,15 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		slices.Sort(rt)
 		sb.WriteString(strings.Join(rt, "\n") + "\n")
 
-		sb.WriteRune(0)
 		_, err = rw.WriteString(sb.String())
 		if err != nil {
 			return err
 		}
+		err = rw.WriteByte(0)
+		if err != nil {
+			return err
+		}
+		return rw.Flush()
 	default:
 		return fmt.Errorf("unknown command %s", cmd)
 	}

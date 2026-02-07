@@ -41,4 +41,10 @@ var (
 	// healthcheck defaults
 	HealthCheckDelay       = time.Second * 15
 	HealthCheckMaxFailures = 3
+
+	// default port
+	DefaultPort = 57175
+
+	// refresh dns
+	DnsRefreshDelay = time.Minute * 1
 )

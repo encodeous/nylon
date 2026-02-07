@@ -46,7 +46,7 @@ func TestPassiveRoaming(t *testing.T) {
 					PubKey:    pubKeys["node-1"],
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
 				},
-				Endpoints: []netip.AddrPort{netip.AddrPortFrom(netip.MustParseAddr(ip1), 51820)},
+				Endpoints: []*state.DynamicEndpoint{{Value: fmt.Sprintf("%s:51820", ip1)}},
 			},
 			{
 				NodeCfg: state.NodeCfg{
@@ -54,7 +54,7 @@ func TestPassiveRoaming(t *testing.T) {
 					PubKey:    pubKeys["node-2"],
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
 				},
-				Endpoints: []netip.AddrPort{netip.AddrPortFrom(netip.MustParseAddr(ip2), 51820)},
+				Endpoints: []*state.DynamicEndpoint{{Value: fmt.Sprintf("%s:51820", ip2)}},
 			},
 			{
 				NodeCfg: state.NodeCfg{
@@ -62,7 +62,7 @@ func TestPassiveRoaming(t *testing.T) {
 					PubKey:    pubKeys["node-3"],
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.3")},
 				},
-				Endpoints: []netip.AddrPort{netip.AddrPortFrom(netip.MustParseAddr(ip3), 51820)},
+				Endpoints: []*state.DynamicEndpoint{{Value: fmt.Sprintf("%s:51820", ip3)}},
 			},
 		},
 		Clients: []state.ClientCfg{

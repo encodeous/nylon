@@ -21,7 +21,7 @@ type NodeCfg struct {
 // RouterCfg represents a central representation of a node that can route
 type RouterCfg struct {
 	NodeCfg   `yaml:",inline"`
-	Endpoints []netip.AddrPort
+	Endpoints []*DynamicEndpoint
 }
 type ClientCfg struct {
 	NodeCfg `yaml:",inline"`

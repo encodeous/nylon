@@ -3,7 +3,6 @@ package state
 import (
 	"math"
 	"math/rand/v2"
-	"net/netip"
 	"testing"
 	"time"
 
@@ -53,7 +52,7 @@ type DataSource struct {
 
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
-	dep := NewEndpoint(netip.AddrPort{}, "dummy", false, nil)
+	dep := NewEndpoint(&DynamicEndpoint{Value: "127.0.0.1:0"}, false, nil)
 
 	truth := DataSource{
 		Name: "Truth",
@@ -205,4 +204,69 @@ func TestEndpointNormal(t *testing.T) {
 	assert.Less(t, time.Duration(stdev), time.Millisecond*40)
 	// once per minute is acceptable
 	assert.Less(t, len(distinctValues), int(time.Hour*2/time.Minute))
+}
+
+func TestDynamicEndpoint_Parse(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		expectedHost string
+		expectedPort uint16
+		wantErr      bool
+	}{
+		{
+			name:         "IPv4 with port",
+			input:        "127.0.0.1:12345",
+			expectedHost: "127.0.0.1",
+			expectedPort: 12345,
+		},
+		{
+			name:         "IPv6 with port",
+			input:        "[::1]:12345",
+			expectedHost: "::1",
+			expectedPort: 12345,
+		},
+		{
+			name:         "Hostname with port",
+			input:        "example.com:54321",
+			expectedHost: "example.com",
+			expectedPort: 54321,
+		},
+		{
+			name:         "Hostname default port",
+			input:        "nylon.example.com",
+			expectedHost: "nylon.example.com",
+			expectedPort: uint16(DefaultPort),
+		},
+		{
+			name:         "IPv4 default port",
+			input:        "192.168.1.1",
+			expectedHost: "192.168.1.1",
+			expectedPort: uint16(DefaultPort),
+		},
+		{
+			name:    "Invalid port",
+			input:   "example.com:abc",
+			wantErr: true,
+		},
+		{
+			name:    "Not a URL",
+			input:   "http://example.com/nylon",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ep := &DynamicEndpoint{Value: tt.input}
+			host, port, err := ep.Parse()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedHost, host)
+				assert.Equal(t, tt.expectedPort, port)
+			}
+		})
+	}
 }

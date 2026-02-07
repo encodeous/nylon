@@ -370,6 +370,70 @@ func (h *Harness) PrintLogs(nodeName string) {
 	h.t.Logf("Logs for %s:\n%s", nodeName, buf.String())
 }
 
+func (h *Harness) StartDNS(name string, ip string, corefile string, zones map[string]string) testcontainers.Container {
+	h.t.Logf("Starting DNS server %s at %s", name, ip)
+	
+	tempDir := h.SetupTestDir()
+	dnsDir := filepath.Join(tempDir, "dns")
+	os.MkdirAll(dnsDir, 0755)
+	
+	corefilePath := filepath.Join(dnsDir, "Corefile")
+	os.WriteFile(corefilePath, []byte(corefile), 0644)
+	
+	files := []testcontainers.ContainerFile{
+		{
+			HostFilePath:      corefilePath,
+			ContainerFilePath: "/etc/coredns/Corefile",
+			FileMode:          0644,
+		},
+	}
+	
+	for zoneName, zoneContent := range zones {
+		zonePath := filepath.Join(dnsDir, zoneName)
+		os.WriteFile(zonePath, []byte(zoneContent), 0644)
+		files = append(files, testcontainers.ContainerFile{
+			HostFilePath:      zonePath,
+			ContainerFilePath: "/etc/coredns/" + zoneName,
+			FileMode:          0644,
+		})
+	}
+	
+	req := testcontainers.ContainerRequest{
+		Image:    "coredns/coredns:latest",
+		Networks: []string{h.Network.Name},
+		NetworkAliases: map[string][]string{
+			h.Network.Name: {name},
+		},
+		Cmd: []string{"-conf", "/etc/coredns/Corefile"},
+		Files: files,
+		WaitingFor: wait.ForListeningPort("53/udp"),
+		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
+			if ip != "" {
+				if s, ok := m[h.Network.Name]; ok {
+					s.IPAMConfig = &network.EndpointIPAMConfig{
+						IPv4Address: ip,
+					}
+				}
+			}
+		},
+		Name: h.t.Name() + "-" + name,
+	}
+	
+	container, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		h.t.Fatalf("failed to start coredns container %s: %v", name, err)
+	}
+	
+	h.mu.Lock()
+	h.Nodes[name] = container
+	h.mu.Unlock()
+	
+	return container
+}
+
 // SetupTestDir creates a directory for the current test run
 func (h *Harness) SetupTestDir() string {
 	dir := filepath.Join(h.RootDir, "e2e", "runs", h.t.Name())
@@ -406,8 +470,8 @@ func SimpleRouter(id string, pubKey state.NyPublicKey, nylonIP string, endpointI
 		},
 	}
 	if endpointIP != "" {
-		cfg.Endpoints = []netip.AddrPort{
-			netip.MustParseAddrPort(fmt.Sprintf("%s:57175", endpointIP)),
+		cfg.Endpoints = []*state.DynamicEndpoint{
+			{Value: fmt.Sprintf("%s:57175", endpointIP)},
 		}
 	}
 	return cfg

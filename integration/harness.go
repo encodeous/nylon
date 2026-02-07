@@ -178,7 +178,7 @@ func (v *VirtualHarness) Start() chan error {
 	}
 	for e, n := range v.Endpoints {
 		idx := v.IndexOf(n)
-		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, netip.MustParseAddrPort(e))
+		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, &state.DynamicEndpoint{Value: e})
 	}
 	startDelay := 0 * time.Millisecond
 	for idx, rt := range v.Central.Routers {

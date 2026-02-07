@@ -69,7 +69,12 @@ listen_port=%d
 		rcfg := s.GetRouter(peer)
 		endpoints := make([]conn.Endpoint, 0)
 		for _, nep := range rcfg.Endpoints {
-			endpoint, err := n.Device.Bind().ParseEndpoint(nep.String())
+			ap, err := nep.Resolve()
+			if err != nil {
+				s.Log.Warn("failed to resolve endpoint", "endpoint", nep.Value, "err", err)
+				continue
+			}
+			endpoint, err := n.Device.Bind().ParseEndpoint(ap.String())
 			if err != nil {
 				return err
 			}
@@ -166,16 +171,24 @@ func UpdateWireGuard(s *state.State) error {
 				return cmp.Compare(a.Metric(), b.Metric())
 			})
 			for _, ep := range links {
-				eps = append(eps, ep.AsNylonEndpoint().GetWgEndpoint(n.Device))
+				nep, err := ep.AsNylonEndpoint().GetWgEndpoint(n.Device)
+				if err != nil {
+					continue
+				}
+				eps = append(eps, nep)
 			}
 		}
 
 		// add endpoint if it is not in the list
 		for _, ep := range pcfg.Endpoints {
+			ap, err := ep.Resolve()
+			if err != nil {
+				continue
+			}
 			if !slices.ContainsFunc(eps, func(endpoint conn.Endpoint) bool {
-				return endpoint.DstIPPort() == ep
+				return endpoint.DstIPPort() == ap
 			}) {
-				endpoint, err := n.Device.Bind().ParseEndpoint(ep.String())
+				endpoint, err := n.Device.Bind().ParseEndpoint(ap.String())
 				if err != nil {
 					return err
 				}
