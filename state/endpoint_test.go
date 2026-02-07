@@ -52,7 +52,7 @@ type DataSource struct {
 
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
-	dep := NewEndpoint(&DynamicEndpoint{Value: "127.0.0.1:0"}, false, nil)
+	dep := NewEndpoint(NewDynamicEndpoint("127.0.0.1:0"), false, nil)
 
 	truth := DataSource{
 		Name: "Truth",
@@ -258,7 +258,7 @@ func TestDynamicEndpoint_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ep := &DynamicEndpoint{Value: tt.input}
+			ep := NewDynamicEndpoint(tt.input)
 			host, port, err := ep.Parse()
 			if tt.wantErr {
 				assert.Error(t, err)

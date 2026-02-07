@@ -11,6 +11,9 @@ func nylonGc(s *state.State) error {
 		n := 0
 		for _, x := range neigh.Eps {
 			x := x.AsNylonEndpoint()
+			if !x.IsActive() {
+				x.DynEP.Clear()
+			}
 			if x.IsAlive() {
 				neigh.Eps[n] = x
 				n++

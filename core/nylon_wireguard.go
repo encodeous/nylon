@@ -69,9 +69,8 @@ listen_port=%d
 		rcfg := s.GetRouter(peer)
 		endpoints := make([]conn.Endpoint, 0)
 		for _, nep := range rcfg.Endpoints {
-			ap, err := nep.Resolve()
+			ap, err := nep.Get()
 			if err != nil {
-				s.Log.Warn("failed to resolve endpoint", "endpoint", nep.Value, "err", err)
 				continue
 			}
 			endpoint, err := n.Device.Bind().ParseEndpoint(ap.String())
@@ -181,7 +180,7 @@ func UpdateWireGuard(s *state.State) error {
 
 		// add endpoint if it is not in the list
 		for _, ep := range pcfg.Endpoints {
-			ap, err := ep.Resolve()
+			ap, err := ep.Get()
 			if err != nil {
 				continue
 			}

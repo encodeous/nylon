@@ -63,7 +63,7 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 				},
 			},
 			Endpoints: []*DynamicEndpoint{
-				{Value: fmt.Sprintf("192.168.0.%d:25565", idx)},
+				NewDynamicEndpoint(fmt.Sprintf("192.168.0.%d:25565", idx)),
 			},
 		})
 	}

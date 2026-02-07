@@ -45,6 +45,6 @@ var (
 	// default port
 	DefaultPort = 57175
 
-	// refresh dns
-	DnsRefreshDelay = time.Minute * 1
+	EndpointResolveExpiry = time.Minute * 1
+	EndpointResolveDelay  = time.Second * 15
 )

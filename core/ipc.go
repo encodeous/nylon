@@ -61,8 +61,12 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 			sb.WriteString(fmt.Sprintf("   Endpoints:\n"))
 			for _, ep := range n.Eps {
 				nep := ep.AsNylonEndpoint()
-				ap, _ := nep.DynEP.Resolve()
-				sb.WriteString(fmt.Sprintf("    - %s (resolved: %s) active=%v metric=%d\n", nep.DynEP.Value, ap.String(), nep.IsActive(), nep.Metric()))
+				ap, err := nep.DynEP.Get()
+				if err != nil {
+					sb.WriteString(fmt.Sprintf("    - %s (unresolved)\n", nep.DynEP.Value))
+				} else {
+					sb.WriteString(fmt.Sprintf("    - %s (resolved: %s) active=%v metric=%d\n", nep.DynEP.Value, ap.String(), nep.IsActive(), nep.Metric()))
+				}
 			}
 			sb.WriteString(fmt.Sprintf("   Published Routes:\n"))
 			rt := make([]string, 0)

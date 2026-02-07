@@ -54,12 +54,6 @@ func (n *Nylon) Init(s *state.State) error {
 	go n.PingBuf.Start()
 
 	s.Env.RepeatTask(nylonGc, state.GcDelay)
-	s.Env.RepeatTask(func(s *state.State) error {
-		go func() { // don't block main goroutine
-			state.DnsCache.Refresh()
-		}()
-		return nil
-	}, state.DnsRefreshDelay)
 
 	// wireguard configuration
 	err := n.initWireGuard(s)
@@ -71,6 +65,22 @@ func (n *Nylon) Init(s *state.State) error {
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, true)
 	}, state.ProbeDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		// refresh dynamic endpoints
+		for _, neigh := range s.Neighbours {
+			for _, ep := range neigh.Eps {
+				if nep, ok := ep.(*state.NylonEndpoint); ok {
+					go func() {
+						_, err := nep.DynEP.Refresh()
+						if err != nil {
+							s.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
+						}
+					}()
+				}
+			}
+		}
+		return nil
+	}, state.EndpointResolveDelay)
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, false)
 	}, state.ProbeRecoveryDelay)

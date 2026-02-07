@@ -80,7 +80,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
 			dep := dep.AsNylonEndpoint()
-			ap, err := dep.DynEP.Resolve()
+			ap, err := dep.DynEP.Get()
 			if err == nil && ap == ep.DstIPPort() && neigh.Id == node {
 				// we have a link
 
@@ -102,7 +102,7 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	// create a new link if we dont have a link
 	for _, neigh := range s.Neighbours {
 		if neigh.Id == node {
-			newEp := state.NewEndpoint(&state.DynamicEndpoint{Value: ep.DstIPPort().String()}, true, ep)
+			newEp := state.NewEndpoint(state.NewDynamicEndpoint(ep.DstIPPort().String()), true, ep)
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
@@ -119,7 +119,7 @@ func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.En
 	for _, neigh := range s.Neighbours {
 		for _, dpLink := range neigh.Eps {
 			dpLink := dpLink.AsNylonEndpoint()
-			ap, err := dpLink.DynEP.Resolve()
+			ap, err := dpLink.DynEP.Get()
 			if err == nil && ap == ep.DstIPPort() && neigh.Id == node {
 				linkHealth, ok := n.PingBuf.GetAndDelete(token)
 				if ok {
@@ -175,12 +175,12 @@ func (n *Nylon) probeNew(s *state.State) error {
 		cfg := s.GetRouter(peer)
 		// assumption: we don't need to connect to the same endpoint again within the scope of the same node
 		for _, ep := range cfg.Endpoints {
-			ap, err := ep.Resolve()
+			ap, err := ep.Get()
 			if err != nil {
 				continue
 			}
 			idx := slices.IndexFunc(neigh.Eps, func(link state.Endpoint) bool {
-				lap, err := link.AsNylonEndpoint().DynEP.Resolve()
+				lap, err := link.AsNylonEndpoint().DynEP.Get()
 				if err != nil {
 					return false
 				}

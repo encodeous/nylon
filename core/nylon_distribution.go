@@ -36,13 +36,13 @@ func FetchConfig(repoStr string, key state.NyPublicKey) (*state.CentralCfg, erro
 					if err != nil {
 						return nil, err
 					}
-					ips, err := state.DnsCache.LookupHost(ctx, host)
+					addrs, err := state.ResolveName(ctx, host)
 					if err != nil {
 						return nil, err
 					}
-					for _, ip := range ips {
+					for _, ip := range addrs {
 						var dialer net.Dialer
-						conn, err = dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+						conn, err = dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 						if err == nil {
 							break
 						}

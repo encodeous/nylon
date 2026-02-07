@@ -7,19 +7,12 @@ import (
 	"net/netip"
 	"strings"
 	"time"
-
-	"github.com/minio/dnscache"
-)
-
-var (
-	DnsCache = &dnscache.Resolver{}
 )
 
 // SetResolvers configures the global default resolver
 func SetResolvers(resolvers []string) {
 	if len(resolvers) != 0 {
 		net.DefaultResolver = &net.Resolver{
-			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 				d := net.Dialer{Timeout: time.Second * 10}
 				var lastErr error
@@ -36,9 +29,9 @@ func SetResolvers(resolvers []string) {
 	}
 }
 
-// ResolveName resolves a hostname to a list of IP addresses using the cache
+// ResolveName resolves a hostname to a list of IP addresses
 func ResolveName(ctx context.Context, host string) ([]netip.Addr, error) {
-	ips, err := DnsCache.LookupHost(ctx, host)
+	ips, err := net.DefaultResolver.LookupHost(ctx, host)
 	if err != nil {
 		return nil, err
 	}
