@@ -17,8 +17,6 @@ import (
 
 func TestDistribution(t *testing.T) {
 	h := NewHarness(t)
-	// Cleanup is handled by Harness via t.Cleanup
-
 	ctx := context.Background()
 
 	// 1. Setup Keys
@@ -26,10 +24,7 @@ func TestDistribution(t *testing.T) {
 	pubKey := privKey.Pubkey()
 
 	// 2. Prepare Directories
-	runDir := filepath.Join(h.RootDir, "e2e", "runs", t.Name())
-	if err := os.MkdirAll(runDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	runDir := h.SetupTestDir()
 
 	// 3. Prepare Initial Bundle (v1)
 	distCfg := &state.DistributionCfg{
@@ -39,21 +34,14 @@ func TestDistribution(t *testing.T) {
 	
 	nodeKey := state.GenerateKey()
 	nodeId := "node-1"
+	nodeIP := GetIP(h.Subnet, 10)
 
 	cfg1 := state.CentralCfg{
 		Timestamp: 1,
 		Dist:      distCfg,
 		Routers: []state.RouterCfg{
-			{
-				NodeCfg: state.NodeCfg{
-					Id:     state.NodeId(nodeId),
-					PubKey: nodeKey.Pubkey(),
-				},
-				Endpoints: []*state.DynamicEndpoint{},
-			},
+			SimpleRouter(nodeId, nodeKey.Pubkey(), "10.0.0.1", ""),
 		},
-		Clients: []state.ClientCfg{},
-		Graph:   []string{},
 	}
 
 	cfg1Bytes, err := yaml.Marshal(cfg1)
@@ -64,6 +52,14 @@ func TestDistribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Ensure cfg1 has the same timestamp as bundle1 to prevent immediate update
+	unbundled1, err := state.UnbundleConfig(bundle1Str, pubKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg1.Timestamp = unbundled1.Timestamp
+
 	bundle1Path := filepath.Join(runDir, "bundle1")
 	if err := os.WriteFile(bundle1Path, []byte(bundle1Str), 0644); err != nil {
 		t.Fatal(err)
@@ -98,35 +94,23 @@ func TestDistribution(t *testing.T) {
 	}
 
 	// 5. Start Nylon Node
-	// Write central.yaml (v1) to disk for initial startup
-	centralConfigPath := filepath.Join(runDir, "central.yaml")
-	if err := os.WriteFile(centralConfigPath, cfg1Bytes, 0644); err != nil {
-		t.Fatal(err)
-	}
+	centralConfigPath := h.WriteConfig(runDir, "central.yaml", cfg1)
 
 	// Write node.yaml
-	nodeCfg := state.LocalCfg{
-		Id:   state.NodeId(nodeId),
-		Key:  nodeKey,
-		Port: 51820,
-		// We can omit Dist here since we are providing central.yaml,
-		// but providing it doesn't hurt.
-		Dist: &state.LocalDistributionCfg{
-			Key: pubKey,
-			Url: "http://repo:80/bundle",
-		},
+	nodeCfg := SimpleLocal(nodeId, nodeKey)
+	nodeCfg.Dist = &state.LocalDistributionCfg{
+		Key: pubKey,
+		Url: "http://repo:80/bundle",
 	}
-	nodeCfgBytes, err := yaml.Marshal(nodeCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	nodeConfigPath := filepath.Join(runDir, "node.yaml")
-	if err := os.WriteFile(nodeConfigPath, nodeCfgBytes, 0644); err != nil {
-		t.Fatal(err)
-	}
+	nodeConfigPath := h.WriteConfig(runDir, "node.yaml", nodeCfg)
 
 	t.Log("Starting Nylon Node...")
-	h.StartNode(nodeId, "", centralConfigPath, nodeConfigPath)
+	h.StartNodes(NodeSpec{
+		Name:              nodeId,
+		IP:                nodeIP,
+		CentralConfigPath: centralConfigPath,
+		NodeConfigPath:    nodeConfigPath,
+	})
 
 	// Wait for start
 	h.WaitForLog(nodeId, "Nylon has been initialized")
@@ -136,7 +120,7 @@ func TestDistribution(t *testing.T) {
 	t.Log("Preparing Bundle 2...")
 	// Wait a bit to ensure timestamp is different if using UnixNano
 	time.Sleep(1 * time.Second)
-	
+
 	cfg2 := cfg1
 	// BundleConfig will overwrite this timestamp anyway
 	cfg2Bytes, err := yaml.Marshal(cfg2)
@@ -168,12 +152,12 @@ func TestDistribution(t *testing.T) {
 	// 7. Verify Update
 	t.Log("Waiting for update detection...")
 	h.WaitForLog(nodeId, "Found a new config update in repo")
-	
+
 	t.Log("Waiting for restart...")
 	h.WaitForLog(nodeId, "Restarting Nylon...")
 
 	// Allow some time for the restart to complete and write the file
-	time.Sleep(5 * time.Second)
+	h.WaitForLog(nodeId, "Nylon has been initialized.")
 
 	t.Log("Verifying config version on node...")
 	stdout, _, err := h.Exec(nodeId, []string{"cat", "/app/config/central.yaml"})
