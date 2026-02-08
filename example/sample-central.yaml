@@ -30,6 +30,7 @@ routers:
     addresses: [10.0.0.2, 10.1.0.2] # you can advertise multiple addresses
     endpoints:
       - '192.168.1.1:57175'
+      - 'nylon.example.org' # nylon will re-resolve this domain frequently to check for updates.
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
     addresses: [10.0.0.3]

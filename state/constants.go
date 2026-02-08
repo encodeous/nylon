@@ -41,4 +41,10 @@ var (
 	// healthcheck defaults
 	HealthCheckDelay       = time.Second * 15
 	HealthCheckMaxFailures = 3
+
+	// default port
+	DefaultPort = 57175
+
+	EndpointResolveExpiry = time.Minute * 1
+	EndpointResolveDelay  = time.Second * 15
 )

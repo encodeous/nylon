@@ -32,11 +32,14 @@ func (e *Env) ScheduleTask(fun func(*State) error, delay time.Duration) {
 }
 
 func (e *Env) repeatedTask(fun func(*State) error, delay time.Duration) {
+	// run immediately
+	e.Dispatch(fun)
+	ticker := time.NewTicker(delay)
 	for e.Context.Err() == nil {
 		select {
 		case <-e.Context.Done():
 			return
-		case <-time.After(delay):
+		case <-ticker.C:
 			e.Dispatch(fun)
 		}
 	}
