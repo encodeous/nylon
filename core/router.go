@@ -349,7 +349,7 @@ func flushIO(s *state.State) error {
 			continue
 		}
 		if best != nil && best.IsActive() {
-			peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(best.Node()).PubKey))
+			peer := n.Device.LookupPeer(device.NoisePublicKey(n.env.GetNode(neigh.Id).PubKey))
 			for {
 				bundle := &protocol.TransportBundle{}
 				tLength := 0

@@ -1,10 +1,14 @@
 package state
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"net"
 	"net/netip"
 	"slices"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -12,7 +16,6 @@ import (
 )
 
 type Endpoint interface {
-	Node() NodeId
 	UpdatePing(ping time.Duration)
 	Metric() uint32
 	IsRemote() bool
@@ -20,8 +23,136 @@ type Endpoint interface {
 	AsNylonEndpoint() *NylonEndpoint
 }
 
+/*
+		DynamicEndpoint represents either an ip:port or a dns name. This may be resolved to a different address at any time
+
+		Examples:
+	    - nylon.example.com -> resolves to <ip>:57175 (DefaultPort)
+		- nylon2.example.com:12345 -> resolves to <ip>:12345
+		- SRV record: _nylon._udp.example.com. port: 8000 target: nylon3.example.com -> resolves to <ip>:8000
+*/
+type DynamicEndpoint struct {
+	Value      string
+	lastValue  netip.AddrPort
+	lastUpdate time.Time
+	rw         *sync.RWMutex
+}
+
+func NewDynamicEndpoint(value string) *DynamicEndpoint {
+	return &DynamicEndpoint{
+		Value: value,
+		rw:    &sync.RWMutex{},
+	}
+}
+
+func (ep *DynamicEndpoint) Parse() (host string, port uint16, err error) {
+	// Try to parse as AddrPort directly first to handle cases like [::1]:port correctly
+	if ap, err := netip.ParseAddrPort(ep.Value); err == nil {
+		return ap.Addr().String(), ap.Port(), nil
+	}
+
+	h, portStr, err := net.SplitHostPort(ep.Value)
+	if err != nil {
+		// No port specified?
+		// TODO: more robust validation
+		return ep.Value, uint16(DefaultPort), nil
+	} else {
+		p, err := strconv.ParseUint(portStr, 10, 16)
+		if err != nil {
+			return "", 0, fmt.Errorf("invalid port: %w", err)
+		}
+		return h, uint16(p), nil
+	}
+}
+
+func (ep *DynamicEndpoint) Refresh() (netip.AddrPort, error) {
+	// 1. Try to parse as AddrPort directly
+	if ap, err := netip.ParseAddrPort(ep.Value); err == nil {
+		return ap, nil
+	}
+
+	ep.rw.RLock()
+	// if this endpoint is down, we will refresh every EndpointResolveDelay
+	if time.Now().Sub(ep.lastUpdate) < EndpointResolveExpiry && ep.lastValue != (netip.AddrPort{}) {
+		ep.rw.RUnlock()
+		return ep.lastValue, nil
+	}
+	ep.rw.RUnlock()
+
+	host, port, err := ep.Parse()
+	if err != nil {
+		return netip.AddrPort{}, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// 2. Try SRV lookup
+	target, srvPort, err := ResolveSRV(ctx, "nylon", "udp", host)
+	if err == nil {
+		addrs, err := ResolveName(ctx, target)
+		if err == nil && len(addrs) > 0 {
+			ep.rw.Lock()
+			defer ep.rw.Unlock()
+			ep.lastUpdate = time.Now()
+			ep.lastValue = netip.AddrPortFrom(addrs[0], srvPort)
+			return ep.lastValue, nil
+		}
+	}
+
+	// 3. Normal A/AAAA lookup
+	addrs, err := ResolveName(ctx, host)
+	if err != nil {
+		return netip.AddrPort{}, err
+	}
+	if len(addrs) == 0 {
+		return netip.AddrPort{}, fmt.Errorf("no addresses found for %s", host)
+	}
+
+	ep.rw.Lock()
+	defer ep.rw.Unlock()
+	ep.lastUpdate = time.Now()
+	ep.lastValue = netip.AddrPortFrom(addrs[0], port)
+	return ep.lastValue, nil
+}
+
+func (ep *DynamicEndpoint) Get() (netip.AddrPort, error) {
+	if ap, err := netip.ParseAddrPort(ep.Value); err == nil {
+		return ap, nil
+	}
+	ep.rw.RLock()
+	defer ep.rw.RUnlock()
+	if ep.lastValue != (netip.AddrPort{}) {
+		return ep.lastValue, nil
+	}
+	return netip.AddrPort{}, fmt.Errorf("endpoint not resolved")
+}
+
+func (ep *DynamicEndpoint) Clear() {
+	ep.rw.Lock()
+	defer ep.rw.Unlock()
+	ep.lastUpdate = time.Time{}
+}
+
+func (ep *DynamicEndpoint) String() string {
+	return ep.Value
+}
+
+func (ep *DynamicEndpoint) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	ep.Value = s
+	ep.rw = &sync.RWMutex{}
+	return nil
+}
+
+func (ep *DynamicEndpoint) MarshalYAML() (interface{}, error) {
+	return ep.Value, nil
+}
+
 type NylonEndpoint struct {
-	node          NodeId
 	history       []time.Duration
 	histSort      []time.Duration
 	dirty         bool
@@ -30,22 +161,27 @@ type NylonEndpoint struct {
 	expRTT        float64
 	remoteInit    bool
 	WgEndpoint    conn.Endpoint
-	Ep            netip.AddrPort
+	DynEP         *DynamicEndpoint
 }
 
 func (ep *NylonEndpoint) AsNylonEndpoint() *NylonEndpoint {
 	return ep
 }
 
-func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device) conn.Endpoint {
-	if ep.WgEndpoint == nil || ep.WgEndpoint.DstToString() != ep.Ep.String() {
-		wgEp, err := device.Bind().ParseEndpoint(ep.Ep.String())
+func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device) (conn.Endpoint, error) {
+	ap, err := ep.DynEP.Get()
+	if err != nil {
+		return nil, err
+	}
+
+	if ep.WgEndpoint == nil || ep.WgEndpoint.DstIPPort() != ap {
+		wgEp, err := device.Bind().ParseEndpoint(ap.String())
 		if err != nil {
-			panic(fmt.Sprintf("Failed to parse endpoint: %s, %v", ep.Ep.String(), err))
+			return nil, fmt.Errorf("failed to parse endpoint: %s, %v", ap.String(), err)
 		}
 		ep.WgEndpoint = wgEp
 	}
-	return ep.WgEndpoint
+	return ep.WgEndpoint, nil
 }
 
 func (n *Neighbour) BestEndpoint() Endpoint {
@@ -57,10 +193,6 @@ func (n *Neighbour) BestEndpoint() Endpoint {
 		}
 	}
 	return best
-}
-
-func (u *NylonEndpoint) Node() NodeId {
-	return u.node
 }
 
 func (u *NylonEndpoint) IsActive() bool {
@@ -80,13 +212,12 @@ func (u *NylonEndpoint) IsAlive() bool {
 	return u.IsActive() || !u.remoteInit // we never gc endpoints that we have in our config
 }
 
-func NewEndpoint(endpoint netip.AddrPort, node NodeId, remoteInit bool, wgEndpoint conn.Endpoint) *NylonEndpoint {
+func NewEndpoint(endpoint *DynamicEndpoint, remoteInit bool, wgEndpoint conn.Endpoint) *NylonEndpoint {
 	return &NylonEndpoint{
 		remoteInit: remoteInit,
 		WgEndpoint: wgEndpoint,
-		Ep:         endpoint,
+		DynEP:      endpoint,
 		history:    make([]time.Duration, 0),
-		node:       node,
 		expRTT:     math.Inf(1),
 	}
 }

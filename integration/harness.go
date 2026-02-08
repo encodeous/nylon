@@ -167,6 +167,7 @@ func (v *VirtualHarness) Start() chan error {
 	nodes := len(v.Central.Routers)
 	vn.virtTun = make([]*tuntest.ChannelTUN, nodes)
 	vn.binds = make([]conn.Bind, nodes)
+	vn.readyCond = sync.NewCond(&sync.Mutex{})
 	// pick the first endpoint specified for each node
 	vn.EpOutMapping = func(curNode state.NodeId, to bindtest.ChannelEndpoint2) bindtest.ChannelEndpoint2 {
 		for k, x := range v.Endpoints {
@@ -178,7 +179,7 @@ func (v *VirtualHarness) Start() chan error {
 	}
 	for e, n := range v.Endpoints {
 		idx := v.IndexOf(n)
-		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, netip.MustParseAddrPort(e))
+		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, state.NewDynamicEndpoint(e))
 	}
 	startDelay := 0 * time.Millisecond
 	for idx, rt := range v.Central.Routers {
@@ -222,6 +223,7 @@ func (v *VirtualHarness) Start() chan error {
 			return errChan
 		}
 	}
+	v.Net.Ready()
 	return errChan
 }
 
@@ -253,6 +255,23 @@ type InMemoryNetwork struct {
 	SelfHandler    PacketFilter // packet filter for handling packets destined for the current node
 	TransitHandler PacketFilter // packet filter for handling packets passing through the current node
 	EpOutMapping   OutMapping
+	ready          bool
+	readyCond      *sync.Cond
+}
+
+func (i *InMemoryNetwork) WaitForReady() {
+	i.readyCond.L.Lock()
+	defer i.readyCond.L.Unlock()
+	for !i.ready {
+		i.readyCond.Wait()
+	}
+}
+
+func (i *InMemoryNetwork) Ready() {
+	i.Lock()
+	defer i.Unlock()
+	i.ready = true
+	i.readyCond.Broadcast()
 }
 
 func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Addr, data []byte, pkt []byte) bool {
@@ -328,6 +347,7 @@ func (i *InMemoryNetwork) Bind(node state.NodeId) conn.Bind {
 		pktBuf[0] = make([]byte, device.MaxMessageSize)
 		lenBuf := make([]int, bufSize)
 		epBuf := make([]conn.Endpoint, bufSize)
+		i.WaitForReady()
 		for {
 			for _, recv := range open {
 				n, err := recv(pktBuf, lenBuf, epBuf)
@@ -365,6 +385,7 @@ func (i *InMemoryNetwork) Tun(node state.NodeId) tun.Device {
 
 	i.virtTun[numId] = bt
 	go func() {
+		i.WaitForReady()
 		for {
 			select {
 			case <-i.cfg.Context.Done():

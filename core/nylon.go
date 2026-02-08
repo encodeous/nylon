@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"net"
 	"net/netip"
 	"time"
@@ -28,26 +27,7 @@ func (n *Nylon) Init(s *state.State) error {
 
 	s.Log.Debug("init nylon")
 
-	if len(s.DnsResolvers) != 0 {
-		s.Log.Debug("setting custom DNS resolvers", "resolvers", s.DnsResolvers)
-		net.DefaultResolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: time.Second * 10,
-				}
-				var err error
-				var conn net.Conn
-				for _, resolver := range s.DnsResolvers {
-					conn, err = d.DialContext(ctx, network, resolver)
-					if err == nil {
-						return conn, nil
-					}
-				}
-				return conn, err
-			},
-		}
-	}
+	state.SetResolvers(s.DnsResolvers)
 
 	// add neighbours
 	for _, peer := range s.GetPeers(s.Id) {
@@ -61,7 +41,7 @@ func (n *Nylon) Init(s *state.State) error {
 		}
 		cfg := s.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, peer, false, nil))
+			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil))
 		}
 
 		s.Neighbours = append(s.Neighbours, stNeigh)
@@ -85,6 +65,22 @@ func (n *Nylon) Init(s *state.State) error {
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, true)
 	}, state.ProbeDelay)
+	s.Env.RepeatTask(func(s *state.State) error {
+		// refresh dynamic endpoints
+		for _, neigh := range s.Neighbours {
+			for _, ep := range neigh.Eps {
+				if nep, ok := ep.(*state.NylonEndpoint); ok {
+					go func() {
+						_, err := nep.DynEP.Refresh()
+						if err != nil {
+							s.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
+						}
+					}()
+				}
+			}
+		}
+		return nil
+	}, state.EndpointResolveDelay)
 	s.Env.RepeatTask(func(s *state.State) error {
 		return n.probeLinks(s, false)
 	}, state.ProbeRecoveryDelay)

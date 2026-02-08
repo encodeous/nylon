@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/encodeous/nylon/core"
 	"github.com/spf13/cobra"
 )
@@ -11,16 +13,16 @@ var inspectCmd = &cobra.Command{
 	Short:   "Inspects the current state of nylon",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) != 1 {
-			println("Usage: nylon inspect <interface>")
+			fmt.Println("Usage: nylon inspect <interface>")
 			return
 		}
 		itf := args[0]
 		result, err := core.IPCGet(itf)
 		if err != nil {
-			println("Error:", err.Error())
+			fmt.Println("Error:", err.Error())
 			return
 		}
-		println(result)
+		fmt.Print(result)
 	},
 	GroupID: "ny",
 }

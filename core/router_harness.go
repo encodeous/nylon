@@ -48,7 +48,7 @@ func (m MockEndpoint) IsActive() bool {
 }
 
 func (m MockEndpoint) AsNylonEndpoint() *state.NylonEndpoint {
-	panic("MockEndpoint is not a NylonEndpoint")
+	return nil
 }
 
 func NewMockEndpoint(node state.NodeId, metric uint32) *MockEndpoint {
@@ -207,7 +207,7 @@ func AddLink(r *state.RouterState, ep *MockEndpoint) *MockEndpoint {
 	return nil
 }
 
-func RemoveLink(r *state.RouterState, ep state.Endpoint) {
+func RemoveLink(r *state.RouterState, ep *MockEndpoint) {
 	for _, n := range r.Neighbours {
 		if n.Id == ep.Node() {
 			for i, e := range n.Eps {
