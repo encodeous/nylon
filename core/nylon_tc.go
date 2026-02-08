@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"net/netip"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -18,6 +19,7 @@ const (
 
 func (n *Nylon) InstallTC(s *state.State) {
 	r := Get[*NylonRouter](s)
+	t := Get[*NylonTrace](s)
 
 	if state.DBG_trace_tc {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
@@ -33,7 +35,7 @@ func (n *Nylon) InstallTC(s *state.State) {
 					peer != nil &&
 					src != netip.IPv4Unspecified() && src != netip.IPv6Unspecified() &&
 					dst != netip.IPv4Unspecified() && dst != netip.IPv6Unspecified() {
-					dev.Log.Verbosef("Unhandled TC packet: %v -> %v, peer %s", packet.GetSrc(), packet.GetDst(), peer)
+					t.Submit(fmt.Sprintf("Unhandled TC packet: %v -> %v, peer %s\n", packet.GetSrc(), packet.GetDst(), peer))
 				}
 			}
 			return device.TcPass, nil
@@ -56,7 +58,7 @@ func (n *Nylon) InstallTC(s *state.State) {
 			if ok && !packet.Incoming() {
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
-					dev.Log.Verbosef("Fwd packet: %v -> %v, via %s", packet.GetSrc(), packet.GetDst(), entry.Nh)
+					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
 				}
 				return device.TcForward, nil
 			}
@@ -69,7 +71,7 @@ func (n *Nylon) InstallTC(s *state.State) {
 			if ok {
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
-					dev.Log.Verbosef("Fwd packet: %v -> %v, via %s", packet.GetSrc(), packet.GetDst(), entry.Nh)
+					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
 				}
 				return device.TcForward, nil
 			}
@@ -87,7 +89,7 @@ func (n *Nylon) InstallTC(s *state.State) {
 				}
 				if ttl == 0 {
 					if state.DBG_trace_tc {
-						dev.Log.Verbosef("TTL Expired: %v -> %v, via %s", packet.GetSrc(), packet.GetDst())
+						t.Submit(fmt.Sprintf("TTL Expired: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
 					}
 					return device.TcBounce, nil
 				}
@@ -103,6 +105,9 @@ func (n *Nylon) InstallTC(s *state.State) {
 		entry, ok := r.ExitTable.Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == s.Id {
+			if state.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("Exit: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
+			}
 			//dev.Log.Verbosef("BounceCur packet: %v -> %v", packet.GetSrc(), packet.GetDst())
 			return device.TcBounce, nil
 		}

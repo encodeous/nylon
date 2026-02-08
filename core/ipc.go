@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"slices"
@@ -39,6 +40,37 @@ func IPCGet(itf string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(res, "\x00"), nil
+}
+
+func IPCTrace(itf string) error {
+	conn, err := ipc.UAPIDial(itf)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+
+	_, err = rw.WriteString("get=nylon\n")
+	if err != nil {
+		return err
+	}
+
+	_, err = rw.WriteString("trace\n")
+	if err != nil {
+		return err
+	}
+	err = rw.Flush()
+	if err != nil {
+		return err
+	}
+
+	for {
+		str, err := rw.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		fmt.Print(str)
+	}
 }
 
 func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
@@ -139,6 +171,36 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 			return err
 		}
 		return rw.Flush()
+	case "trace\n":
+		if !state.DBG_trace_tc {
+			return fmt.Errorf("trace mode is not enabled")
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t := Get[*NylonTrace](s)
+		go func() {
+			_, _ = rw.ReadByte() // wait for EOF
+			cancel()
+		}()
+		ch := make(chan interface{})
+		t.Register(ch)
+		defer t.Unregister(ch)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case msg := <-ch:
+				if str, ok := msg.(string); ok {
+					_, err := rw.WriteString(str)
+					if err != nil {
+						return err
+					}
+					err = rw.Flush()
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
 	default:
 		return fmt.Errorf("unknown command %s", cmd)
 	}
