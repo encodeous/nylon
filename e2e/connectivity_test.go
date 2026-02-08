@@ -10,11 +10,6 @@ import (
 )
 
 func TestConnectivity(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping e2e test in short mode")
-	}
-	t.Parallel()
-
 	// Use a specific subnet for this test to avoid conflicts
 	h := NewHarness(t)
 

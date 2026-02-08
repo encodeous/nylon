@@ -15,11 +15,6 @@ import (
 )
 
 func TestHealthcheckPing(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping e2e test in short mode")
-	}
-	t.Parallel()
-
 	// Use a specific subnet for this test to avoid conflicts
 	h := NewHarness(t)
 
@@ -132,11 +127,6 @@ func TestHealthcheckPing(t *testing.T) {
 }
 
 func TestHealthcheckHTTP(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping e2e test in short mode")
-	}
-	t.Parallel()
-
 	h := NewHarness(t)
 
 	// IPs
