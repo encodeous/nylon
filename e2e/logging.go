@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -40,63 +39,72 @@ type LogSubscription struct {
 	MatchCh chan struct{}
 }
 
+type sourceKey struct {
+	node   string
+	source LogSource
+}
+
 type LogManager struct {
-	mu          sync.RWMutex
-	subscribers []*LogSubscription
-	// history keeps track of all logs to allow matching against past logs if needed
-	// however, the prompt implies a streaming approach for wait.
-	// Let's keep a simple buffer per node/source to allow "WaitFor" to check already received logs.
-	history   map[string]map[LogSource]*strings.Builder
-	historyMu sync.RWMutex
+	mu          sync.Mutex
+	subscribers map[sourceKey]*LogSubscription
+	histories   map[sourceKey][]string
 }
 
 func NewLogManager() *LogManager {
 	return &LogManager{
-		subscribers: make([]*LogSubscription, 0),
-		history:     make(map[string]map[LogSource]*strings.Builder),
+		subscribers: make(map[sourceKey]*LogSubscription),
+		histories:   make(map[sourceKey][]string),
 	}
 }
 
 func (m *LogManager) Accept(node string, source LogSource, content string) {
-	m.historyMu.Lock()
-	if _, ok := m.history[node]; !ok {
-		m.history[node] = make(map[LogSource]*strings.Builder)
-	}
-	if _, ok := m.history[node][source]; !ok {
-		m.history[node][source] = &strings.Builder{}
-	}
-	m.history[node][source].WriteString(content)
-	fullContent := m.history[node][source].String()
-	m.historyMu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	key := sourceKey{node, source}
+	m.histories[key] = append(m.histories[key], content)
+	m.checkMatchLocked(key)
+}
 
-	for _, sub := range m.subscribers {
-		if sub.Node != node || sub.Source != source {
-			continue
-		}
+func (m *LogManager) checkMatchLocked(key sourceKey) {
+	sub, ok := m.subscribers[key]
+	if !ok {
+		return
+	}
+
+	history := m.histories[key]
+	for i, content := range history {
 		matched := false
 		if sub.Regex != nil {
-			if sub.Regex.MatchString(content) || sub.Regex.MatchString(fullContent) {
+			if sub.Regex.MatchString(content) {
 				matched = true
 			}
 		} else if sub.Pattern != "" {
-			if strings.Contains(content, sub.Pattern) || strings.Contains(fullContent, sub.Pattern) {
+			if strings.Contains(content, sub.Pattern) {
 				matched = true
 			}
 		}
 
 		if matched {
+			m.histories[key] = history[i+1:]
 			select {
 			case sub.MatchCh <- struct{}{}:
 			default:
 			}
+			return
 		}
 	}
 }
 
 func (m *LogManager) Subscribe(node string, source LogSource, pattern string, isRegex bool) (*LogSubscription, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := sourceKey{node, source}
+	if _, ok := m.subscribers[key]; ok {
+		return nil, fmt.Errorf("node %s source %s already has a subscriber", node, source)
+	}
+
 	sub := &LogSubscription{
 		Node:    node,
 		Source:  source,
@@ -112,27 +120,8 @@ func (m *LogManager) Subscribe(node string, source LogSource, pattern string, is
 		sub.Pattern = pattern
 	}
 
-	m.mu.Lock()
-	m.subscribers = append(m.subscribers, sub)
-	m.mu.Unlock()
-
-	// Check history immediately
-	m.historyMu.RLock()
-	defer m.historyMu.RUnlock()
-	if h, ok := m.history[node]; ok {
-		if b, ok := h[source]; ok {
-			content := b.String()
-			matched := false
-			if sub.Regex != nil {
-				matched = sub.Regex.MatchString(content)
-			} else {
-				matched = strings.Contains(content, sub.Pattern)
-			}
-			if matched {
-				sub.MatchCh <- struct{}{}
-			}
-		}
-	}
+	m.subscribers[key] = sub
+	m.checkMatchLocked(key)
 
 	return sub, nil
 }
@@ -140,11 +129,9 @@ func (m *LogManager) Subscribe(node string, source LogSource, pattern string, is
 func (m *LogManager) Unsubscribe(sub *LogSubscription) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i, s := range m.subscribers {
-		if s == sub {
-			m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
-			break
-		}
+	key := sourceKey{sub.Node, sub.Source}
+	if current, ok := m.subscribers[key]; ok && current == sub {
+		delete(m.subscribers, key)
 	}
 }
 

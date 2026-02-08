@@ -10,9 +10,12 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -182,6 +185,21 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 func (h *Harness) WaitForMatch(nodeName string, pattern string) {
 	h.waitFor(nodeName, SourceStdout, pattern, true)
 }
+func (h *Harness) WaitForInspect(nodeName string, pattern string) {
+	start := time.Now()
+	re := regexp.MustCompile(pattern)
+	for {
+		if time.Since(start) > WaitTimeout {
+			stdout, _, _ := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
+			h.t.Fatalf("timed out waiting for inspect pattern %q in node %s. Current inspect:\n%s", pattern, nodeName, stdout)
+		}
+		stdout, _, err := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
+		if err == nil && re.MatchString(stdout) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
 func (h *Harness) WaitForTrace(nodeName string, pattern string) {
 	h.waitFor(nodeName, SourceTrace, pattern, false)
 }
@@ -209,26 +227,55 @@ type managerWriter struct {
 }
 
 func (w *managerWriter) Write(p []byte) (n int, err error) {
-	w.manager.Accept(w.node, w.source, string(p))
+	content := StripAnsi(string(p))
+	fmt.Printf("[%s:%s] %s", w.node, w.source, content)
+	w.manager.Accept(w.node, w.source, content)
 	return len(p), nil
+}
+
+func GetUnexportedField(field reflect.Value) interface{} {
+	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
 }
 
 func (h *Harness) StartTrace(nodeName string) {
 	h.mu.Lock()
-	container, ok := h.Nodes[nodeName]
+	cont, ok := h.Nodes[nodeName]
 	h.mu.Unlock()
 
 	if !ok {
 		h.t.Fatalf("node %s not found", nodeName)
 	}
 
+	h.t.Logf("Started trace for %s", nodeName)
+
 	go func() {
-		_, r, err := container.Exec(h.ctx, []string{"nylon", "inspect", "nylon0", "--trace"})
-		if err != nil {
-			return
+		time.Sleep(time.Second)
+		execOptions := container.ExecOptions{
+			Cmd:          []string{"nylon", "inspect", "nylon0", "--trace"},
+			AttachStdout: true,
+			AttachStderr: true,
+			Tty:          false,
 		}
+
+		docker := cont.(*testcontainers.DockerContainer)
+		// this is very sketchy, but testcontainers doesn't provide any API
+		v := reflect.ValueOf(docker)
+		y := GetUnexportedField(v.Elem().FieldByName("provider")).(*testcontainers.DockerProvider)
+		cli := y.Client()
+
+		execIDResp, err := cli.ContainerExecCreate(h.ctx, cont.GetContainerID(), execOptions)
+		if err != nil {
+			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+		}
+
+		resp, err := cli.ContainerExecAttach(h.ctx, execIDResp.ID, container.ExecAttachOptions{})
+		if err != nil {
+			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+		}
+		defer resp.Close()
+
 		stdoutWriter := &managerWriter{node: nodeName, source: SourceTrace, manager: h.LogManager}
-		stdcopy.StdCopy(stdoutWriter, stdoutWriter, r)
+		_, _ = stdcopy.StdCopy(stdoutWriter, stdoutWriter, resp.Reader)
 	}()
 }
 func (h *Harness) Cleanup() {

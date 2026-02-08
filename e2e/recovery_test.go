@@ -79,23 +79,22 @@ func TestRecoveryExample(t *testing.T) {
 	}
 
 	h.StartNodes(nodeSpecs...)
+	h.WaitForLog(alice, "Nylon has been initialized")
+	// Start tracing on Alice to observe packet forwarding
+	h.StartTrace(alice)
 
 	// 3. Wait for full convergence
 	t.Log("Waiting for initial convergence...")
 	h.WaitForLog(alice, fmt.Sprintf("new.prefix=%s/32", nylonIPs[bob]))
 
-	// Start tracing on Alice to observe packet forwarding
-	h.StartTrace(alice)
-
 	// 4. Verify connectivity Alice -> Bob
 	t.Log("Verifying initial connectivity Alice -> Bob (Direct)")
+	go h.Exec(alice, []string{"ping", "-c", "10", nylonIPs[bob]})
+	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], bob))
 	stdout, stderr, err := h.Exec(alice, []string{"ping", "-c", "3", nylonIPs[bob]})
 	if err != nil {
 		t.Fatalf("Initial ping failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
-
-	// Check that traffic went directly to Bob
-	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], bob))
 
 	// 5. Break the link Alice-Bob
 	t.Log("Breaking link Alice <-> Bob")
@@ -124,7 +123,6 @@ func TestRecoveryExample(t *testing.T) {
 			}
 		}
 	}()
-
 	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], vps))
 	close(stopPinger)
 
