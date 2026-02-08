@@ -12,19 +12,14 @@ import (
 )
 
 func TestRecoveryExample(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping e2e test in short mode")
-	}
-	t.Parallel()
-
 	h := NewHarness(t)
 
 	// Node names
 	alice := "alice"
 	bob := "bob"
 	charlie := "charlie"
-eve := "eve"
-vps := "vps"
+	eve := "eve"
+	vps := "vps"
 	nodeNames := []string{alice, bob, charlie, eve, vps}
 
 	// Generate keys
