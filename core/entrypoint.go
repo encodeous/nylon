@@ -234,6 +234,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 func initModules(s *state.State) error {
 	var modules []state.NyModule
+	modules = append(modules, &NylonTrace{})
 	modules = append(modules, &NylonRouter{})
 	modules = append(modules, &Nylon{})
 

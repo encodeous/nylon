@@ -100,8 +100,8 @@ func TestHealthcheckPing(t *testing.T) {
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForMatch("node3", ".+old.router=node2.+old.prefix=10.0.1.4\\/32.+new.router=node1.+new.prefix=10.0.1.4\\/32.+")
-	h.WaitForLog("node1", "prefix=10.0.0.3/32")
+	h.WaitForInspect("node3", `10\.0\.1\.4/32 via \(nh: node2, router: node1`)
+	h.WaitForInspect("node1", `10\.0\.0\.3/32 via node2`)
 
 	// ping from 3 to 10.0.0.4
 	stdout, stderr, err := h.Exec("node3", []string{"ping", "-c", "3", "10.0.1.4"})
@@ -215,7 +215,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Client should route to Backup (Metric 1000).
 
 	t.Log("Step A: Waiting for routing to fallback (Primary DOWN)")
-	h.WaitForMatch("client", "prefix=10\\.0\\.3\\.1/32.+new.nh=backup")
+	h.WaitForInspect("client", `10\.0\.3\.1/32 via backup`)
 
 	// B. Start HTTP Server on Primary
 	t.Log("Step B: Starting HTTP server on Primary")
@@ -228,7 +228,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Primary should advertise Metric 10.
 	// Client should switch to Primary.
 	t.Log("Step C: Waiting for routing to switch to Primary (Primary UP)")
-	h.WaitForMatch("client", "prefix=10\\.0\\.3\\.1/32.+new.nh=primary")
+	h.WaitForInspect("client", `10\.0\.3\.1/32 via primary`)
 
 	// D. Stop HTTP Server
 	t.Log("Step D: Stopping HTTP server")
@@ -236,19 +236,6 @@ func TestHealthcheckHTTP(t *testing.T) {
 	bg.Wait()
 
 	// E. Wait for fallback to Backup
-
-	time.Sleep(5 * time.Second)
-
-	h.mu.Lock()
-	logs := h.LogBuffers["client"].String()
-	h.mu.Unlock()
-
-	idxPrimary := strings.LastIndex(logs, "new.nh=primary")
-	idxBackup := strings.LastIndex(logs, "new.nh=backup")
-
-	if idxBackup > idxPrimary {
-		t.Log("Verified: Route switched back to backup")
-	} else {
-		t.Fatalf("Route failed to switch back to backup. Logs:\n%s", logs)
-	}
+	t.Log("Step E: Waiting for fallback to Backup")
+	h.WaitForInspect("client", `10\.0\.3\.1/32 via backup`)
 }

@@ -10,11 +10,12 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
-	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -38,26 +39,11 @@ type Harness struct {
 	ctx        context.Context
 	Network    *testcontainers.DockerNetwork
 	Nodes      map[string]testcontainers.Container
-	LogBuffers map[string]*LogBuffer
+	LogManager *LogManager
 	ImageName  string
 	RootDir    string
 	Subnet     string
 	Gateway    string
-}
-type LogBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (l *LogBuffer) Write(p []byte) (n int, err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.Write(p)
-}
-func (l *LogBuffer) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.String()
 }
 
 // NewHarness creates a test harness with a unique subnet
@@ -105,7 +91,7 @@ func NewHarness(t *testing.T) *Harness {
 		ctx:        ctx,
 		Network:    newNetwork,
 		Nodes:      make(map[string]testcontainers.Container),
-		LogBuffers: make(map[string]*LogBuffer),
+		LogManager: NewLogManager(),
 		RootDir:    rootDir,
 		Subnet:     subnet,
 		Gateway:    gateway,
@@ -115,27 +101,6 @@ func NewHarness(t *testing.T) *Harness {
 		h.Cleanup()
 	})
 	return h
-}
-
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func StripAnsi(s string) string {
-	return ansiRegex.ReplaceAllString(s, "")
-}
-
-type LogConsumer struct {
-	Name   string
-	Buffer *LogBuffer
-}
-
-func (g *LogConsumer) Accept(l testcontainers.Log) {
-	content := string(l.Content)
-	// Strip ANSI codes for easier processing and cleaner output
-	cleanContent := StripAnsi(content)
-	fmt.Printf("[%s] %s", g.Name, cleanContent)
-	if g.Buffer != nil {
-		g.Buffer.Write([]byte(cleanContent))
-	}
 }
 
 type NodeSpec struct {
@@ -194,80 +159,124 @@ func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfi
 				}
 			}
 		},
+		LogConsumerCfg: &testcontainers.LogConsumerConfig{
+			Consumers: []testcontainers.LogConsumer{
+				&UnifiedLogConsumer{Node: name, Manager: h.LogManager},
+			},
+		},
 		Name: h.t.Name() + "-" + name,
 	}
-	container, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
+	cont, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
 	if err != nil {
 		h.t.Fatalf("failed to start container %s: %v", name, err)
 	}
-	buffer := &LogBuffer{}
 	h.mu.Lock()
-	h.LogBuffers[name] = buffer
-	h.Nodes[name] = container
+	h.Nodes[name] = cont
 	h.mu.Unlock()
-	container.FollowOutput(&LogConsumer{Name: name, Buffer: buffer})
-	container.StartLogProducer(h.ctx)
-	return container
+	return cont
 }
+
 func (h *Harness) WaitForLog(nodeName string, pattern string) {
-	h.mu.Lock()
-	buffer, ok := h.LogBuffers[nodeName]
-	h.mu.Unlock()
-	if !ok {
-		h.t.Fatalf("log buffer for node %s not found", nodeName)
-	}
-	// Poll the buffer
-	timeout := time.After(WaitTimeout)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-timeout:
-			h.t.Fatalf("timed out waiting for log pattern %q in node %s", pattern, nodeName)
-		case <-ticker.C:
-			if strings.Contains(buffer.String(), pattern) {
-				return
-			}
-		case <-h.ctx.Done():
-			h.t.Fatal("context canceled")
-		}
-	}
+	h.waitFor(nodeName, SourceStdout, pattern, false)
 }
 func (h *Harness) WaitForMatch(nodeName string, pattern string) {
-	h.mu.Lock()
-	buffer, ok := h.LogBuffers[nodeName]
-	h.mu.Unlock()
-	if !ok {
-		h.t.Fatalf("log buffer for node %s not found", nodeName)
-	}
-
-	// Compile the regex once before the loop
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		h.t.Fatalf("invalid regex pattern %q: %v", pattern, err)
-	}
-
-	// Poll the buffer
-	timeout := time.After(WaitTimeout)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
+	h.waitFor(nodeName, SourceStdout, pattern, true)
+}
+func (h *Harness) WaitForInspect(nodeName string, pattern string) {
+	start := time.Now()
+	re := regexp.MustCompile(pattern)
 	for {
-		select {
-		case <-timeout:
-			h.t.Fatalf("timed out waiting for regex match %q in node %s", pattern, nodeName)
-		case <-ticker.C:
-			// Check against the compiled regex
-			if re.MatchString(buffer.String()) {
-				return
-			}
-		case <-h.ctx.Done():
-			h.t.Fatal("context canceled")
+		if time.Since(start) > WaitTimeout {
+			stdout, _, _ := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
+			h.t.Fatalf("timed out waiting for inspect pattern %q in node %s. Current inspect:\n%s", pattern, nodeName, stdout)
 		}
+		stdout, _, err := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
+		if err == nil && re.MatchString(stdout) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
+}
+func (h *Harness) WaitForTrace(nodeName string, pattern string) {
+	h.waitFor(nodeName, SourceTrace, pattern, false)
+}
+func (h *Harness) waitFor(nodeName string, source LogSource, pattern string, isRegex bool) {
+	sub, err := h.LogManager.Subscribe(nodeName, source, pattern, isRegex)
+	if err != nil {
+		h.t.Fatalf("failed to subscribe: %v", err)
+	}
+	defer h.LogManager.Unsubscribe(sub)
+
+	select {
+	case <-sub.MatchCh:
+		return
+	case <-time.After(WaitTimeout):
+		h.t.Fatalf("timed out waiting for %s pattern %q in node %s", source, pattern, nodeName)
+	case <-h.ctx.Done():
+		h.t.Fatal("context canceled")
+	}
+}
+
+type managerWriter struct {
+	node    string
+	source  LogSource
+	manager *LogManager
+}
+
+func (w *managerWriter) Write(p []byte) (n int, err error) {
+	content := StripAnsi(string(p))
+	fmt.Printf("[%s:%s] %s", w.node, w.source, content)
+	w.manager.Accept(w.node, w.source, content)
+	return len(p), nil
+}
+
+func GetUnexportedField(field reflect.Value) interface{} {
+	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
+}
+
+func (h *Harness) StartTrace(nodeName string) {
+	h.mu.Lock()
+	cont, ok := h.Nodes[nodeName]
+	h.mu.Unlock()
+
+	if !ok {
+		h.t.Fatalf("node %s not found", nodeName)
+	}
+
+	h.t.Logf("Started trace for %s", nodeName)
+
+	go func() {
+		time.Sleep(time.Second)
+		execOptions := container.ExecOptions{
+			Cmd:          []string{"nylon", "inspect", "nylon0", "--trace"},
+			AttachStdout: true,
+			AttachStderr: true,
+			Tty:          false,
+		}
+
+		docker := cont.(*testcontainers.DockerContainer)
+		// this is very sketchy, but testcontainers doesn't provide any API
+		v := reflect.ValueOf(docker)
+		y := GetUnexportedField(v.Elem().FieldByName("provider")).(*testcontainers.DockerProvider)
+		cli := y.Client()
+
+		execIDResp, err := cli.ContainerExecCreate(h.ctx, cont.GetContainerID(), execOptions)
+		if err != nil {
+			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+		}
+
+		resp, err := cli.ContainerExecAttach(h.ctx, execIDResp.ID, container.ExecAttachOptions{})
+		if err != nil {
+			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+		}
+		defer resp.Close()
+
+		stdoutWriter := &managerWriter{node: nodeName, source: SourceTrace, manager: h.LogManager}
+		_, _ = stdcopy.StdCopy(stdoutWriter, stdoutWriter, resp.Reader)
+	}()
 }
 func (h *Harness) Cleanup() {
 	h.mu.Lock()

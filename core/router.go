@@ -97,6 +97,9 @@ func (r *NylonRouter) BroadcastRequestSeqno(src state.Source, seqno uint16, hopC
 }
 
 func (r *NylonRouter) Log(event RouterEvent, desc string, args ...any) {
+	if event == NoEpToNeighbour {
+		return // ignored
+	}
 	r.Env.Log.Debug(fmt.Sprintf("%s %s", event.String(), desc), args...)
 }
 

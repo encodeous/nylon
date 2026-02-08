@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +79,9 @@ func TestRecoveryExample(t *testing.T) {
 	}
 
 	h.StartNodes(nodeSpecs...)
+	h.WaitForLog(alice, "Nylon has been initialized")
+	// Start tracing on Alice to observe packet forwarding
+	h.StartTrace(alice)
 
 	// 3. Wait for full convergence
 	t.Log("Waiting for initial convergence...")
@@ -87,13 +89,12 @@ func TestRecoveryExample(t *testing.T) {
 
 	// 4. Verify connectivity Alice -> Bob
 	t.Log("Verifying initial connectivity Alice -> Bob (Direct)")
+	go h.Exec(alice, []string{"ping", "-c", "10", nylonIPs[bob]})
+	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], bob))
 	stdout, stderr, err := h.Exec(alice, []string{"ping", "-c", "3", nylonIPs[bob]})
 	if err != nil {
 		t.Fatalf("Initial ping failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
-
-	// Check that traffic went directly to Bob
-	h.WaitForLog(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], bob))
 
 	// 5. Break the link Alice-Bob
 	t.Log("Breaking link Alice <-> Bob")
@@ -108,26 +109,22 @@ func TestRecoveryExample(t *testing.T) {
 
 	// 6. Wait for recovery
 	t.Log("Waiting for recovery (rerouting)...")
-	deadline := time.Now().Add(1 * time.Minute)
-	recovered := false
-	for time.Now().Before(deadline) {
-		h.Exec(alice, []string{"ping", "-c", "1", "-W", "1", nylonIPs[bob]})
-
-		h.mu.Lock()
-		buf := h.LogBuffers[alice].String()
-		h.mu.Unlock()
-
-		if strings.Contains(buf, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], vps)) {
-			recovered = true
-			break
+	// Start a background pinger to trigger routing
+	stopPinger := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopPinger:
+				return
+			case <-ticker.C:
+				h.Exec(alice, []string{"ping", "-c", "1", "-W", "1", nylonIPs[bob]})
+			}
 		}
-		time.Sleep(1 * time.Second)
-	}
-
-	if !recovered {
-		h.PrintLogs(alice)
-		t.Fatal("Failed to recover route via VPS")
-	}
+	}()
+	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], vps))
+	close(stopPinger)
 
 	t.Log("Recovery successful! Traffic rerouted via VPS.")
 
