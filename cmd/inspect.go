@@ -16,17 +16,28 @@ var inspectCmd = &cobra.Command{
 			fmt.Println("Usage: nylon inspect <interface>")
 			return
 		}
-		itf := args[0]
-		result, err := core.IPCGet(itf)
-		if err != nil {
-			fmt.Println("Error:", err.Error())
-			return
+		if ok, _ := cmd.Flags().GetBool("trace"); ok {
+			itf := args[0]
+			err := core.IPCTrace(itf)
+			if err != nil {
+				fmt.Println("Error:", err.Error())
+				return
+			}
+		} else {
+			itf := args[0]
+			result, err := core.IPCGet(itf)
+			if err != nil {
+				fmt.Println("Error:", err.Error())
+				return
+			}
+			fmt.Print(result)
 		}
-		fmt.Print(result)
 	},
 	GroupID: "ny",
 }
 
 func init() {
 	rootCmd.AddCommand(inspectCmd)
+
+	inspectCmd.Flags().BoolP("trace", "t", false, "Enables live packet routing capture")
 }
