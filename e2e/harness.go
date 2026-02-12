@@ -108,6 +108,7 @@ type NodeSpec struct {
 	IP                string
 	CentralConfigPath string
 	NodeConfigPath    string
+	ExtraArgs         []string
 }
 
 func (h *Harness) StartNodes(specs ...NodeSpec) {
@@ -116,12 +117,12 @@ func (h *Harness) StartNodes(specs ...NodeSpec) {
 	for _, spec := range specs {
 		go func(s NodeSpec) {
 			defer wg.Done()
-			h.StartNode(s.Name, s.IP, s.CentralConfigPath, s.NodeConfigPath)
+			h.StartNode(s.Name, s.IP, s.CentralConfigPath, s.NodeConfigPath, s.ExtraArgs...)
 		}(spec)
 	}
 	wg.Wait()
 }
-func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfigPath string) testcontainers.Container {
+func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfigPath string, extraArgs ...string) testcontainers.Container {
 	h.t.Logf("Starting node %s at %s", name, ip)
 	req := testcontainers.ContainerRequest{
 		Image:    ImageName,
@@ -141,7 +142,7 @@ func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfi
 				FileMode:          0644,
 			},
 		},
-		Cmd: nil, // Entrypoint already handles "run -v"
+		Cmd: extraArgs,
 		Env: map[string]string{
 			"NYLON_LOG_LEVEL": "debug",
 		},
