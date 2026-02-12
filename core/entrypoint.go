@@ -152,18 +152,26 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	dispatch := make(chan func(env *state.State) error, 128)
 
 	handlers := make([]slog.Handler, 0)
-	handlers = append(handlers,
-		tint.NewHandler(os.Stderr, &tint.Options{
-			Level:        logLevel,
-			AddSource:    false,
-			CustomPrefix: string(ncfg.Id),
-			ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-				if attr.Key == "time" {
-					return slog.Attr{}
-				}
-				return attr
-			},
-		}))
+	if state.DBG_log_json {
+		handlers = append(handlers,
+			slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+				Level: logLevel,
+			}),
+		)
+	} else {
+		handlers = append(handlers,
+			tint.NewHandler(os.Stderr, &tint.Options{
+				Level:        logLevel,
+				AddSource:    false,
+				CustomPrefix: string(ncfg.Id),
+				ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+					if attr.Key == "time" {
+						return slog.Attr{}
+					}
+					return attr
+				},
+			}))
+	}
 
 	if ncfg.LogPath != "" {
 		err := os.MkdirAll(path.Dir(ncfg.LogPath), 0700)
