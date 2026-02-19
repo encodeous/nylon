@@ -6,6 +6,7 @@ require (
 	github.com/cilium/cilium v1.18.4
 	github.com/digineo/go-ping v1.2.0
 	github.com/docker/docker v28.5.1+incompatible
+	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
 	github.com/encodeous/tint v1.2.0
 	github.com/gaissmai/bart v0.25.0
@@ -29,7 +30,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.1.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -44,7 +45,6 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
