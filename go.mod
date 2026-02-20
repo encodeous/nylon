@@ -3,9 +3,10 @@ module github.com/encodeous/nylon
 go 1.25.4
 
 require (
-	github.com/cilium/cilium v1.18.4
+	github.com/cilium/cilium v1.18.5
 	github.com/digineo/go-ping v1.2.0
 	github.com/docker/docker v28.5.1+incompatible
+	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
 	github.com/encodeous/tint v1.2.0
 	github.com/gaissmai/bart v0.25.0
@@ -44,7 +45,6 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
