@@ -3,7 +3,7 @@ module github.com/encodeous/nylon
 go 1.25.4
 
 require (
-	github.com/cilium/cilium v1.18.8
+	github.com/cilium/cilium v1.18.9
 	github.com/digineo/go-ping v1.2.0
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
@@ -20,8 +20,8 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.step.sm/crypto v0.70.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.45.0
-	golang.org/x/net v0.47.0
+	golang.org/x/crypto v0.46.0
+	golang.org/x/net v0.48.0
 	golang.org/x/sys v0.39.0
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 	google.golang.org/protobuf v1.36.10
@@ -89,8 +89,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
