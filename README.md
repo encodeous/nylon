@@ -1,4 +1,8 @@
-# Nylon
+<div align="center">
+    <img src="docs/assets/banner.svg" width=500 height=250>
+</div>
+
+# nylon
 
 Nylon is a [Resilient Overlay Network](https://dl.acm.org/doi/10.1145/502034.502048) built from WireGuard, designed to be performant, secure, reliable, and most importantly, easy to use.
 

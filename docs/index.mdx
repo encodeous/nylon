@@ -1,0 +1,34 @@
+---
+title: nylon
+description: A Resilient Overlay Network built on WireGuard.
+# template: splash
+hero:
+  tagline: Performant, secure, and reliable mesh networking made easy.
+  actions:
+    - text: Get Started
+      link: /guides/getting-started/
+      icon: right-arrow
+    - text: Configuration Reference
+      link: /reference/config/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why nylon?
+
+<CardGrid stagger>
+	<Card title="Dynamic Routing" icon="random">
+		Built on the Babel routing protocol, nylon handles complex topologies, recovers from outages, and strategically routes traffic for optimal latency.
+	</Card>
+	<Card title="WireGuard Core" icon="seti:lock">
+		Built on top of <a href="https://github.com/WireGuard/wireguard-go" target="_blank">wireguard-go</a> for high-performance, state-of-the-art encryption.
+	</Card>
+	<Card title="Ease of Use" icon="rocket">
+		Single binary, minimal configuration, and a single UDP port. Deployment has never been simpler.
+	</Card>
+	<Card title="Backwards Compatible" icon="setting">
+		Connect existing WireGuard clients without any extra software.
+	</Card>
+</CardGrid>
