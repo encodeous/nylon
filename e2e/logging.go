@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -26,6 +27,7 @@ const (
 )
 
 type LogEvent struct {
+	At      time.Duration
 	Node    string
 	Source  LogSource
 	Content string
@@ -46,14 +48,19 @@ type sourceKey struct {
 
 type LogManager struct {
 	mu          sync.Mutex
+	start       time.Time
 	subscribers map[sourceKey]*LogSubscription
-	histories   map[sourceKey][]string
+	histories   map[sourceKey][]LogEvent
+	observers   map[int]func(LogEvent)
+	nextObsID   int
 }
 
 func NewLogManager() *LogManager {
 	return &LogManager{
+		start:       time.Now(),
 		subscribers: make(map[sourceKey]*LogSubscription),
-		histories:   make(map[sourceKey][]string),
+		histories:   make(map[sourceKey][]LogEvent),
+		observers:   make(map[int]func(LogEvent)),
 	}
 }
 
@@ -61,8 +68,17 @@ func (m *LogManager) Accept(node string, source LogSource, content string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	event := LogEvent{
+		At:      time.Since(m.start),
+		Node:    node,
+		Source:  source,
+		Content: content,
+	}
 	key := sourceKey{node, source}
-	m.histories[key] = append(m.histories[key], content)
+	m.histories[key] = append(m.histories[key], event)
+	for _, observer := range m.observers {
+		observer(event)
+	}
 	m.checkMatchLocked(key)
 }
 
@@ -73,14 +89,14 @@ func (m *LogManager) checkMatchLocked(key sourceKey) {
 	}
 
 	history := m.histories[key]
-	for i, content := range history {
+	for i, event := range history {
 		matched := false
 		if sub.Regex != nil {
-			if sub.Regex.MatchString(content) {
+			if sub.Regex.MatchString(event.Content) {
 				matched = true
 			}
 		} else if sub.Pattern != "" {
-			if strings.Contains(content, sub.Pattern) {
+			if strings.Contains(event.Content, sub.Pattern) {
 				matched = true
 			}
 		}
@@ -135,6 +151,21 @@ func (m *LogManager) Unsubscribe(sub *LogSubscription) {
 	}
 }
 
+func (m *LogManager) Observe(fn func(LogEvent)) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := m.nextObsID
+	m.nextObsID++
+	m.observers[id] = fn
+	return id
+}
+
+func (m *LogManager) RemoveObserver(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.observers, id)
+}
+
 type UnifiedLogConsumer struct {
 	Node    string
 	Manager *LogManager
@@ -146,6 +177,7 @@ func (c *UnifiedLogConsumer) Accept(l testcontainers.Log) {
 		source = SourceStderr
 	}
 	content := StripAnsi(string(l.Content))
-	fmt.Printf("[%s:%s] %s", c.Node, source, content)
+	ts := time.Since(c.Manager.start).Truncate(time.Millisecond)
+	fmt.Printf("[+%s][%s:%s] %s", ts, c.Node, source, content)
 	c.Manager.Accept(c.Node, source, content)
 }
