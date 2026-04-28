@@ -384,18 +384,18 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 1)`, 
 	RemoveLink(rs, SA)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 4294967295)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 4294967295)`, a.String())
+	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.24/32, seqno: 0, metric: 2)
+BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 4294967295)`, a.String())
 	HandleAckRetract(rs, h, "B", nodeToPrefix("S"))
 	HandleAckRetract(rs, h, "B", nodeToPrefix("X"))
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Empty(t, a, "Expect S and X to be held until C also sends ACK")
+	assert.Empty(t, a, "Expect S to be held until C also sends ACK. X is now via D, so it is not held.")
 	HandleAckRetract(rs, h, "C", nodeToPrefix("S"))
 	HandleAckRetract(rs, h, "C", nodeToPrefix("X"))
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.24/32, seqno: 0, metric: 2)`, a.String())
+	assert.Empty(t, a, "S is now fully retracted. X is already active via D.")
 	// B retracts D's published routes
 	h.NeighUpdate(rs, "B", "D", nodeToPrefix("D"), 0, state.INF)
 	h.NeighUpdateSvc(rs, "B", "D", nodeToPrefix("X"), 0, state.INF)
@@ -576,6 +576,59 @@ REQUEST_SEQNO B (router: D, prefix: 10.0.0.4/32) 1 64`, a.String())
 	a = h.GetActions()
 	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 1, metric: 4)
 BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 1, metric: 4)`, a.String())
+}
+
+func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
+	ConfigureConstants()
+	// Topology:
+	// A --(1)-- C
+	// A --(1)-- B --(10)-- C
+	// Initially A prefers A-C path.
+	// When A-C fails, A should be starved, request a seqno, and then switch to A-B-C.
+
+	h := &RouterHarness{}
+	cPrefix := nodeToPrefix("C")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	AC := AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+
+	// C's advertisement via direct link
+	h.NeighUpdate(rs, "C", "C", cPrefix, 0, 0)
+	// B's advertisement of C (cost 10). This is initially UNFEASIBLE because 10 > 1 (current FD).
+	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 10)
+
+	ComputeRoutes(rs, h)
+
+	// Initially A prefers C via direct link
+	assert.Equal(t, "C", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(1), rs.Routes[cPrefix].Metric)
+
+	// Now AC link goes down
+	RemoveLink(rs, AC)
+	ComputeRoutes(rs, h)
+
+	// A-C route should be retracted and held as INF
+	assert.Equal(t, state.INF, rs.Routes[cPrefix].Metric)
+
+	// A should realize it's starved and request a higher seqno
+	SolveStarvation(rs, h)
+	h.GetActions().AssertContains(t, "BROADCAST_REQUEST_SEQNO", state.Source{NodeId: "C", Prefix: cPrefix}, uint16(1), uint8(64))
+
+	// Now B advertises C with the higher seqno (1). This is now FEASIBLE.
+	h.NeighUpdate(rs, "B", "C", cPrefix, 1, 10)
+	ComputeRoutes(rs, h)
+
+	// A should now successfully switch to B
+	assert.Equal(t, "B", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(11), rs.Routes[cPrefix].Metric)
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {

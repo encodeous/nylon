@@ -434,6 +434,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	for prefix, route := range s.Routes {
 		if isHeldRoute(s, route) {
+			route.Metric = state.INF
 			newTable[prefix] = route
 		}
 	}
@@ -548,7 +549,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				newTable[prefix] = newRoute
 			} else {
 				// check if we should switch to this route
-				if ShouldSwitch(oldRoute, newRoute) && !isHeldRoute(s, oldRoute) {
+				if ShouldSwitch(oldRoute, newRoute) {
 					newTable[prefix] = newRoute
 				}
 			}
@@ -593,6 +594,9 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				retract(s, r, prefix)
 				r.TableDeleteRoute(prefix)
 				r.Log(RouteChanged, "retracted", "prefix", prefix, "old", oldRoute)
+				// Add the retracted route back as INF so it can be held
+				oldRoute.Metric = state.INF
+				newTable[prefix] = oldRoute
 			}
 		}
 	}
