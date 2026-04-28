@@ -67,10 +67,13 @@ func NewHarness(t *testing.T) *Harness {
 		rootDir = parent
 	}
 
-	subnet, gateway := GlobalNetworkAllocator.Allocate()
+	subnet, gateway, err := AllocateDockerSubnet(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("Allocated subnet: %s, gateway: %s", subnet, gateway)
 
-	// Create network with specific subnet
+	// Create network with a Docker-checked non-overlapping explicit subnet.
 	newNetwork, err := tcnetwork.New(ctx,
 		tcnetwork.WithAttachable(),
 		tcnetwork.WithDriver("bridge"),
@@ -86,6 +89,7 @@ func NewHarness(t *testing.T) *Harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	h := &Harness{
 		t:          t,
 		ctx:        ctx,
@@ -229,7 +233,8 @@ type managerWriter struct {
 
 func (w *managerWriter) Write(p []byte) (n int, err error) {
 	content := StripAnsi(string(p))
-	fmt.Printf("[%s:%s] %s", w.node, w.source, content)
+	ts := time.Since(w.manager.start).Truncate(time.Millisecond)
+	fmt.Printf("[+%s][%s:%s] %s", ts, w.node, w.source, content)
 	w.manager.Accept(w.node, w.source, content)
 	return len(p), nil
 }
