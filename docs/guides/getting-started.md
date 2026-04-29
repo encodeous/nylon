@@ -1,9 +1,9 @@
 ---
 title: Getting Started
-description: Learn how to set up your first Nylon network.
+description: Learn how to set up your first nylon network.
 ---
 
-This guide will walk you through setting up a basic Nylon network with two nodes.
+This guide will walk you through setting up a basic nylon network with two nodes.
 
 ```mermaid
 graph LR
@@ -12,8 +12,8 @@ graph LR
 
 ## Prerequisites
 
-- Two machines (Linux or macOS) with UDP port `57175` open.
-- The `nylon` binary installed on both machines.
+- Two machines with UDP port `57175` open (can configure with a different port).
+- The `nylon` binary downloaded on both machines.
 
 ## 1. Generate Keypairs
 
@@ -23,8 +23,18 @@ On each node, generate a WireGuard keypair:
 nylon key
 ```
 
-- **Stdout**: Your private key (keep this safe).
-- **Stderr**: Your public key (you'll need this for the central config).
+This will output two keys (example):
+
+```
+kPoLiC4+Nh9AoQGiBmJTh+8BUqCMsa6Zdr4M0Xz5bX0=
+9Z1HGi7eip6GdQezqy3Vc7Er76ZgTfryda9wvHUgWzk=
+```
+
+The first key (stdout) is your private key, and the second key (stderr) is your public key. Keep the private key safe, and note down the public key for the next step.
+
+:::tip
+If you already have a WireGuard keypair, you can use that interchangeably with nylon.
+:::
 
 ## 2. Create Node Configuration
 
@@ -45,9 +55,10 @@ routers:
   - id: node-1
     pubkey: <NODE_1_PUBLIC_KEY>
     endpoints:
-      - "node1.example.com:57175"
+      - "node1.example.com:57175" # could be a domain name
+      - "192.168.1.2:57175" # could be a local ip
     addresses:
-      - 10.0.0.1
+      - 10.0.0.1 # this is the internal nylon IP
   - id: node-2
     pubkey: <NODE_2_PUBLIC_KEY>
     endpoints:
@@ -57,13 +68,13 @@ routers:
 
 # Define the connections between nodes
 graph:
-  - "node-1, node-2"
+  - node-1, node-2 # This means node-1 and node-2 will try to connect to each other
 ```
 
 
-## 4. Launch Nylon
+## 4. Launch nylon
 
-Run Nylon on both machines:
+Run nylon on both machines:
 
 ```bash
 sudo nylon run -c central.yaml -n node.yaml
@@ -73,5 +84,8 @@ After a few seconds, the nodes will discover each other and establish a secure t
 
 ## Next Steps
 
-- Explore [Advanced Configuration](/reference/config) to learn about prefixes and split tunneling.
-- Learn how to connect [Passive Clients](/guides/passive-clients) (standard WireGuard apps).
+- Learn how to connect [Passive Clients](/guides/passive-clients), which are regular WireGuard clients, to support edge platforms like iOS.
+- Discover how to use [Config Distribution](/guides/config-distribution) to manage your network configuration with ease.
+- View your network's real-time status, and debug issues with [Monitoring and Debugging](/guides/monitoring-debugging).
+- Setup nylon without a static public IP using [Dynamic DNS](/guides/dynamic-dns).
+- Explore advanced routing features like [Anycast and Prefix Health](/guides/advanced-routing).
