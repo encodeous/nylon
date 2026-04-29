@@ -87,7 +87,9 @@ func (p *PingPrefixHealth) GetPrefix() netip.Prefix {
 	return p.Prefix
 }
 func (p *PingPrefixHealth) Start(log *slog.Logger) {
-	p.running.Swap(true)
+	if p.running.Swap(true) {
+		return
+	}
 	if p.Delay == nil {
 		p.Delay = &HealthCheckDelay
 	}
@@ -167,8 +169,10 @@ func (h *HTTPPrefixHealth) GetPrefix() netip.Prefix {
 	return h.Prefix
 }
 func (h *HTTPPrefixHealth) Start(log *slog.Logger) {
+	if h.running.Swap(true) {
+		return
+	}
 	h.lastMetric = INF
-	h.running.Swap(true)
 	if h.Delay == nil {
 		h.Delay = &HealthCheckDelay
 	}

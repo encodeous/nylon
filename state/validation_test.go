@@ -89,6 +89,36 @@ func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
 	assert.NoError(t, CentralConfigValidator(cfg))
 }
 
+func TestCentralConfigValidator_PassiveClientNonStaticPrefix(t *testing.T) {
+	cfg := &CentralCfg{
+		Clients: []ClientCfg{
+			{
+				NodeCfg: NodeCfg{
+					Id: "client1",
+					Prefixes: []PrefixHealthWrapper{
+						{
+							PrefixHealth: &PingPrefixHealth{
+								Prefix: netip.MustParsePrefix("10.0.0.0/24"),
+								Addr:   netip.MustParseAddr("10.0.0.1"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	assert.Error(t, CentralConfigValidator(cfg))
+	assert.Contains(t, CentralConfigValidator(cfg).Error(), "passive clients may not advertise non-static prefixes")
+
+	cfg.Clients[0].Prefixes[0] = PrefixHealthWrapper{
+		PrefixHealth: &StaticPrefixHealth{
+			Prefix: netip.MustParsePrefix("10.0.0.0/24"),
+			Metric: 0,
+		},
+	}
+	assert.NoError(t, CentralConfigValidator(cfg))
+}
+
 func TestCentralConfigValidator_DuplicatePrefix(t *testing.T) {
 	cfg := &CentralCfg{
 		Routers: []RouterCfg{
