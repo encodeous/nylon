@@ -230,14 +230,14 @@ func (r *NylonRouter) updatePassiveClient(s *state.State, prefix state.PrefixHea
 		r.SetSeqno(prefix.GetPrefix(), s.RouterState.GetSeqno(prefix.GetPrefix())+1)
 	}
 
-	prefix.Start(s.Log)
+	// passive nodes may only have static prefixes, so we don't call prefix.Start()
 	s.Advertised[prefix.GetPrefix()] = state.Advertisement{
 		NodeId:        node,
 		Expiry:        time.Now().Add(state.ClientKeepaliveInterval),
 		IsPassiveHold: passiveHold,
 		MetricFn:      prefix.GetMetric,
 		ExpiryFn: func() {
-			prefix.Stop()
+			// we didn't start the prefix monitoring
 		},
 	}
 }
