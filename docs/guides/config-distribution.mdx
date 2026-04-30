@@ -9,6 +9,19 @@ import { Steps } from '@astrojs/starlight/components';
 
 Nylon's distribution system allows you to manage network topology from a central source using signed and encrypted "bundles".
 
+```mermaid
+graph TD
+    Admin[Admin] -- "nylon seal & upload" --> S3[("S3 Bucket / Web Server (central.nybundle)")]
+
+    subgraph "Nylon Mesh"
+        NodeA[Node A]
+        NodeB[Node B]
+    end
+
+    S3 -- "Fetch & Update" --> NodeA
+    S3 -- "Fetch & Update" --> NodeB
+```
+
 :::caution
 The distribution public key also acts as the decryption key for your network config. To keep your internal network structure private, only share this key with the nodes in your network.
 :::
@@ -56,6 +69,6 @@ The distribution public key also acts as the decryption key for your network con
        - "https://your-server.com/central.nybundle"
    ```
 
-   Nylon polls for updates every 10 seconds and applies them without a restart.
+   Nylon polls for updates every 10 seconds and applies them.
 
 </Steps>
