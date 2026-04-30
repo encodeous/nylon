@@ -1,7 +1,7 @@
 package core
 
 import (
-	"reflect"
+
 
 	"github.com/encodeous/nylon/state"
 )
@@ -29,10 +29,6 @@ func SeqnoGe(a, b uint16) bool {
 	return !SeqnoLt(a, b)
 }
 
-func Get[T state.NyModule](s *state.State) T {
-	t := reflect.TypeFor[T]()
-	return s.Modules[t.String()].(T)
-}
 
 func abs(a int) int {
 	if a < 0 {

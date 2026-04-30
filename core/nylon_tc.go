@@ -17,9 +17,10 @@ const (
 
 // polyamide traffic control for nylon
 
-func (n *Nylon) InstallTC(s *state.State) {
-	r := Get[*NylonRouter](s)
-	t := Get[*NylonTrace](s)
+func (n *Nylon) InstallTC() {
+	s := n.State
+	r := n.Router
+	t := n.Trace
 
 	if state.DBG_trace_tc {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
@@ -175,23 +176,23 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 	defer func() {
 		err := recover()
 		if err != nil {
-			n.env.Log.Error("panic while handling poly socket: %v", err)
+			n.env.Log.Error("panic while handling poly socket", "err", err)
 		}
 	}()
 
 	for _, pkt := range bundle.Packets {
 		switch pkt.Type.(type) {
 		case *protocol.Ny_SeqnoRequestOp:
-			e.Dispatch(func(s *state.State) error {
-				return routerHandleSeqnoRequest(s, *neigh, pkt.GetSeqnoRequestOp())
+			e.Dispatch(func() error {
+				return n.Router.routerHandleSeqnoRequest(*neigh, pkt.GetSeqnoRequestOp())
 			})
 		case *protocol.Ny_RouteOp:
-			e.Dispatch(func(s *state.State) error {
-				return routerHandleRouteUpdate(s, *neigh, pkt.GetRouteOp())
+			e.Dispatch(func() error {
+				return n.Router.routerHandleRouteUpdate(*neigh, pkt.GetRouteOp())
 			})
 		case *protocol.Ny_AckRetractOp:
-			e.Dispatch(func(s *state.State) error {
-				return routerHandleAckRetract(s, *neigh, pkt.GetAckRetractOp())
+			e.Dispatch(func() error {
+				return n.Router.routerHandleAckRetract(*neigh, pkt.GetAckRetractOp())
 			})
 		case *protocol.Ny_ProbeOp:
 			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, *neigh)

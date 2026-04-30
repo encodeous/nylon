@@ -73,7 +73,8 @@ func IPCTrace(itf string) error {
 	}
 }
 
-func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
+func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
+	s := n.State
 	cmd, err := rw.ReadString('\n')
 	if err != nil {
 		return err
@@ -147,7 +148,7 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		// print forward table
 		sb.WriteString("\n\nForward Table:\n")
 		rt = make([]string, 0)
-		for prefix, route := range Get[*NylonRouter](s).ForwardTable.All() {
+		for prefix, route := range n.Router.ForwardTable.All() {
 			rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
 		}
 		slices.Sort(rt)
@@ -156,7 +157,7 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 		// print exit table
 		sb.WriteString("\n\nExit Table:\n")
 		rt = make([]string, 0)
-		for prefix, route := range Get[*NylonRouter](s).ExitTable.All() {
+		for prefix, route := range n.Router.ExitTable.All() {
 			rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
 		}
 		slices.Sort(rt)
@@ -176,7 +177,7 @@ func HandleNylonIPCGet(s *state.State, rw *bufio.ReadWriter) error {
 			return fmt.Errorf("trace mode is not enabled")
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		t := Get[*NylonTrace](s)
+		t := n.Trace
 		go func() {
 			_, _ = rw.ReadByte() // wait for EOF
 			cancel()

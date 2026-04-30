@@ -4,11 +4,13 @@ package core
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/encodeous/nylon/log"
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
-	"strings"
 )
 
 type VirtualNet interface {
@@ -28,18 +30,20 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice
 	bind := vn.Bind(s.Id)
 	tdev := vn.Tun(s.Id)
 
+	wgLog := s.Log.With("module", log.ScopePolyamide)
+
 	// setup WireGuard
 	dev = device.NewDevice(tdev, bind, &device.Logger{
 		Verbosef: func(format string, args ...any) {
 			if state.DBG_log_wireguard {
-				s.Log.Debug(fmt.Sprintf(format, args...))
+				wgLog.Debug(fmt.Sprintf(format, args...))
 			}
 		},
 		Errorf: func(format string, args ...any) {
 			if strings.Contains(format, "Failed to send PolySock packets") {
 				return
 			}
-			s.Log.Error(fmt.Sprintf(format, args...))
+			wgLog.Error(fmt.Sprintf(format, args...))
 		},
 	})
 

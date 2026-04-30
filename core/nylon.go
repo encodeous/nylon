@@ -13,6 +13,9 @@ import (
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
+	State               *state.State
+	Trace               *NylonTrace
+	Router              *NylonRouter
 	PingBuf             *ttlcache.Cache[uint64, EpPing]
 	Device              *device.Device
 	Tun                 tun.Device
@@ -22,10 +25,20 @@ type Nylon struct {
 	prevInstalledRoutes []netip.Prefix
 }
 
-func (n *Nylon) Init(s *state.State) error {
+func (n *Nylon) Init() error {
+	s := n.State
 	n.env = s.Env
 
 	s.Log.Debug("init nylon")
+
+	err := n.Trace.Init(n)
+	if err != nil {
+		return err
+	}
+	err = n.Router.Init(n)
+	if err != nil {
+		return err
+	}
 
 	state.SetResolvers(s.DnsResolvers)
 
@@ -53,19 +66,21 @@ func (n *Nylon) Init(s *state.State) error {
 	)
 	go n.PingBuf.Start()
 
-	s.Env.RepeatTask(nylonGc, state.GcDelay)
+	s.Env.RepeatTask(func() error {
+		return nylonGc(n)
+	}, state.GcDelay)
 
 	// wireguard configuration
-	err := n.initWireGuard(s)
+	err = n.initWireGuard()
 	if err != nil {
 		return err
 	}
 
 	// endpoint probing
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		return n.probeLinks(s, true)
 	}, state.ProbeDelay)
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		// refresh dynamic endpoints
 		for _, neigh := range s.Neighbours {
 			for _, ep := range neigh.Eps {
@@ -81,10 +96,10 @@ func (n *Nylon) Init(s *state.State) error {
 		}
 		return nil
 	}, state.EndpointResolveDelay)
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		return n.probeLinks(s, false)
 	}, state.ProbeRecoveryDelay)
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		return n.probeNew(s)
 	}, state.ProbeDiscoveryDelay)
 
@@ -104,16 +119,20 @@ func (n *Nylon) Init(s *state.State) error {
 		for _, repo := range s.CentralCfg.Dist.Repos {
 			s.Log.Info("config source", "repo", repo)
 		}
-		s.Env.RepeatTask(checkForConfigUpdates, state.CentralUpdateDelay)
+		s.Env.RepeatTask(func() error { return checkForConfigUpdates(n) }, state.CentralUpdateDelay)
 	}
 	return nil
 }
 
-func (n *Nylon) Cleanup(s *state.State) error {
+func (n *Nylon) Cleanup() error {
+	s := n.State
 	n.PingBuf.Stop()
 	for _, ph := range s.GetNode(s.Id).Prefixes {
 		ph.Stop()
 	}
 
-	return n.cleanupWireGuard(s)
+	n.Router.Cleanup()
+	n.Trace.Cleanup()
+
+	return n.cleanupWireGuard()
 }

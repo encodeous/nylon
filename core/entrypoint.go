@@ -146,10 +146,10 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 	}
 }
 
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initState **state.State) (bool, error) {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initNylon **Nylon) (bool, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
-	dispatch := make(chan func(env *state.State) error, 128)
+	dispatch := make(chan func() error, 128)
 
 	handlers := make([]slog.Handler, 0)
 	if state.DBG_log_json {
@@ -193,7 +193,6 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	}
 
 	s := state.State{
-		Modules: make(map[string]state.NyModule),
 		Env: &state.Env{
 			Context:         ctx,
 			Cancel:          cancel,
@@ -205,12 +204,19 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 			AuxConfig:       aux,
 		},
 	}
-	if initState != nil {
-		*initState = &s
-	}
+
 
 	s.Log.Info("init modules")
-	err := initModules(&s)
+	
+	n := &Nylon{
+		State:  &s,
+		Trace:  &NylonTrace{},
+		Router: &NylonRouter{},
+	}
+	if initNylon != nil {
+		*initNylon = n
+	}
+	err := n.Init()
 	if err != nil {
 		return false, err
 	}
@@ -229,7 +235,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 		}
 	}()
 
-	err = MainLoop(&s, dispatch)
+	err = MainLoop(n, dispatch)
 	if err != nil {
 		return false, err
 	}
@@ -240,22 +246,9 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	return false, nil
 }
 
-func initModules(s *state.State) error {
-	var modules []state.NyModule
-	modules = append(modules, &NylonTrace{})
-	modules = append(modules, &NylonRouter{})
-	modules = append(modules, &Nylon{})
 
-	for _, module := range modules {
-		s.Modules[reflect.TypeOf(module).String()] = module
-		if err := module.Init(s); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
+func MainLoop(n *Nylon, dispatch <-chan func() error) error {
+	s := n.State
 	s.Log.Debug("started main loop")
 	s.Started.Store(true)
 	for {
@@ -266,7 +259,7 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 			}
 			//s.Log.Debug("start")
 			start := time.Now()
-			err := fun(s)
+			err := fun()
 			if err != nil {
 				s.Log.Error("error occurred during dispatch: ", "error", err)
 				s.Cancel(err)
@@ -283,11 +276,12 @@ func MainLoop(s *state.State, dispatch <-chan func(*state.State) error) error {
 	}
 endLoop:
 	s.Log.Info("stopped main loop", "reason", context.Cause(s.Context).Error())
-	Stop(s)
+	Stop(n)
 	return nil
 }
 
-func Stop(s *state.State) {
+func Stop(n *Nylon) {
+	s := n.State
 	if s.Stopping.Swap(true) {
 		return // don't stop twice
 	}
@@ -297,11 +291,9 @@ func Stop(s *state.State) {
 		s.DispatchChannel = nil
 	}
 	s.Log.Info("cleaning up modules")
-	for moduleName, module := range s.Modules {
-		err := module.Cleanup(s)
-		if err != nil {
-			s.Log.Error("error occurred during Stop: ", "module", moduleName, "error", err)
-		}
+	err := n.Cleanup()
+	if err != nil {
+		s.Log.Error("error occurred during Stop: ", "error", err)
 	}
 	s.Log.Info("stopped")
 }

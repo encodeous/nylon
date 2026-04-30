@@ -6,21 +6,15 @@ import (
 	"sync/atomic"
 )
 
-type NyModule interface {
-	Init(s *State) error
-	Cleanup(s *State) error
-}
-
 // State access must be done only on a single Goroutine
 type State struct {
 	*Env
-	Modules map[string]NyModule
 	*RouterState
 }
 
 // Env can be read from any Goroutine
 type Env struct {
-	DispatchChannel chan func(s *State) error
+	DispatchChannel chan func() error
 	CentralCfg
 	LocalCfg
 	Context    context.Context

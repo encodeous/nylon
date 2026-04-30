@@ -74,7 +74,8 @@ func FetchConfig(repoStr string, key state.NyPublicKey) (*state.CentralCfg, erro
 }
 
 // responsible for central config distribution
-func checkForConfigUpdates(s *state.State) error {
+func checkForConfigUpdates(n *Nylon) error {
+	s := n.State
 	if s.CentralCfg.Dist == nil {
 		return errors.New("nylon is not configured for automatic config distribution")
 	}
