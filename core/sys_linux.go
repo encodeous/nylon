@@ -7,10 +7,9 @@ import (
 
 	"github.com/encodeous/nylon/polyamide/ipc"
 	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/state"
 )
 
-func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
+func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
 	fileUAPI, err := ipc.UAPIOpen(itfName)
 
 	uapi, err := ipc.UAPIListen(itfName, fileUAPI)

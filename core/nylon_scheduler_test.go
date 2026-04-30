@@ -1,4 +1,4 @@
-package state
+package core
 
 import (
 	"context"
@@ -8,16 +8,14 @@ import (
 )
 
 func TestDispatch(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 
 	dispatchChan := make(chan func() error, 10)
-	env := &Env{
+	n := &Nylon{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
-		Cancel: func(err error) {
-			cancel()
-		},
+		Cancel:          cancel,
 	}
 
 	var called bool
@@ -33,7 +31,7 @@ func TestDispatch(t *testing.T) {
 		}
 	}()
 
-	env.Dispatch(func() error {
+	n.Dispatch(func() error {
 		called = true
 		return nil
 	})
@@ -46,21 +44,19 @@ func TestDispatch(t *testing.T) {
 }
 
 func TestScheduleTask(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 
 	dispatchChan := make(chan func() error, 10)
-	env := &Env{
+	n := &Nylon{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
-		Cancel: func(err error) {
-			cancel()
-		},
+		Cancel:          cancel,
 	}
 
 	var taskCalled bool
 
-	env.ScheduleTask(func() error {
+	n.ScheduleTask(func() error {
 		taskCalled = true
 		return nil
 	}, 50*time.Millisecond)
@@ -82,27 +78,25 @@ func TestScheduleTask(t *testing.T) {
 }
 
 func TestRepeatTask(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 
 	dispatchChan := make(chan func() error, 10)
-	env := &Env{
+	n := &Nylon{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
-		Cancel: func(err error) {
-			cancel()
-		},
+		Cancel:          cancel,
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(3)
 	var count int
 
-	env.RepeatTask(func() error {
+	n.RepeatTask(func() error {
 		count++
 		wg.Done()
 		if count >= 3 {
-			cancel()
+			cancel(nil)
 		}
 		return nil
 	}, 50*time.Millisecond)

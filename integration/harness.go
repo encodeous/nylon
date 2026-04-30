@@ -206,7 +206,7 @@ func (v *VirtualHarness) Start() chan error {
 	for {
 		started := true
 		for idx, _ := range v.Central.Routers {
-			if v.Nylons[idx] == nil || !v.Nylons[idx].State.Started.Load() {
+			if v.Nylons[idx] == nil || !v.Nylons[idx].Started.Load() {
 				started = false
 				break
 			}

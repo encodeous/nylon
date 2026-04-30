@@ -1,8 +1,11 @@
 package core
 
 import (
+	"context"
+	"log/slog"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/encodeous/nylon/polyamide/device"
@@ -13,23 +16,31 @@ import (
 
 // Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
-	State               *state.State
-	Trace               *NylonTrace
-	Router              *NylonRouter
+	Trace       *NylonTrace
+	Router      *NylonRouter
+	RouterState *state.RouterState
+
+	DispatchChannel chan func() error
+	state.ConfigState
+	Context    context.Context
+	Cancel     context.CancelCauseFunc
+	Log        *slog.Logger
+	AuxConfig  map[string]any
+	Updating   atomic.Bool
+	Stopping   atomic.Bool
+	Started    atomic.Bool
+	ConfigPath string
+
 	PingBuf             *ttlcache.Cache[uint64, EpPing]
 	Device              *device.Device
 	Tun                 tun.Device
 	wgUapi              net.Listener
-	env                 *state.Env
 	itfName             string
 	prevInstalledRoutes []netip.Prefix
 }
 
 func (n *Nylon) Init() error {
-	s := n.State
-	n.env = s.Env
-
-	s.Log.Debug("init nylon")
+	n.Log.Debug("init nylon")
 
 	err := n.Trace.Init(n)
 	if err != nil {
@@ -40,11 +51,11 @@ func (n *Nylon) Init() error {
 		return err
 	}
 
-	state.SetResolvers(s.DnsResolvers)
+	state.SetResolvers(n.DnsResolvers)
 
 	// add neighbours
-	for _, peer := range s.GetPeers(s.Id) {
-		if !s.IsRouter(peer) {
+	for _, peer := range n.GetPeers(n.LocalCfg.Id) {
+		if !n.IsRouter(peer) {
 			continue
 		}
 		stNeigh := &state.Neighbour{
@@ -52,12 +63,12 @@ func (n *Nylon) Init() error {
 			Routes: make(map[netip.Prefix]state.NeighRoute),
 			Eps:    make([]state.Endpoint, 0),
 		}
-		cfg := s.GetRouter(peer)
+		cfg := n.GetRouter(peer)
 		for _, ep := range cfg.Endpoints {
 			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil))
 		}
 
-		s.Neighbours = append(s.Neighbours, stNeigh)
+		n.RouterState.Neighbours = append(n.RouterState.Neighbours, stNeigh)
 	}
 
 	n.PingBuf = ttlcache.New[uint64, EpPing](
@@ -66,7 +77,7 @@ func (n *Nylon) Init() error {
 	)
 	go n.PingBuf.Start()
 
-	s.Env.RepeatTask(func() error {
+	n.RepeatTask(func() error {
 		return nylonGc(n)
 	}, state.GcDelay)
 
@@ -77,18 +88,18 @@ func (n *Nylon) Init() error {
 	}
 
 	// endpoint probing
-	s.Env.RepeatTask(func() error {
-		return n.probeLinks(s, true)
+	n.RepeatTask(func() error {
+		return n.probeLinks(true)
 	}, state.ProbeDelay)
-	s.Env.RepeatTask(func() error {
+	n.RepeatTask(func() error {
 		// refresh dynamic endpoints
-		for _, neigh := range s.Neighbours {
+		for _, neigh := range n.RouterState.Neighbours {
 			for _, ep := range neigh.Eps {
 				if nep, ok := ep.(*state.NylonEndpoint); ok {
 					go func() {
 						_, err := nep.DynEP.Refresh()
 						if err != nil {
-							s.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
+							n.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
 						}
 					}()
 				}
@@ -96,38 +107,37 @@ func (n *Nylon) Init() error {
 		}
 		return nil
 	}, state.EndpointResolveDelay)
-	s.Env.RepeatTask(func() error {
-		return n.probeLinks(s, false)
+	n.RepeatTask(func() error {
+		return n.probeLinks(false)
 	}, state.ProbeRecoveryDelay)
-	s.Env.RepeatTask(func() error {
-		return n.probeNew(s)
+	n.RepeatTask(func() error {
+		return n.probeNew()
 	}, state.ProbeDiscoveryDelay)
 
 	// prefix healthcheck
-	for _, ph := range s.GetNode(s.Id).Prefixes {
-		s.Log.Info("starting prefix healthcheck", "prefix", ph.GetPrefix())
-		ph.Start(s.Log)
+	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
+		n.Log.Info("starting prefix healthcheck", "prefix", ph.GetPrefix())
+		ph.Start(n.Log)
 	}
 
-	err = n.initPassiveClient(s)
+	err = n.initPassiveClient()
 	if err != nil {
 		return err
 	}
 
 	// check for central config updates
-	if s.CentralCfg.Dist != nil {
-		for _, repo := range s.CentralCfg.Dist.Repos {
-			s.Log.Info("config source", "repo", repo)
+	if n.CentralCfg.Dist != nil {
+		for _, repo := range n.CentralCfg.Dist.Repos {
+			n.Log.Info("config source", "repo", repo)
 		}
-		s.Env.RepeatTask(func() error { return checkForConfigUpdates(n) }, state.CentralUpdateDelay)
+		n.RepeatTask(func() error { return checkForConfigUpdates(n) }, state.CentralUpdateDelay)
 	}
 	return nil
 }
 
 func (n *Nylon) Cleanup() error {
-	s := n.State
 	n.PingBuf.Stop()
-	for _, ph := range s.GetNode(s.Id).Prefixes {
+	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
 		ph.Stop()
 	}
 
