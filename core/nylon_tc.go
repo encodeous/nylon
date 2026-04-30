@@ -18,7 +18,6 @@ const (
 // polyamide traffic control for nylon
 
 func (n *Nylon) InstallTC() {
-	r := n.Router
 	t := n.Trace
 
 	if state.DBG_trace_tc {
@@ -54,7 +53,7 @@ func (n *Nylon) InstallTC() {
 		})
 		// forward only outgoing packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := r.ForwardTable.Lookup(packet.GetDst())
+			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
 			if ok && !packet.Incoming() {
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
@@ -67,7 +66,7 @@ func (n *Nylon) InstallTC() {
 	} else {
 		// forward packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := r.ForwardTable.Lookup(packet.GetDst())
+			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
 			if ok {
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
@@ -102,7 +101,7 @@ func (n *Nylon) InstallTC() {
 
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		entry, ok := r.ExitTable.Lookup(packet.GetDst())
+		entry, ok := n.router.ExitTable.Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == n.LocalCfg.Id {
 			if state.DBG_trace_tc {
@@ -180,15 +179,15 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 		switch pkt.Type.(type) {
 		case *protocol.Ny_SeqnoRequestOp:
 			n.Dispatch(func() error {
-				return n.Router.routerHandleSeqnoRequest(*neigh, pkt.GetSeqnoRequestOp())
+				return n.routerHandleSeqnoRequest(*neigh, pkt.GetSeqnoRequestOp())
 			})
 		case *protocol.Ny_RouteOp:
 			n.Dispatch(func() error {
-				return n.Router.routerHandleRouteUpdate(*neigh, pkt.GetRouteOp())
+				return n.routerHandleRouteUpdate(*neigh, pkt.GetRouteOp())
 			})
 		case *protocol.Ny_AckRetractOp:
 			n.Dispatch(func() error {
-				return n.Router.routerHandleAckRetract(*neigh, pkt.GetAckRetractOp())
+				return n.routerHandleAckRetract(*neigh, pkt.GetAckRetractOp())
 			})
 		case *protocol.Ny_ProbeOp:
 			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, *neigh)

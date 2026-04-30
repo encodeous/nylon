@@ -20,7 +20,7 @@ func nylonGc(n *Nylon) error {
 		neigh.Eps = neigh.Eps[:count]
 	}
 
-	err := n.Router.GcRouter()
+	err := n.GcRouter()
 	if err != nil {
 		return err
 	}

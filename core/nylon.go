@@ -11,14 +11,24 @@ import (
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
+	"github.com/gaissmai/bart"
 	"github.com/jellydator/ttlcache/v3"
 )
 
-// Nylon struct must be thread safe, since it can receive packets through PolyReceiver
 type Nylon struct {
 	Trace       *NylonTrace
-	Router      *NylonRouter
 	RouterState *state.RouterState
+
+	router struct {
+		LastStarvationRequest time.Time
+		IO                    map[state.NodeId]*IOPending
+
+		// ForwardTable contains the full routing table
+		ForwardTable bart.Table[RouteTableEntry]
+		// ExitTable contains only routes to services hosted on this node
+		ExitTable bart.Table[RouteTableEntry]
+		log       *slog.Logger
+	}
 
 	DispatchChannel chan func() error
 	state.ConfigState
@@ -46,7 +56,7 @@ func (n *Nylon) Init() error {
 	if err != nil {
 		return err
 	}
-	err = n.Router.Init(n)
+	err = n.InitRouter()
 	if err != nil {
 		return err
 	}
@@ -141,7 +151,7 @@ func (n *Nylon) Cleanup() error {
 		ph.Stop()
 	}
 
-	n.Router.Cleanup()
+	n.CleanupRouter()
 	n.Trace.Cleanup()
 
 	return n.cleanupWireGuard()
