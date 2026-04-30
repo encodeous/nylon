@@ -75,41 +75,39 @@ func FetchConfig(repoStr string, key state.NyPublicKey) (*state.CentralCfg, erro
 
 // responsible for central config distribution
 func checkForConfigUpdates(n *Nylon) error {
-	s := n.State
-	if s.CentralCfg.Dist == nil {
+	if n.CentralCfg.Dist == nil {
 		return errors.New("nylon is not configured for automatic config distribution")
 	}
-	for _, repoStr := range s.CentralCfg.Dist.Repos {
-		e := s.Env
+	for _, repoStr := range n.CentralCfg.Dist.Repos {
 		go func(repo string) {
 			err := func() error {
-				config, err := FetchConfig(repo, e.CentralCfg.Dist.Key)
+				config, err := FetchConfig(repo, n.CentralCfg.Dist.Key)
 				if err != nil {
 					return err
 				}
-				if config.Timestamp > e.Timestamp && !s.Updating.Swap(true) {
-					e.Log.Info("Found a new config update in repo", "repo", repo)
+				if config.Timestamp > n.Timestamp && !n.Updating.Swap(true) {
+					n.Log.Info("Found a new config update in repo", "repo", repo)
 					bytes, err := yaml.Marshal(config)
 					if err != nil {
-						e.Log.Error("Error marshalling new config", "err", err.Error())
+						n.Log.Error("Error marshalling new config", "err", err.Error())
 						goto err
 					}
-					err = os.WriteFile(e.ConfigPath, bytes, 0700)
+					err = os.WriteFile(n.ConfigPath, bytes, 0700)
 					if err != nil {
-						e.Log.Error("Error writing new config", "err", err.Error())
+						n.Log.Error("Error writing new config", "err", err.Error())
 						goto err
 					}
-					e.Cancel(errors.New("shutting down for config update"))
+					n.Cancel(errors.New("shutting down for config update"))
 					return nil
 				err:
-					s.Updating.Store(false)
+					n.Updating.Store(false)
 				} else if state.DBG_log_repo_updates {
-					e.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo))
+					n.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo))
 				}
 				return nil
 			}()
 			if err != nil && state.DBG_log_repo_updates {
-				e.Log.Error("Error updating config", "err", err.Error())
+				n.Log.Error("Error updating config", "err", err.Error())
 			}
 		}(repoStr)
 	}

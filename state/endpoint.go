@@ -73,7 +73,7 @@ func (ep *DynamicEndpoint) Refresh() (netip.AddrPort, error) {
 
 	ep.rw.RLock()
 	// if this endpoint is down, we will refresh every EndpointResolveDelay
-	if time.Now().Sub(ep.lastUpdate) < EndpointResolveExpiry && ep.lastValue != (netip.AddrPort{}) {
+	if time.Since(ep.lastUpdate) < EndpointResolveExpiry && ep.lastValue != (netip.AddrPort{}) {
 		ep.rw.RUnlock()
 		return ep.lastValue, nil
 	}
@@ -196,7 +196,7 @@ func (n *Neighbour) BestEndpoint() Endpoint {
 }
 
 func (u *NylonEndpoint) IsActive() bool {
-	return time.Now().Sub(u.lastHeardBack) <= LinkDeadThreshold
+	return time.Since(u.lastHeardBack) <= LinkDeadThreshold
 }
 
 func (u *NylonEndpoint) Renew() {

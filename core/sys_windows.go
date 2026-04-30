@@ -9,14 +9,13 @@ import (
 
 	"github.com/encodeous/nylon/polyamide/ipc"
 	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/state"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
 
-func InitUAPI(e *state.Env, itfName string) (net.Listener, error) {
+func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
 	uapi, err := ipc.UAPIListen(itfName)
 	if err != nil && strings.Contains(err.Error(), "This security ID may not be assigned as the owner of this object") {
-		e.Log.Warn("UAPI not started. Nylon needs to be run with SYSTEM privileges. See: https://github.com/WireGuard/wgctrl-go/issues/141")
+		logger.Warn("UAPI not started. Nylon needs to be run with SYSTEM privileges. See: https://github.com/WireGuard/wgctrl-go/issues/141")
 		return nil, nil
 	}
 	if err != nil {

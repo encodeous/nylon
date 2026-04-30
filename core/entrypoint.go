@@ -192,27 +192,23 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 		ncfg.InterfaceName = "nylon"
 	}
 
-	s := state.State{
-		Env: &state.Env{
-			Context:         ctx,
-			Cancel:          cancel,
-			DispatchChannel: dispatch,
-			CentralCfg:      ccfg,
-			LocalCfg:        ncfg,
-			Log:             logger,
-			ConfigPath:      configPath,
-			AuxConfig:       aux,
-		},
-	}
-
-
-	s.Log.Info("init modules")
-	
 	n := &Nylon{
-		State:  &s,
 		Trace:  &NylonTrace{},
 		Router: &NylonRouter{},
+		ConfigState: state.ConfigState{
+			CentralCfg: ccfg,
+			LocalCfg:   ncfg,
+		},
+		Context:         ctx,
+		Cancel:          cancel,
+		DispatchChannel: dispatch,
+		Log:             logger,
+		ConfigPath:      configPath,
+		AuxConfig:       aux,
 	}
+
+	n.Log.Info("init modules")
+
 	if initNylon != nil {
 		*initNylon = n
 	}
@@ -220,16 +216,16 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	if err != nil {
 		return false, err
 	}
-	s.Log.Info("init modules complete")
+	n.Log.Info("init modules complete")
 
-	s.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
+	n.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		select {
 		case _ = <-c:
-			s.Cancel(errors.New("received shutdown signal"))
+			n.Cancel(errors.New("received shutdown signal"))
 		case <-ctx.Done():
 			return
 		}
@@ -239,61 +235,58 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	if err != nil {
 		return false, err
 	}
-	if s.Updating.Load() {
-		s.Log.Info("Restarting Nylon...")
+	if n.Updating.Load() {
+		n.Log.Info("Restarting Nylon...")
 		return true, nil
 	}
 	return false, nil
 }
 
-
 func MainLoop(n *Nylon, dispatch <-chan func() error) error {
-	s := n.State
-	s.Log.Debug("started main loop")
-	s.Started.Store(true)
+	n.Log.Debug("started main loop")
+	n.Started.Store(true)
 	for {
 		select {
 		case fun := <-dispatch:
 			if fun == nil {
 				goto endLoop
 			}
-			//s.Log.Debug("start")
+			//n.Log.Debug("start")
 			start := time.Now()
 			err := fun()
 			if err != nil {
-				s.Log.Error("error occurred during dispatch: ", "error", err)
-				s.Cancel(err)
+				n.Log.Error("error occurred during dispatch: ", "error", err)
+				n.Cancel(err)
 			}
 			elapsed := time.Since(start)
 			perf.DispatchLatency.Add(float64(elapsed.Microseconds()))
 			if elapsed > time.Millisecond*4 {
-				s.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed, "len", len(dispatch))
+				n.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed, "len", len(dispatch))
 			}
-			//s.Log.Debug("done", "elapsed", elapsed)
-		case <-s.Context.Done():
+			//n.Log.Debug("done", "elapsed", elapsed)
+		case <-n.Context.Done():
 			goto endLoop
 		}
 	}
 endLoop:
-	s.Log.Info("stopped main loop", "reason", context.Cause(s.Context).Error())
+	n.Log.Info("stopped main loop", "reason", context.Cause(n.Context).Error())
 	Stop(n)
 	return nil
 }
 
 func Stop(n *Nylon) {
-	s := n.State
-	if s.Stopping.Swap(true) {
+	if n.Stopping.Swap(true) {
 		return // don't stop twice
 	}
-	s.Cancel(context.Canceled)
-	if s.DispatchChannel != nil {
-		close(s.DispatchChannel)
-		s.DispatchChannel = nil
+	n.Cancel(context.Canceled)
+	if n.DispatchChannel != nil {
+		close(n.DispatchChannel)
+		n.DispatchChannel = nil
 	}
-	s.Log.Info("cleaning up modules")
+	n.Log.Info("cleaning up modules")
 	err := n.Cleanup()
 	if err != nil {
-		s.Log.Error("error occurred during Stop: ", "error", err)
+		n.Log.Error("error occurred during Stop: ", "error", err)
 	}
-	s.Log.Info("stopped")
+	n.Log.Info("stopped")
 }

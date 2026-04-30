@@ -9,23 +9,23 @@ import (
 
 func TestSerialize(t *testing.T) {
 	cfg, ks := SampleNetwork(t, 50, 50, true)
-	env := SampleEnv(&cfg, ks, "router-1")
+	cs := SampleConfigState(&cfg, ks, "router-1")
 
 	// test node local config
-	x1, err := yaml.Marshal(env.LocalCfg)
+	x1, err := yaml.Marshal(cs.LocalCfg)
 	assert.NoError(t, err)
 	y1 := LocalCfg{}
 	err = yaml.Unmarshal(x1, &y1)
 	assert.NoError(t, err)
-	assert.EqualValues(t, env.LocalCfg, y1)
+	assert.EqualValues(t, cs.LocalCfg, y1)
 
 	// test central config
-	x2, err := yaml.Marshal(env.CentralCfg)
+	x2, err := yaml.Marshal(cs.CentralCfg)
 	assert.NoError(t, err)
 	y2 := CentralCfg{}
 	err = yaml.Unmarshal(x2, &y2)
 	assert.NoError(t, err)
-	assert.EqualValues(t, env.CentralCfg, y2)
+	assert.EqualValues(t, cs.CentralCfg, y2)
 }
 
 func TestDeserializeInvalid(t *testing.T) {

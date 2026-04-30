@@ -18,8 +18,8 @@ type VirtualNet interface {
 	Tun(node state.NodeId) tun.Device
 }
 
-func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
-	x := s.AuxConfig["vnet"]
+func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
+	x := n.AuxConfig["vnet"]
 	if x == nil {
 		return nil, nil, "", fmt.Errorf("expected aux config \"vnet\", but it was not present")
 	}
@@ -27,10 +27,10 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice
 
 	itfName := "nylon-vn"
 
-	bind := vn.Bind(s.Id)
-	tdev := vn.Tun(s.Id)
+	bind := vn.Bind(n.LocalCfg.Id)
+	tdev := vn.Tun(n.LocalCfg.Id)
 
-	wgLog := s.Log.With("module", log.ScopePolyamide)
+	wgLog := n.Log.With("module", log.ScopePolyamide)
 
 	// setup WireGuard
 	dev = device.NewDevice(tdev, bind, &device.Logger{
@@ -47,11 +47,11 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice
 		},
 	})
 
-	s.Log.Info("Created WireGuard interface", "name", itfName)
+	n.Log.Info("Created WireGuard interface", "name", itfName)
 	return dev, tdev, itfName, nil
 }
 
-func CleanupWireGuardDevice(s *state.State, n *Nylon) error {
+func CleanupWireGuardDevice(n *Nylon) error {
 	if n.Device != nil {
 		err := n.Device.Bind().Close()
 		if err != nil {

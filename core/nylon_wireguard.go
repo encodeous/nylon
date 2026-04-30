@@ -13,8 +13,7 @@ import (
 )
 
 func (n *Nylon) initWireGuard() error {
-	s := n.State
-	dev, tdev, itfName, err := NewWireGuardDevice(s, n)
+	dev, tdev, itfName, err := NewWireGuardDevice(n)
 	if err != nil {
 		return err
 	}
@@ -29,7 +28,7 @@ func (n *Nylon) initWireGuard() error {
 	n.itfName = itfName
 
 	n.InstallTC()
-	s.Log.Info("installed nylon traffic control filter for polysock")
+	n.Log.Info("installed nylon traffic control filter for polysock")
 
 	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
 		return HandleNylonIPCGet(n, writer)
@@ -41,8 +40,8 @@ func (n *Nylon) initWireGuard() error {
 			`private_key=%s
 listen_port=%d
 `,
-			hex.EncodeToString(s.Key[:]),
-			s.Port,
+			hex.EncodeToString(n.Key[:]),
+			n.Port,
 		),
 	)
 	if err != nil {
@@ -50,24 +49,24 @@ listen_port=%d
 	}
 
 	// add peers
-	peers := s.GetPeers(s.Id)
+	peers := n.GetPeers(n.LocalCfg.Id)
 	for _, peer := range peers {
-		s.Log.Debug("adding", "peer", peer)
-		ncfg := s.GetNode(peer)
+		n.Log.Debug("adding", "peer", peer)
+		ncfg := n.GetNode(peer)
 		wgPeer, err := dev.NewPeer(device.NoisePublicKey(ncfg.PubKey))
 		if err != nil {
 			return err
 		}
-		if s.IsClient(peer) {
+		if n.IsClient(peer) {
 			wgPeer.SetPreferRoaming(true)
 		}
 
 		// seed initial endpoints
-		if s.IsClient(peer) {
+		if n.IsClient(peer) {
 			wgPeer.Start()
 			continue
 		}
-		rcfg := s.GetRouter(peer)
+		rcfg := n.GetRouter(peer)
 		endpoints := make([]conn.Endpoint, 0)
 		for _, nep := range rcfg.Endpoints {
 			ap, err := nep.Get()
@@ -88,37 +87,37 @@ listen_port=%d
 	// configure system networking
 
 	// run pre-up commands
-	for _, cmd := range s.PreUp {
-		err = ExecSplit(s.Log, cmd)
+	for _, cmd := range n.PreUp {
+		err = ExecSplit(n.Log, cmd)
 		if err != nil {
-			s.Log.Error("failed to run pre-up command", "err", err)
+			n.Log.Error("failed to run pre-up command", "err", err)
 		}
 	}
 
-	if !s.NoNetConfigure {
-		for _, addr := range s.GetRouter(s.Id).Addresses {
-			err := ConfigureAlias(s.Log, itfName, addr)
+	if !n.NoNetConfigure {
+		for _, addr := range n.GetRouter(n.LocalCfg.Id).Addresses {
+			err := ConfigureAlias(n.Log, itfName, addr)
 			if err != nil {
-				s.Log.Error("failed to configure alias", "err", err)
+				n.Log.Error("failed to configure alias", "err", err)
 			}
 		}
 
-		err = InitInterface(s.Log, itfName)
+		err = InitInterface(n.Log, itfName)
 		if err != nil {
 			return err
 		}
 	}
 
 	// run post-up commands
-	for _, cmd := range s.PostUp {
-		err = ExecSplit(s.Log, cmd)
+	for _, cmd := range n.PostUp {
+		err = ExecSplit(n.Log, cmd)
 		if err != nil {
-			s.Log.Error("failed to run post-up command", "err", err)
+			n.Log.Error("failed to run post-up command", "err", err)
 		}
 	}
 
 	// init wireguard related tasks
-	s.RepeatTask(func() error {
+	n.RepeatTask(func() error {
 		return UpdateWireGuard(n)
 	}, state.ProbeDelay)
 
@@ -126,46 +125,44 @@ listen_port=%d
 }
 
 func (n *Nylon) cleanupWireGuard() error {
-	s := n.State
 	// remove routes
 	for _, route := range n.prevInstalledRoutes {
-		err := RemoveRoute(s.Log, n.Tun, n.itfName, route)
+		err := RemoveRoute(n.Log, n.Tun, n.itfName, route)
 		if err != nil {
-			s.Log.Error("failed to remove route", "err", err)
+			n.Log.Error("failed to remove route", "err", err)
 		}
 	}
 	// run pre-down commands
-	for _, cmd := range s.PreDown {
-		err := ExecSplit(s.Log, cmd)
+	for _, cmd := range n.PreDown {
+		err := ExecSplit(n.Log, cmd)
 		if err != nil {
-			s.Log.Error("failed to run pre-down command", "err", err)
+			n.Log.Error("failed to run pre-down command", "err", err)
 		}
 	}
-	err := CleanupWireGuardDevice(s, n)
+	err := CleanupWireGuardDevice(n)
 	if err != nil {
 		return err
 	}
 	// run post-down commands
-	for _, cmd := range s.PostDown {
-		err = ExecSplit(s.Log, cmd)
+	for _, cmd := range n.PostDown {
+		err = ExecSplit(n.Log, cmd)
 		if err != nil {
-			s.Log.Error("failed to run post-down command", "err", err)
+			n.Log.Error("failed to run post-down command", "err", err)
 		}
 	}
 	return nil
 }
 
 func UpdateWireGuard(n *Nylon) error {
-	s := n.State
 	dev := n.Device
 
 	// configure endpoints
-	for _, peer := range slices.Sorted(slices.Values(s.GetPeers(s.Id))) {
-		if s.IsClient(peer) {
+	for _, peer := range slices.Sorted(slices.Values(n.GetPeers(n.LocalCfg.Id))) {
+		if n.IsClient(peer) {
 			continue
 		}
-		pcfg := s.GetRouter(peer)
-		nhNeigh := s.GetNeighbour(peer)
+		pcfg := n.GetRouter(peer)
+		nhNeigh := n.RouterState.GetNeighbour(peer)
 		eps := make([]conn.Endpoint, 0)
 
 		if nhNeigh != nil {
@@ -204,27 +201,27 @@ func UpdateWireGuard(n *Nylon) error {
 	}
 
 	// configure changed route table entries
-	if !s.NoNetConfigure {
+	if !n.NoNetConfigure {
 		router := n.Router
 		newEntries := router.ComputeSysRouteTable()
 		oldEntries := n.prevInstalledRoutes
 		for _, oldEntry := range oldEntries {
 			if !slices.Contains(newEntries, oldEntry) {
 				// uninstall route
-				s.Log.Debug("removing old route", "prefix", oldEntry.String())
-				err := RemoveRoute(s.Log, n.Tun, n.itfName, oldEntry)
+				n.Log.Debug("removing old route", "prefix", oldEntry.String())
+				err := RemoveRoute(n.Log, n.Tun, n.itfName, oldEntry)
 				if err != nil {
-					s.Log.Error("failed to remove route", "err", err)
+					n.Log.Error("failed to remove route", "err", err)
 				}
 			}
 		}
 		for _, newEntry := range newEntries {
 			if !slices.Contains(oldEntries, newEntry) {
 				// install route
-				s.Log.Debug("installing new route", "prefix", newEntry.String())
-				err := ConfigureRoute(s.Log, n.Tun, n.itfName, newEntry)
+				n.Log.Debug("installing new route", "prefix", newEntry.String())
+				err := ConfigureRoute(n.Log, n.Tun, n.itfName, newEntry)
 				if err != nil {
-					s.Log.Error("failed to configure route", "err", err)
+					n.Log.Error("failed to configure route", "err", err)
 				}
 			}
 		}

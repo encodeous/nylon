@@ -74,7 +74,6 @@ func IPCTrace(itf string) error {
 }
 
 func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
-	s := n.State
 	cmd, err := rw.ReadString('\n')
 	if err != nil {
 		return err
@@ -84,29 +83,29 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 	case "inspect\n":
 		// print neighbours
 		sb.WriteString("Neighbours:\n")
-		for _, n := range s.Neighbours {
-			sb.WriteString(fmt.Sprintf(" - %s\n", n.Id))
+		for _, node := range n.RouterState.Neighbours {
+			fmt.Fprintf(&sb, " - %s\n", node.Id)
 			met := state.INF
-			if n.BestEndpoint() != nil {
-				met = n.BestEndpoint().Metric()
+			if node.BestEndpoint() != nil {
+				met = node.BestEndpoint().Metric()
 			}
-			sb.WriteString(fmt.Sprintf("   Metric: %d\n", met))
-			sb.WriteString(fmt.Sprintf("   Endpoints:\n"))
-			for _, ep := range n.Eps {
+			fmt.Fprintf(&sb, "   Metric: %d\n", met)
+			fmt.Fprintf(&sb, "   Endpoints:\n")
+			for _, ep := range node.Eps {
 				nep := ep.AsNylonEndpoint()
 				ap, err := nep.DynEP.Get()
 				if err != nil {
-					sb.WriteString(fmt.Sprintf("    - %s (unresolved)\n", nep.DynEP.Value))
+					fmt.Fprintf(&sb, "    - %s (unresolved)\n", nep.DynEP.Value)
 				} else {
 					sb.WriteString(fmt.Sprintf("    - %s (resolved: %s) active=%v metric=%d\n", nep.DynEP.Value, ap.String(), nep.IsActive(), nep.Metric()))
 				}
 			}
-			sb.WriteString(fmt.Sprintf("   Published Routes:\n"))
+			fmt.Fprintf(&sb, "   Published Routes:\n")
 			rt := make([]string, 0)
-			if len(n.Routes) == 0 {
+			if len(node.Routes) == 0 {
 				rt = append(rt, "    (none)")
 			}
-			for _, r := range n.Routes {
+			for _, r := range node.Routes {
 				rt = append(rt, fmt.Sprintf("    - %s", r.String()))
 			}
 			slices.Sort(rt)
@@ -116,7 +115,7 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 		// print published sources
 		sb.WriteString("\n\nSources:\n")
 		rt := make([]string, 0)
-		for src, fd := range s.Sources {
+		for src, fd := range n.RouterState.Sources {
 			rt = append(rt, fmt.Sprintf(" - %s: m=%d, seqno=%d", src, fd.Metric, fd.Seqno))
 		}
 		slices.Sort(rt)
@@ -125,8 +124,8 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 		// print advertised prefixes
 		sb.WriteString("\n\nAdvertised Prefixes:\n")
 		rt = make([]string, 0)
-		for prefix, adv := range s.Advertised {
-			timeRem := adv.Expiry.Sub(time.Now())
+		for prefix, adv := range n.RouterState.Advertised {
+			timeRem := time.Until(adv.Expiry)
 			if timeRem > time.Hour*24 {
 				rt = append(rt, fmt.Sprintf(" - %s expires never nh %s metric %d", prefix, adv.NodeId, adv.MetricFn()))
 			} else {
@@ -139,7 +138,7 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 		// print route table
 		sb.WriteString("\n\nRoute Table:\n")
 		rt = make([]string, 0)
-		for svc, route := range s.Routes {
+		for svc, route := range n.RouterState.Routes {
 			rt = append(rt, fmt.Sprintf(" - %s via %s", svc, route))
 		}
 		slices.Sort(rt)
@@ -205,5 +204,4 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 	default:
 		return fmt.Errorf("unknown command %s", cmd)
 	}
-	return nil
 }

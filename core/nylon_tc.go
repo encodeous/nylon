@@ -18,7 +18,6 @@ const (
 // polyamide traffic control for nylon
 
 func (n *Nylon) InstallTC() {
-	s := n.State
 	r := n.Router
 	t := n.Trace
 
@@ -44,7 +43,7 @@ func (n *Nylon) InstallTC() {
 	}
 
 	// bounce back packets if using system routing
-	if n.env.UseSystemRouting {
+	if n.UseSystemRouting {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 			if packet.Incoming() {
 				// bounce incoming packets
@@ -105,7 +104,7 @@ func (n *Nylon) InstallTC() {
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 		entry, ok := r.ExitTable.Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
-		if ok && entry.Nh == s.Id {
+		if ok && entry.Nh == n.LocalCfg.Id {
 			if state.DBG_trace_tc {
 				t.Submit(fmt.Sprintf("Exit: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
 			}
@@ -160,38 +159,35 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 	err := proto.Unmarshal(packet, bundle)
 	if err != nil {
 		// log skipped message
-		n.env.Log.Debug("Failed to unmarshal packet", "err", err)
+		n.Log.Debug("Failed to unmarshal packet", "err", err)
 		return
 	}
 
-	e := n.env
-
-	neigh := e.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
+	neigh := n.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
 	if neigh == nil {
 		// this should not be possible
 		panic("impossible state, peer added, but not a node in the network")
-		return
 	}
 
 	defer func() {
 		err := recover()
 		if err != nil {
-			n.env.Log.Error("panic while handling poly socket", "err", err)
+			n.Log.Error("panic while handling poly socket", "err", err)
 		}
 	}()
 
 	for _, pkt := range bundle.Packets {
 		switch pkt.Type.(type) {
 		case *protocol.Ny_SeqnoRequestOp:
-			e.Dispatch(func() error {
+			n.Dispatch(func() error {
 				return n.Router.routerHandleSeqnoRequest(*neigh, pkt.GetSeqnoRequestOp())
 			})
 		case *protocol.Ny_RouteOp:
-			e.Dispatch(func() error {
+			n.Dispatch(func() error {
 				return n.Router.routerHandleRouteUpdate(*neigh, pkt.GetRouteOp())
 			})
 		case *protocol.Ny_AckRetractOp:
-			e.Dispatch(func() error {
+			n.Dispatch(func() error {
 				return n.Router.routerHandleAckRetract(*neigh, pkt.GetAckRetractOp())
 			})
 		case *protocol.Ny_ProbeOp:

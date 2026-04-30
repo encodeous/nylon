@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -81,19 +80,14 @@ func SampleNetwork(t *testing.T, numClients, numRouters int, fullyConnected bool
 	return cfg, keyStore
 }
 
-func SampleEnv(cfg *CentralCfg, keyStore map[string]NyPrivateKey, node NodeId) *Env {
-	return &Env{
-		DispatchChannel: nil,
-		CentralCfg:      *cfg,
+func SampleConfigState(cfg *CentralCfg, keyStore map[string]NyPrivateKey, node NodeId) ConfigState {
+	return ConfigState{
+		CentralCfg: *cfg,
 		LocalCfg: LocalCfg{
 			Key:            keyStore[string(node)],
 			Id:             node,
 			Port:           5000,
 			NoNetConfigure: false,
 		},
-		Context:  nil,
-		Cancel:   nil,
-		Log:      nil,
-		Updating: atomic.Bool{},
 	}
 }
