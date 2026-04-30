@@ -13,6 +13,24 @@ One of nylon's key features is compatibility with standard WireGuard clients (iO
 
 Passive nodes do not participate in the routing protocol. Instead, they connect to a **Gateway Node** (a regular nylon node) which advertises their presence to the rest of the network.
 
+```mermaid
+graph LR
+    subgraph "Nylon Mesh"
+        N1[Node A]
+        N2[Node B]
+        N3[Node C]
+        N1 <--> N2
+        N2 <--> N3
+        N3 <--> N1
+    end
+    subgraph "Passive Clients"
+        P1[WireGuard iOS Client]
+        P2[WireGuard Android Client]
+    end
+    P1 <--> N1
+    P2 <--> N2
+```
+
 <Steps>
 
 1. ### Configure the Passive Node
