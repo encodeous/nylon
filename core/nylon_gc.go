@@ -1,10 +1,8 @@
 package core
 
-import (
-	"github.com/encodeous/nylon/state"
-)
 
-func nylonGc(s *state.State) error {
+func nylonGc(n *Nylon) error {
+	s := n.State
 	// scan for dead links
 	for _, neigh := range s.Neighbours {
 		// filter dplinks
@@ -24,8 +22,7 @@ func nylonGc(s *state.State) error {
 		neigh.Eps = neigh.Eps[:n]
 	}
 
-	r := Get[*NylonRouter](s)
-	err := r.GcRouter(s)
+	err := n.Router.GcRouter()
 	if err != nil {
 		return err
 	}

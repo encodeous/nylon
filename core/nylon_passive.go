@@ -7,13 +7,15 @@ import (
 )
 
 func (n *Nylon) initPassiveClient(s *state.State) error {
-	s.Env.RepeatTask(scanPassivePeers, state.ProbeDelay)
+	s.Env.RepeatTask(func() error {
+		return scanPassivePeers(n)
+	}, state.ProbeDelay)
 	return nil
 }
 
-func scanPassivePeers(s *state.State) error {
-	n := Get[*Nylon](s)
-	r := Get[*NylonRouter](s)
+func scanPassivePeers(n *Nylon) error {
+	s := n.State
+	r := n.Router
 	for _, peer := range n.Device.GetPeers() {
 		nid := s.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
 

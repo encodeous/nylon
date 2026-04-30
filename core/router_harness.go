@@ -104,7 +104,7 @@ func (h *RouterHarness) BroadcastRequestSeqno(src state.Source, seqno uint16, ho
 	h.actions = append(h.actions, MakeEvent("BROADCAST_REQUEST_SEQNO", src, seqno, hopCnt))
 }
 
-func (h *RouterHarness) Log(event RouterEvent, desc string, args ...any) {
+func (h *RouterHarness) Log(event string, desc string, args ...any) {
 	x := make([]any, 0)
 	x = append(x, event)
 	x = append(x, desc)

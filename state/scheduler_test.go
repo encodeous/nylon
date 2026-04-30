@@ -11,7 +11,7 @@ func TestDispatch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dispatchChan := make(chan func(*State) error, 10)
+	dispatchChan := make(chan func() error, 10)
 	env := &Env{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
@@ -19,16 +19,13 @@ func TestDispatch(t *testing.T) {
 			cancel()
 		},
 	}
-	state := &State{
-		Env: env,
-	}
 
 	var called bool
 
 	go func() {
 		select {
 		case f := <-dispatchChan:
-			if err := f(state); err != nil {
+			if err := f(); err != nil {
 				t.Errorf("Dispatch error: %v", err)
 			}
 		case <-time.After(100 * time.Millisecond):
@@ -36,7 +33,7 @@ func TestDispatch(t *testing.T) {
 		}
 	}()
 
-	env.Dispatch(func(s *State) error {
+	env.Dispatch(func() error {
 		called = true
 		return nil
 	})
@@ -52,7 +49,7 @@ func TestScheduleTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dispatchChan := make(chan func(*State) error, 10)
+	dispatchChan := make(chan func() error, 10)
 	env := &Env{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
@@ -60,13 +57,10 @@ func TestScheduleTask(t *testing.T) {
 			cancel()
 		},
 	}
-	state := &State{
-		Env: env,
-	}
 
 	var taskCalled bool
 
-	env.ScheduleTask(func(s *State) error {
+	env.ScheduleTask(func() error {
 		taskCalled = true
 		return nil
 	}, 50*time.Millisecond)
@@ -75,7 +69,7 @@ func TestScheduleTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	select {
 	case f := <-dispatchChan:
-		if err := f(state); err != nil {
+		if err := f(); err != nil {
 			t.Errorf("Scheduled task error: %v", err)
 		}
 	default:
@@ -91,7 +85,7 @@ func TestRepeatTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dispatchChan := make(chan func(*State) error, 10)
+	dispatchChan := make(chan func() error, 10)
 	env := &Env{
 		DispatchChannel: dispatchChan,
 		Context:         ctx,
@@ -99,15 +93,12 @@ func TestRepeatTask(t *testing.T) {
 			cancel()
 		},
 	}
-	state := &State{
-		Env: env,
-	}
 
 	var wg sync.WaitGroup
 	wg.Add(3)
 	var count int
 
-	env.RepeatTask(func(s *State) error {
+	env.RepeatTask(func() error {
 		count++
 		wg.Done()
 		if count >= 3 {
@@ -121,7 +112,7 @@ loop:
 	for {
 		select {
 		case f := <-dispatchChan:
-			err := f(state)
+			err := f()
 			if err != nil {
 				t.Fatalf("RepeatTask error: %v", err)
 			}

@@ -10,6 +10,7 @@ import (
 )
 
 func TestJSONLogging(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 
 	node1Key := state.GenerateKey()

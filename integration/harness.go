@@ -106,7 +106,7 @@ type VirtualHarness struct {
 	Cancel           context.CancelCauseFunc
 	Local            []state.LocalCfg
 	Net              *InMemoryNetwork
-	States           []*state.State
+	Nylons           []*core.Nylon
 	Links            []*VirtualLink
 	Endpoints        map[string]state.NodeId
 	UntrackedRouting bool
@@ -159,7 +159,7 @@ func (v *VirtualHarness) Start() chan error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	v.Context = ctx
 	v.Cancel = cancel
-	v.States = make([]*state.State, len(v.Central.Routers))
+	v.Nylons = make([]*core.Nylon, len(v.Central.Routers))
 	errChan := make(chan error, 128) // a large number so we dont get blocked
 	vn := &InMemoryNetwork{}
 	v.Net = vn
@@ -190,7 +190,7 @@ func (v *VirtualHarness) Start() chan error {
 			pprof.Do(context.Background(), labels, func(_ context.Context) {
 				restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
 					"vnet": vn,
-				}, &v.States[idx])
+				}, &v.Nylons[idx])
 				if cErr != nil {
 					errChan <- cErr
 					return
@@ -206,7 +206,7 @@ func (v *VirtualHarness) Start() chan error {
 	for {
 		started := true
 		for idx, _ := range v.Central.Routers {
-			if v.States[idx] == nil || !v.States[idx].Started.Load() {
+			if v.Nylons[idx] == nil || !v.Nylons[idx].State.Started.Load() {
 				started = false
 				break
 			}
@@ -231,7 +231,7 @@ func (v *VirtualHarness) Stop() {
 	println("Stopping VirtualHarness")
 	v.Cancel(fmt.Errorf("stopping harness"))
 	for idx, _ := range v.Central.Routers {
-		core.Stop(v.States[idx])
+		core.Stop(v.Nylons[idx])
 	}
 	v.Net.Stop()
 	println("Stopped VirtualHarness")

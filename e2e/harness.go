@@ -17,20 +17,22 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
+var (
 	ImageName   = "nylon-debug:latest"
 	AppPort     = "57175/udp"
 	WaitTimeout = 2 * time.Minute
+	networkMu   sync.Mutex
 )
 
 type Harness struct {
@@ -67,6 +69,9 @@ func NewHarness(t *testing.T) *Harness {
 		rootDir = parent
 	}
 
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
 	subnet, gateway, err := AllocateDockerSubnet(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +86,8 @@ func NewHarness(t *testing.T) *Harness {
 			Driver: "default",
 			Config: []network.IPAMConfig{
 				{
-					Subnet:  subnet,
-					Gateway: gateway,
+					Subnet:  netip.MustParsePrefix(subnet),
+					Gateway: netip.MustParseAddr(gateway),
 				},
 			},
 		}))
@@ -159,7 +164,7 @@ func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfi
 			if ip != "" {
 				if s, ok := m[h.Network.Name]; ok {
 					s.IPAMConfig = &network.EndpointIPAMConfig{
-						IPv4Address: ip,
+						IPv4Address: netip.MustParseAddr(ip),
 					}
 				}
 			}
@@ -256,11 +261,11 @@ func (h *Harness) StartTrace(nodeName string) {
 
 	go func() {
 		time.Sleep(time.Second)
-		execOptions := container.ExecOptions{
+		execOptions := client.ExecCreateOptions{
 			Cmd:          []string{"nylon", "inspect", "nylon0", "--trace"},
 			AttachStdout: true,
 			AttachStderr: true,
-			Tty:          false,
+			TTY:          false,
 		}
 
 		docker := cont.(*testcontainers.DockerContainer)
@@ -269,12 +274,12 @@ func (h *Harness) StartTrace(nodeName string) {
 		y := GetUnexportedField(v.Elem().FieldByName("provider")).(*testcontainers.DockerProvider)
 		cli := y.Client()
 
-		execIDResp, err := cli.ContainerExecCreate(h.ctx, cont.GetContainerID(), execOptions)
+		execIDResp, err := cli.ExecCreate(h.ctx, cont.GetContainerID(), execOptions)
 		if err != nil {
 			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
 		}
 
-		resp, err := cli.ContainerExecAttach(h.ctx, execIDResp.ID, container.ExecAttachOptions{})
+		resp, err := cli.ExecAttach(h.ctx, execIDResp.ID, client.ExecAttachOptions{})
 		if err != nil {
 			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
 		}
@@ -439,7 +444,7 @@ func (h *Harness) StartDNS(name string, ip string, corefile string, zones map[st
 			if ip != "" {
 				if s, ok := m[h.Network.Name]; ok {
 					s.IPAMConfig = &network.EndpointIPAMConfig{
-						IPv4Address: ip,
+						IPv4Address: netip.MustParseAddr(ip),
 					}
 				}
 			}

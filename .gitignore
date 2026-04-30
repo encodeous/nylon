@@ -32,7 +32,6 @@ central.nybundle
 
 distribute.sh
 distribute-conf.sh
-log
 
 log.csv
 

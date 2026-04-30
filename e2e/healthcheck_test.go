@@ -15,6 +15,7 @@ import (
 )
 
 func TestHealthcheckPing(t *testing.T) {
+	t.Parallel()
 	// Use a specific subnet for this test to avoid conflicts
 	h := NewHarness(t)
 
@@ -52,24 +53,22 @@ func TestHealthcheckPing(t *testing.T) {
 
 	// make node 1 and node 2 both advertise 10.0.0.4/32
 	// 1 would be default
-	n1Metric := uint32(10)
 	central.Routers[0].Prefixes = []state.PrefixHealthWrapper{
 		{
 			&state.PingPrefixHealth{
 				Prefix: netip.MustParsePrefix("10.0.1.4/32"),
 				Addr:   netip.MustParseAddr("10.0.1.4"),
-				Metric: &n1Metric,
+				Metric: new(uint32(10)),
 			},
 		},
 	}
 	// 2 would be fallback
-	n2Metric := uint32(1000)
 	central.Routers[1].Prefixes = []state.PrefixHealthWrapper{
 		{
 			&state.PingPrefixHealth{
 				Prefix: netip.MustParsePrefix("10.0.1.4/32"),
 				Addr:   netip.MustParseAddr("10.0.1.4"),
-				Metric: &n2Metric,
+				Metric: new(uint32(1000)),
 			},
 		},
 	}
@@ -127,6 +126,7 @@ func TestHealthcheckPing(t *testing.T) {
 }
 
 func TestHealthcheckHTTP(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 
 	// IPs
@@ -162,13 +162,12 @@ func TestHealthcheckHTTP(t *testing.T) {
 
 	// Configure Primary with HTTP check (Metric 10)
 	// primMetric := uint32(10)
-	checkDelay := 1 * time.Second
 	central.Routers[1].Prefixes = []state.PrefixHealthWrapper{
 		{
 			&state.HTTPPrefixHealth{
 				Prefix: servicePrefix,
 				URL:    fmt.Sprintf("http://%s:8080/health", serviceIP),
-				Delay:  &checkDelay,
+				Delay:  new(1 * time.Second),
 				// Metric: &primMetric, // Remove override to use dynamic metric (RTT or INF)
 			},
 		},

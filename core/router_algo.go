@@ -8,25 +8,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/encodeous/nylon/log"
 	"github.com/encodeous/nylon/state"
-)
-
-//go:generate stringer -type RouterEvent
-type RouterEvent int
-
-// warn events
-
-const (
-	InconsistentState RouterEvent = iota + 1000
-	NoEpToNeighbour
-)
-
-// info events
-const (
-	RouteChanged RouterEvent = iota + 2000
-	RouteExpired
-	RoutePushed
-	RouteStarved
 )
 
 // Router is an interface that defines the underlying router operations
@@ -38,7 +21,7 @@ type Router interface {
 	BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8)
 	TableInsertRoute(prefix netip.Prefix, route state.SelRoute)
 	TableDeleteRoute(prefix netip.Prefix)
-	Log(event RouterEvent, desc string, args ...any)
+	Log(event string, desc string, args ...any)
 }
 
 func updateFeasibility(router *state.RouterState, advRoute state.PubRoute) {
@@ -127,13 +110,13 @@ func RunGC(s *state.RouterState, r Router) {
 				if route.Metric == state.INF {
 					// route expired and is INF, delete it
 					delete(neigh.Routes, src)
-					r.Log(RouteExpired, "expired and removed", "neigh", neigh.Id, "src", src)
+					r.Log(log.EventRouteExpired, "expired and removed", "neigh", neigh.Id, "src", src)
 				} else {
 					// route expired, set metric to INF
 					route.Metric = state.INF
 					route.ExpireAt = time.Now().Add(state.RouteExpiryTime) // reset expiry time
 					neigh.Routes[src] = route                              // update the route
-					r.Log(RouteExpired, "expired and marked", "neigh", neigh.Id, "src", src)
+					r.Log(log.EventRouteExpired, "expired and marked", "neigh", neigh.Id, "src", src)
 				}
 			}
 		}
@@ -180,7 +163,7 @@ func RunGC(s *state.RouterState, r Router) {
 func retract(s *state.RouterState, r Router, prefix netip.Prefix) {
 	tblEntry, ok := s.Routes[prefix]
 	if !ok {
-		r.Log(InconsistentState, "attempted to retract non-existent route", "prefix", prefix)
+		r.Log(log.EventInconsistentState, "attempted to retract non-existent route", "prefix", prefix)
 		return // route does not exist
 	}
 	tblEntry.Metric = state.INF
@@ -268,7 +251,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 func HandleAckRetract(s *state.RouterState, r Router, neighId state.NodeId, prefix netip.Prefix) {
 	rt, ok := s.Routes[prefix]
 	if !ok {
-		r.Log(InconsistentState, "attempted to ack the retraction of a non-existent route", "prefix", prefix)
+		r.Log(log.EventInconsistentState, "attempted to ack the retraction of a non-existent route", "prefix", prefix)
 		return // route does not exist
 	}
 	if !slices.Contains(rt.RetractedBy, neighId) {
@@ -489,7 +472,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 	for _, neigh := range s.Neighbours {
 		bestEp := neigh.BestEndpoint()
 		if bestEp == nil {
-			r.Log(NoEpToNeighbour, "no endpoint to neighbour", "neigh", neigh.Id)
+			r.Log(log.EventNoEndpointToNeigh, "no endpoint to neighbour", "neigh", neigh.Id)
 		}
 
 		// We refer to our current node as A, our neighbour as B, and S as our source.
@@ -569,10 +552,10 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		oldRoute, exists := s.Routes[prefix]
 		if !exists || oldRoute.Metric == state.INF {
 			r.TableInsertRoute(prefix, newRoute)
-			r.Log(RouteChanged, "inserted", "prefix", prefix, "new", newRoute)
+			r.Log(log.EventRouteInserted, "inserted", "prefix", prefix, "new", newRoute)
 		} else if oldRoute.Nh != newRoute.Nh {
 			r.TableInsertRoute(prefix, newRoute)
-			r.Log(RouteChanged, "updated", "prefix", prefix, "old", oldRoute, "new", newRoute)
+			r.Log(log.EventRouteUpdated, "updated", "prefix", prefix, "old", oldRoute, "new", newRoute)
 		}
 		if !exists ||
 			oldRoute.Source.NodeId != newRoute.Source.NodeId ||
@@ -580,7 +563,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(state.LargeChangeThreshold) && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
-			r.Log(RoutePushed, "major change", "prefix", prefix, "old", oldRoute, "new", newRoute)
+			r.Log(log.EventMajorRouteChange, "major change", "prefix", prefix, "old", oldRoute, "new", newRoute)
 			r.BroadcastSendRouteUpdate(newRoute.PubRoute)
 		}
 	}
@@ -593,7 +576,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			if oldRoute.Metric != state.INF {
 				retract(s, r, prefix)
 				r.TableDeleteRoute(prefix)
-				r.Log(RouteChanged, "retracted", "prefix", prefix, "old", oldRoute)
+				r.Log(log.EventRouteRetracted, "retracted", "prefix", prefix, "old", oldRoute)
 				// Add the retracted route back as INF so it can be held
 				oldRoute.Metric = state.INF
 				newTable[prefix] = oldRoute
@@ -648,7 +631,7 @@ func SolveStarvation(router *state.RouterState, r Router) {
 	for src, feasible := range isFeasible {
 		if !feasible && src.NodeId != router.Id {
 			r.BroadcastRequestSeqno(src, router.Sources[src].Seqno+1, state.SeqnoRequestHopCount)
-			r.Log(RouteStarved, "requested seqno", "src", src, "seqno", router.Sources[src].Seqno+1)
+			r.Log(log.EventSeqnoRequested, "requested seqno", "src", src, "seqno", router.Sources[src].Seqno+1)
 		}
 	}
 

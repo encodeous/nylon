@@ -11,15 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestPassiveRoaming(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 	ctx := context.Background()
 
@@ -144,7 +145,7 @@ func TestPassiveRoaming(t *testing.T) {
 		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
 			if s, ok := m[h.Network.Name]; ok {
 				s.IPAMConfig = &network.EndpointIPAMConfig{
-					IPv4Address: clientContainerIP,
+					IPv4Address: netip.MustParseAddr(clientContainerIP),
 				}
 			}
 		},

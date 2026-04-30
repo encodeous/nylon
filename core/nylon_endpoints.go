@@ -48,8 +48,7 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 		// ping
 		// build pong response
 		res := pkt
-		token := rand.Uint64()
-		res.ResponseToken = &token
+		res.ResponseToken = new(rand.Uint64())
 
 		// send pong
 		err := n.SendNylon(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: pkt}}, endpoint, peer)
@@ -58,24 +57,25 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 			return
 		}
 
-		e.Dispatch(func(s *state.State) error {
-			handleProbePing(s, node, endpoint)
+		e.Dispatch(func() error {
+			handleProbePing(n, node, endpoint)
 			return nil
 		})
 	} else {
 		// pong
-		e.Dispatch(func(s *state.State) error {
-			handleProbePong(s, node, pkt.Token, endpoint)
+		e.Dispatch(func() error {
+			handleProbePong(n, node, pkt.Token, endpoint)
 			return nil
 		})
 	}
 }
 
-func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
+func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
+	s := n.State
 	if node == s.Id {
 		return
 	}
-	r := Get[*NylonRouter](s)
+	r := n.Router
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dep := range neigh.Eps {
@@ -112,9 +112,9 @@ func handleProbePing(s *state.State, node state.NodeId, ep conn.Endpoint) {
 	}
 }
 
-func handleProbePong(s *state.State, node state.NodeId, token uint64, ep conn.Endpoint) {
-	n := Get[*Nylon](s)
-	r := Get[*NylonRouter](s)
+func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint) {
+	s := n.State
+	r := n.Router
 	// check if link exists
 	for _, neigh := range s.Neighbours {
 		for _, dpLink := range neigh.Eps {

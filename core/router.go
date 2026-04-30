@@ -1,14 +1,15 @@
 package core
 
 import (
-	"fmt"
 	"net/netip"
 
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/gaissmai/bart"
 	"google.golang.org/protobuf/proto"
 
-	//"errors"
+	"log/slog"
+
+	"github.com/encodeous/nylon/log"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
@@ -18,6 +19,8 @@ import (
 
 type NylonRouter struct {
 	*state.State
+	Core                  *Nylon
+	logger                *slog.Logger
 	LastStarvationRequest time.Time
 	IO                    map[state.NodeId]*IOPending
 	// ForwardTable contains the full routing table
@@ -96,11 +99,11 @@ func (r *NylonRouter) BroadcastRequestSeqno(src state.Source, seqno uint16, hopC
 	}
 }
 
-func (r *NylonRouter) Log(event RouterEvent, desc string, args ...any) {
-	if event == NoEpToNeighbour {
+func (r *NylonRouter) Log(event string, desc string, args ...any) {
+	if event == log.EventNoEndpointToNeigh {
 		return // ignored
 	}
-	r.Env.Log.Debug(fmt.Sprintf("%s %s", event.String(), desc), args...)
+	r.logger.Debug(desc, append([]any{"event", event}, args...)...)
 }
 
 func (r *NylonRouter) UpdateNeighbour(neigh state.NodeId) {
@@ -108,7 +111,7 @@ func (r *NylonRouter) UpdateNeighbour(neigh state.NodeId) {
 }
 
 func (r *NylonRouter) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
-	n := Get[*Nylon](r.State)
+	n := r.Core
 	nh := route.Nh
 	peer := n.Device.LookupPeer(device.NoisePublicKey(r.GetNode(nh).PubKey))
 	r.ForwardTable.Insert(prefix, RouteTableEntry{
@@ -138,13 +141,15 @@ type IOPending struct {
 	Updates    map[netip.Prefix]*protocol.Ny_Update
 }
 
-func (r *NylonRouter) Cleanup(s *state.State) error {
+func (r *NylonRouter) Cleanup() error {
 	r.State = nil
+	r.logger = nil
 	r.IO = nil
 	return nil
 }
 
-func (r *NylonRouter) GcRouter(s *state.State) error {
+func (r *NylonRouter) GcRouter() error {
+	s := r.State
 	RunGC(s.RouterState, r)
 	for id, _ := range r.IO {
 		if s.GetNeighbour(id) == nil {
@@ -158,9 +163,12 @@ func (r *NylonRouter) GcRouter(s *state.State) error {
 	return nil
 }
 
-func (r *NylonRouter) Init(s *state.State) error {
-	s.Log.Debug("init router")
+func (r *NylonRouter) Init(n *Nylon) error {
+	s := n.State
+	r.Core = n
 	r.State = s
+	r.logger = s.Log.With("module", log.ScopeRouter)
+	r.logger.Debug("init router")
 	r.IO = make(map[state.NodeId]*IOPending)
 	r.ForwardTable = bart.Table[RouteTableEntry]{}
 	s.RouterState = &state.RouterState{
@@ -181,18 +189,20 @@ func (r *NylonRouter) Init(s *state.State) error {
 		}
 	}
 
-	s.Log.Debug("schedule router tasks")
+	r.logger.Debug("schedule router tasks")
 
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		FullTableUpdate(s.RouterState, r)
 		return nil
 	}, state.RouteUpdateDelay)
-	s.Env.RepeatTask(func(s *state.State) error {
+	s.Env.RepeatTask(func() error {
 		SolveStarvation(s.RouterState, r)
 		return nil
 	}, state.StarvationDelay)
 
-	s.Env.RepeatTask(flushIO, state.NeighbourIOFlushDelay)
+	s.Env.RepeatTask(func() error {
+		return n.flushIO()
+	}, state.NeighbourIOFlushDelay)
 	return nil
 }
 
@@ -250,46 +260,46 @@ func (r *NylonRouter) hasRecentlyAdvertised(prefix netip.Prefix) bool {
 	return time.Now().Before(adv.Expiry)
 }
 
-func checkNeigh(s *state.State, id state.NodeId) bool {
+func (r *NylonRouter) checkNeigh(s *state.State, id state.NodeId) bool {
 	for _, n := range s.Neighbours {
 		if n.Id == id {
 			return true
 		}
 	}
-	s.Log.Warn("received packet from unknown neighbour", "from", id)
+	r.logger.Warn("received packet from unknown neighbour", "from", id)
 	return false
 }
 
-func checkPrefix(s *state.State, prefix netip.Prefix) bool {
+func (r *NylonRouter) checkPrefix(s *state.State, prefix netip.Prefix) bool {
 	for _, p := range s.GetPrefixes() {
 		if p == prefix {
 			return true
 		}
 	}
-	s.Log.Warn("received packet for unknown prefix", "prefix", prefix)
+	r.logger.Warn("received packet for unknown prefix", "prefix", prefix)
 	return false
 }
 
-func checkNode(s *state.State, id state.NodeId) bool {
+func (r *NylonRouter) checkNode(s *state.State, id state.NodeId) bool {
 	ncfg := s.TryGetNode(id)
 	if ncfg == nil {
-		s.Log.Warn("received packet from unknown node", "from", id)
+		r.logger.Warn("received packet from unknown node", "from", id)
 	}
 	return ncfg != nil
 }
 
 // packet handlers
-func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol.Ny_Update) error {
-	r := Get[*NylonRouter](s)
+func (r *NylonRouter) routerHandleRouteUpdate(node state.NodeId, update *protocol.Ny_Update) error {
+	s := r.State
 	prefix := netip.Prefix{}
 	err := prefix.UnmarshalBinary(update.Prefix)
 	if err != nil {
-		s.Log.Warn("received update with invalid prefix", "prefix", update.Prefix, "err", err)
+		r.logger.Warn("received update with invalid prefix", "prefix", update.Prefix, "err", err)
 		return nil
 	}
-	if !checkNeigh(s, node) ||
-		!checkPrefix(s, prefix) ||
-		!checkNode(s, state.NodeId(update.RouterId)) {
+	if !r.checkNeigh(s, node) ||
+		!r.checkPrefix(s, prefix) ||
+		!r.checkNode(s, state.NodeId(update.RouterId)) {
 		return nil
 	}
 	HandleNeighbourUpdate(s.RouterState, r, node, state.PubRoute{
@@ -305,33 +315,33 @@ func routerHandleRouteUpdate(s *state.State, node state.NodeId, update *protocol
 	return nil
 }
 
-func routerHandleAckRetract(s *state.State, neigh state.NodeId, update *protocol.Ny_AckRetract) error {
-	r := Get[*NylonRouter](s)
+func (r *NylonRouter) routerHandleAckRetract(neigh state.NodeId, update *protocol.Ny_AckRetract) error {
+	s := r.State
 	prefix := netip.Prefix{}
 	err := prefix.UnmarshalBinary(update.Prefix)
 	if err != nil {
-		s.Log.Warn("received ack retract with invalid prefix", "prefix", update.Prefix, "err", err)
+		r.logger.Warn("received ack retract with invalid prefix", "prefix", update.Prefix, "err", err)
 		return nil
 	}
-	if !checkPrefix(s, prefix) ||
-		!checkNeigh(s, neigh) {
+	if !r.checkPrefix(s, prefix) ||
+		!r.checkNeigh(s, neigh) {
 		return nil
 	}
 	HandleAckRetract(s.RouterState, r, neigh, prefix)
 	return nil
 }
 
-func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.Ny_SeqnoRequest) error {
-	r := Get[*NylonRouter](s)
+func (r *NylonRouter) routerHandleSeqnoRequest(neigh state.NodeId, pkt *protocol.Ny_SeqnoRequest) error {
+	s := r.State
 	prefix := netip.Prefix{}
 	err := prefix.UnmarshalBinary(pkt.Prefix)
 	if err != nil {
-		s.Log.Warn("received seqno request with invalid prefix", "prefix", pkt.Prefix, "err", err)
+		r.logger.Warn("received seqno request with invalid prefix", "prefix", pkt.Prefix, "err", err)
 		return nil
 	}
-	if !checkNeigh(s, neigh) ||
-		!checkPrefix(s, prefix) ||
-		!checkNode(s, state.NodeId(pkt.RouterId)) {
+	if !r.checkNeigh(s, neigh) ||
+		!r.checkPrefix(s, prefix) ||
+		!r.checkNode(s, state.NodeId(pkt.RouterId)) {
 		return nil
 	}
 	HandleSeqnoRequest(s.RouterState, r, neigh, state.Source{
@@ -341,9 +351,9 @@ func routerHandleSeqnoRequest(s *state.State, neigh state.NodeId, pkt *protocol.
 	return nil
 }
 
-func flushIO(s *state.State) error {
-	n := Get[*Nylon](s)
-	r := Get[*NylonRouter](s)
+func (n *Nylon) flushIO() error {
+	s := n.State
+	r := n.Router
 	for _, neigh := range s.Neighbours {
 		// TODO, investigate effect of packet loss on control messages
 		best := neigh.BestEndpoint()

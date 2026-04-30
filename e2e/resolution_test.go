@@ -15,6 +15,7 @@ import (
 )
 
 func TestEndpointResolution(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 
 	dnsIP := GetIP(h.Subnet, 100)
@@ -115,6 +116,7 @@ _nylon._udp.srv.example.com. 0 IN SRV 10 10 57175 node2.example.com.
 }
 
 func TestDynamicResolution(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 
 	dnsIP := GetIP(h.Subnet, 100)

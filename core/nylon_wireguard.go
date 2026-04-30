@@ -12,7 +12,8 @@ import (
 	"github.com/encodeous/nylon/state"
 )
 
-func (n *Nylon) initWireGuard(s *state.State) error {
+func (n *Nylon) initWireGuard() error {
+	s := n.State
 	dev, tdev, itfName, err := NewWireGuardDevice(s, n)
 	if err != nil {
 		return err
@@ -27,11 +28,11 @@ func (n *Nylon) initWireGuard(s *state.State) error {
 	n.Tun = tdev
 	n.itfName = itfName
 
-	n.InstallTC(s)
+	n.InstallTC()
 	s.Log.Info("installed nylon traffic control filter for polysock")
 
 	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
-		return HandleNylonIPCGet(s, writer)
+		return HandleNylonIPCGet(n, writer)
 	}
 
 	// TODO: fully convert to code-based api
@@ -117,12 +118,15 @@ listen_port=%d
 	}
 
 	// init wireguard related tasks
-	s.RepeatTask(UpdateWireGuard, state.ProbeDelay)
+	s.RepeatTask(func() error {
+		return UpdateWireGuard(n)
+	}, state.ProbeDelay)
 
 	return nil
 }
 
-func (n *Nylon) cleanupWireGuard(s *state.State) error {
+func (n *Nylon) cleanupWireGuard() error {
+	s := n.State
 	// remove routes
 	for _, route := range n.prevInstalledRoutes {
 		err := RemoveRoute(s.Log, n.Tun, n.itfName, route)
@@ -151,8 +155,8 @@ func (n *Nylon) cleanupWireGuard(s *state.State) error {
 	return nil
 }
 
-func UpdateWireGuard(s *state.State) error {
-	n := Get[*Nylon](s)
+func UpdateWireGuard(n *Nylon) error {
+	s := n.State
 	dev := n.Device
 
 	// configure endpoints
@@ -201,7 +205,7 @@ func UpdateWireGuard(s *state.State) error {
 
 	// configure changed route table entries
 	if !s.NoNetConfigure {
-		router := Get[*NylonRouter](s)
+		router := n.Router
 		newEntries := router.ComputeSysRouteTable()
 		oldEntries := n.prevInstalledRoutes
 		for _, oldEntry := range oldEntries {

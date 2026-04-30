@@ -16,6 +16,7 @@ import (
 )
 
 func TestDistribution(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 	ctx := context.Background()
 

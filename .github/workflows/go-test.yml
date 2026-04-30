@@ -44,5 +44,11 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
+      - name: Get CPU core count
+        id: cpu
+        run: echo "cores=$(nproc)" >> $GITHUB_OUTPUT
       - name: Run e2e
-        run: go run gotest.tools/gotestsum@latest -- -tags=e2e ./e2e/...
+        run: |
+          go run gotest.tools/gotestsum@latest -- \
+            -tags=e2e ./e2e/... \
+            -parallel ${{ steps.cpu.outputs.cores }}

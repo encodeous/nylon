@@ -10,6 +10,7 @@ import (
 )
 
 func TestConnectivity(t *testing.T) {
+	t.Parallel()
 	// Use a specific subnet for this test to avoid conflicts
 	h := NewHarness(t)
 

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/encodeous/nylon/log"
 	"github.com/encodeous/nylon/polyamide/conn"
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/encodeous/nylon/polyamide/tun"
@@ -29,18 +30,20 @@ func NewWireGuardDevice(s *state.State, n *Nylon) (dev *device.Device, tunDevice
 		itfName = realInterfaceName
 	}
 
+	wgLog := s.Log.With("module", log.ScopePolyamide)
+
 	// setup WireGuard
 	dev = device.NewDevice(tdev, conn.NewDefaultBind(), &device.Logger{
 		Verbosef: func(format string, args ...any) {
 			if state.DBG_log_wireguard {
-				s.Log.Debug(fmt.Sprintf(format, args...))
+				wgLog.Debug(fmt.Sprintf(format, args...))
 			}
 		},
 		Errorf: func(format string, args ...any) {
 			if strings.Contains(format, "Failed to send PolySock packets") {
 				return
 			}
-			s.Log.Error(fmt.Sprintf(format, args...))
+			wgLog.Error(fmt.Sprintf(format, args...))
 		},
 	})
 

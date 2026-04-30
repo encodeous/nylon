@@ -77,6 +77,13 @@ type FD struct {
 	Metric uint32
 }
 
+func (fd FD) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Uint64("seqno", uint64(fd.Seqno)),
+		slog.Uint64("metric", uint64(fd.Metric)),
+	)
+}
+
 type PubRoute struct {
 	Source
 	// FD will depend on which table the route is in. In the neighbour table,
