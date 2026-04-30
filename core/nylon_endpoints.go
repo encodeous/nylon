@@ -48,8 +48,7 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 		// ping
 		// build pong response
 		res := pkt
-		token := rand.Uint64()
-		res.ResponseToken = &token
+		res.ResponseToken = new(rand.Uint64())
 
 		// send pong
 		err := n.SendNylon(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: pkt}}, endpoint, peer)

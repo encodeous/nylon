@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -18,23 +18,19 @@ func AllocateDockerSubnet(ctx context.Context) (string, string, error) {
 	}
 	defer provider.Close()
 
-	networks, err := provider.Client().NetworkList(ctx, dockernetwork.ListOptions{})
+	networks, err := provider.Client().NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
 		return "", "", err
 	}
 
 	var existing []netip.Prefix
-	for _, nw := range networks {
+	for _, nw := range networks.Items {
 		for _, cfg := range nw.IPAM.Config {
-			if cfg.Subnet == "" {
+			if !cfg.Subnet.IsValid() {
 				continue
 			}
-			prefix, err := netip.ParsePrefix(cfg.Subnet)
-			if err != nil {
-				continue
-			}
-			if prefix.Addr().Is4() {
-				existing = append(existing, prefix.Masked())
+			if cfg.Subnet.Addr().Is4() {
+				existing = append(existing, cfg.Subnet.Masked())
 			}
 		}
 	}

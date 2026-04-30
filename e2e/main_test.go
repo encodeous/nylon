@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/api/types/build"
+	"github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -49,7 +49,7 @@ func buildImage() error {
 			KeepImage:  true,
 			Repo:       "nylon-debug",
 			Tag:        "latest",
-			BuildOptionsModifier: func(buildOptions *build.ImageBuildOptions) {
+			BuildOptionsModifier: func(buildOptions *client.ImageBuildOptions) {
 				buildOptions.Target = "debug"
 			},
 		},
