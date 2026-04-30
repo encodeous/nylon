@@ -202,8 +202,7 @@ func UpdateWireGuard(n *Nylon) error {
 
 	// configure changed route table entries
 	if !n.NoNetConfigure {
-		router := n.Router
-		newEntries := router.ComputeSysRouteTable()
+		newEntries := n.ComputeSysRouteTable()
 		oldEntries := n.prevInstalledRoutes
 		for _, oldEntry := range oldEntries {
 			if !slices.Contains(newEntries, oldEntry) {

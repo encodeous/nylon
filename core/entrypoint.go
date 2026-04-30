@@ -193,8 +193,7 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	}
 
 	n := &Nylon{
-		Trace:  &NylonTrace{},
-		Router: &NylonRouter{},
+		Trace: &NylonTrace{},
 		ConfigState: state.ConfigState{
 			CentralCfg: ccfg,
 			LocalCfg:   ncfg,

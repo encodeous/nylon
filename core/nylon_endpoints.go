@@ -73,7 +73,6 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 	if node == n.LocalCfg.Id {
 		return
 	}
-	r := n.Router
 	// check if link exists
 	for _, neigh := range n.RouterState.Neighbours {
 		for _, dep := range neigh.Eps {
@@ -86,7 +85,7 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 				dep.WgEndpoint = ep
 
 				if !dep.IsActive() {
-					r.UpdateNeighbour(node)
+					n.UpdateNeighbour(node)
 				}
 				dep.Renew()
 
@@ -104,14 +103,13 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
-			r.UpdateNeighbour(node)
+			n.UpdateNeighbour(node)
 			return
 		}
 	}
 }
 
 func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint) {
-	r := n.Router
 	// check if link exists
 	for _, neigh := range n.RouterState.Neighbours {
 		for _, dpLink := range neigh.Eps {
@@ -132,7 +130,7 @@ func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint
 					// update wireguard endpoint
 					dpLink.WgEndpoint = ep
 
-					ComputeRoutes(n.RouterState, r)
+					ComputeRoutes(n.RouterState, n)
 				}
 				return
 			}

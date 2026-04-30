@@ -47,8 +47,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 		t.Errorf("Expected route to service 'a', but it was not found")
 	}
 	out := h.GetActions()
-	assert.Contains(t, out.String(), "BROADCAST_UPDATE_ROUTE")
-	assert.Contains(t, out.String(), "router: a")
+	out.AssertContains(t, BroadcastUpdateRoute(MakePubRoute("a", aPrefix, 0, 0)))
 }
 
 func TestRouterNet1A_BasicRetraction(t *testing.T) {
@@ -97,12 +96,12 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("S"), 0, 1)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.19/32 via (nh: S, router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
@@ -121,9 +120,7 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)`,
 	// B advertises S to A
 	h.NeighUpdate(rs, "B", "S", nodeToPrefix("S"), 0, 2)
 	a = h.GetActions()
-	assert.Equal(t,
-		`REQUEST_SEQNO B (router: S, prefix: 10.0.0.19/32) 1 64`,
-		a.String())
+	a.AssertEqual(t, RequestSeqno("B", state.Source{NodeId: "S", Prefix: nodeToPrefix("S")}, 1, 64))
 
 	// Suppose now the link to S goes down
 	//          B
@@ -137,7 +134,7 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)`,
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// We should retract our route to S
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.PubRoute{
+	a.AssertContains(t, BroadcastUpdateRoute(state.PubRoute{
 		Source: state.Source{
 			NodeId: "S",
 			Prefix: nodeToPrefix("S"),
@@ -146,7 +143,7 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)`,
 			Seqno:  0,
 			Metric: state.INF,
 		},
-	})
+	}))
 }
 
 func TestRouterNet2S_SolveStarvation(t *testing.T) {
@@ -185,11 +182,11 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 2)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("S"), 0, 0)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 1)
 10.0.0.19/32 via (nh: S, router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 2)`, rs.StringRoutes())
@@ -212,7 +209,7 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)`,
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// We should retract our route to A
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", state.PubRoute{
+	a.AssertContains(t, BroadcastUpdateRoute(state.PubRoute{
 		Source: state.Source{
 			NodeId: "A",
 			Prefix: nodeToPrefix("A"),
@@ -221,16 +218,16 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)`,
 			Seqno:  0,
 			Metric: state.INF,
 		},
-	})
+	}))
 	// B acknowledges the retraction
 	HandleAckRetract(rs, h, "B", nodeToPrefix("A"))
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// check that we are indeed starved
-	a.AssertNotContains(t, "BROADCAST_UPDATE_ROUTE")
+	a.AssertNotContains(t, BroadcastUpdateRoute(state.PubRoute{}))
 	SolveStarvation(rs, h)
 	a = h.GetActions()
-	a.AssertContains(t, "BROADCAST_REQUEST_SEQNO", state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}, uint16(1), uint8(64))
+	a.AssertContains(t, BroadcastRequestSeqno(state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}, uint16(1), uint8(64)))
 
 	// suppose now that A receives the seqno request, sends an update to B, and B sends it to S
 	h.NeighUpdate(rs, "B", "A", nodeToPrefix("A"), 1, 1)
@@ -246,7 +243,7 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)`,
 			Metric: 3,
 		},
 	}
-	a.AssertContains(t, "BROADCAST_UPDATE_ROUTE", pr)
+	a.AssertContains(t, BroadcastUpdateRoute(pr))
 	assert.Equal(t, pr, rs.Routes[nodeToPrefix("A")].PubRoute)
 }
 
@@ -290,12 +287,12 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 2)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, 3)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
 10.0.0.3/32 via (nh: B, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
@@ -314,15 +311,15 @@ BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
 	// C will retract its route to B
 	h.NeighUpdate(rs, "C", "B", nodeToPrefix("B"), 0, state.INF)
 	a = h.GetActions()
-	a.AssertContains(t, "ACK_RETRACT", state.NodeId("C"), nodeToPrefix("B"))
+	a.AssertContains(t, AckRetract(state.NodeId("C"), nodeToPrefix("B")))
 
 	// B will retract its route to C and D
 	h.NeighUpdate(rs, "B", "C", nodeToPrefix("C"), 0, state.INF)
 	h.NeighUpdate(rs, "B", "D", nodeToPrefix("D"), 0, state.INF)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	a.AssertContains(t, "ACK_RETRACT", state.NodeId("B"), nodeToPrefix("C"))
-	a.AssertContains(t, "ACK_RETRACT", state.NodeId("B"), nodeToPrefix("D"))
+	a.AssertContains(t, AckRetract(state.NodeId("B"), nodeToPrefix("C")))
+	a.AssertContains(t, AckRetract(state.NodeId("B"), nodeToPrefix("D")))
 
 	// D via C is feasible as C advertises D with a cost of 1, which is less than B's 2
 	assert.Equal(t, uint32(4), rs.Routes[nodeToPrefix("D")].Metric)
@@ -365,11 +362,13 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 1)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("S"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("X"), 0, 1)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.19/32 via (nh: S, router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
@@ -384,8 +383,10 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 1)`, 
 	RemoveLink(rs, SA)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.24/32, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 4294967295)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("X"), 0, 2)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("S"), 0, state.INF)),
+	)
 	HandleAckRetract(rs, h, "B", nodeToPrefix("S"))
 	HandleAckRetract(rs, h, "B", nodeToPrefix("X"))
 	ComputeRoutes(rs, h)
@@ -401,9 +402,11 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 42949
 	h.NeighUpdateSvc(rs, "B", "D", nodeToPrefix("X"), 0, state.INF)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `ACK_RETRACT B 10.0.0.24/32
-ACK_RETRACT B 10.0.0.4/32
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.24/32, seqno: 0, metric: 4294967295)`, a.String())
+	a.AssertEqual(t,
+		AckRetract("B", nodeToPrefix("X")),
+		AckRetract("B", nodeToPrefix("D")),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("X"), 0, state.INF)),
+	)
 }
 
 func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
@@ -443,11 +446,13 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 1)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("S"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("X"), 0, 1)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.19/32 via (nh: S, router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 1)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
@@ -467,37 +472,37 @@ BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 0, metric: 1)`, 
 	HandleSeqnoRequest(rs, h, "C", state.Source{NodeId: "S", Prefix: nodeToPrefix("X")}, 1, 64)
 	a = h.GetActions()
 	// A should forward the request to S, decrementing the TTL by 1
-	assert.Equal(t, `REQUEST_SEQNO S (router: S, prefix: 10.0.0.24/32) 1 63`, a.String())
+	a.AssertEqual(t, RequestSeqno("S", state.Source{NodeId: "S", Prefix: nodeToPrefix("X")}, 1, 63))
 
 	// Now, S replies with an update with a higher seqno
 	h.NeighUpdateSvc(rs, "S", "S", nodeToPrefix("X"), 1, 0)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: S, prefix: 10.0.0.24/32, seqno: 1, metric: 3)`, a.String())
+	a.AssertEqual(t, BroadcastUpdateRoute(MakePubRoute("S", nodeToPrefix("X"), 1, 3)))
 
 	// Suppose, some other node also requests the seqno for S,X
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", Prefix: nodeToPrefix("X")}, 1, 64)
 	// A should not forward the request as we already have a route to S with an equivalent or higher seqno
 	a = h.GetActions()
 	// Instead, A should just reply with its current route to S,X
-	assert.Equal(t, `UPDATE_ROUTE B (router: S, prefix: 10.0.0.24/32, seqno: 1, metric: 3)`, a.String())
+	a.AssertEqual(t, UpdateRoute("B", MakePubRoute("S", nodeToPrefix("X"), 1, 3)))
 
 	// Now, suppose some node requests the seqno for A
 
 	// Req 1: A should not increase its seqno
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}, 0, 64)
 	a = h.GetActions()
-	assert.Equal(t, `UPDATE_ROUTE B (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)`, a.String())
+	a.AssertEqual(t, UpdateRoute("B", MakePubRoute("A", nodeToPrefix("A"), 0, 0)))
 
 	// Req 2: A should increase its seqno by 1
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}, 1, 64)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 1, metric: 0)`, a.String())
+	a.AssertEqual(t, BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 1, 0)))
 
 	// Req 3: A should increase its seqno to 5
 	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}, 5, 64)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 5, metric: 0)`, a.String())
+	a.AssertEqual(t, BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 5, 0)))
 }
 
 func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
@@ -540,12 +545,12 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 2)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, 3)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
 10.0.0.3/32 via (nh: B, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
@@ -566,16 +571,20 @@ BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
 	h.NeighUpdate(rs, "C", "B", nodeToPrefix("B"), 0, 3)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `REQUEST_SEQNO B (router: C, prefix: 10.0.0.3/32) 1 64
-REQUEST_SEQNO B (router: D, prefix: 10.0.0.4/32) 1 64`, a.String())
+	a.AssertEqual(t,
+		RequestSeqno("B", state.Source{NodeId: "C", Prefix: nodeToPrefix("C")}, 1, 64),
+		RequestSeqno("B", state.Source{NodeId: "D", Prefix: nodeToPrefix("D")}, 1, 64),
+	)
 
 	// Now, we get the seqno updates from B
 	h.NeighUpdate(rs, "B", "C", nodeToPrefix("C"), 1, 3)
 	h.NeighUpdate(rs, "B", "D", nodeToPrefix("D"), 1, 3)
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 1, metric: 4)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 1, metric: 4)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 1, 4)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 1, 4)),
+	)
 }
 
 func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
@@ -620,7 +629,7 @@ func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
 
 	// A should realize it's starved and request a higher seqno
 	SolveStarvation(rs, h)
-	h.GetActions().AssertContains(t, "BROADCAST_REQUEST_SEQNO", state.Source{NodeId: "C", Prefix: cPrefix}, uint16(1), uint8(64))
+	h.GetActions().AssertContains(t, BroadcastRequestSeqno(state.Source{NodeId: "C", Prefix: cPrefix}, uint16(1), uint8(64)))
 
 	// Now B advertises C with the higher seqno (1). This is now FEASIBLE.
 	h.NeighUpdate(rs, "B", "C", cPrefix, 1, 10)
@@ -672,12 +681,12 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 2)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, 3)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
 10.0.0.3/32 via (nh: B, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 2)
@@ -685,9 +694,11 @@ BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 3)`,
 
 	RunGC(rs, h) // expired routes are not held, so we do not need to wait for retraction ACK
 	a = h.GetActions()
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 4294967295)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 4294967295)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 4294967295)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, state.INF)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, state.INF)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, state.INF)),
+	)
 
 	RunGC(rs, h)
 	for _, neigh := range rs.Neighbours {
@@ -728,12 +739,12 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
 	// check that we converge to the correct table
-	assert.Equal(t,
-		`BROADCAST_UPDATE_ROUTE (router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
-BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 5)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 4)`,
-		a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 0, 0)),
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 1)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 5)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, 4)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 1)
 10.0.0.3/32 via (nh: B, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 5)
@@ -791,9 +802,11 @@ BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 4)`,
 	ComputeRoutes(rs, h)
 	a = h.GetActions()
 	// this is a significant change, so we should broadcast
-	assert.Equal(t, `BROADCAST_UPDATE_ROUTE (router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 12000000)
-BROADCAST_UPDATE_ROUTE (router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 10000000)
-BROADCAST_UPDATE_ROUTE (router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 10000001)`, a.String())
+	a.AssertEqual(t,
+		BroadcastUpdateRoute(MakePubRoute("B", nodeToPrefix("B"), 0, 12_000_000)),
+		BroadcastUpdateRoute(MakePubRoute("C", nodeToPrefix("C"), 0, 10_000_000)),
+		BroadcastUpdateRoute(MakePubRoute("D", nodeToPrefix("D"), 0, 10_000_001)),
+	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 0)
 10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 12000000)
 10.0.0.3/32 via (nh: C, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 10000000)

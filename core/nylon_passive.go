@@ -14,7 +14,6 @@ func (n *Nylon) initPassiveClient() error {
 }
 
 func scanPassivePeers(n *Nylon) error {
-	r := n.Router
 	for _, peer := range n.Device.GetPeers() {
 		nid := n.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
 
@@ -44,9 +43,9 @@ func scanPassivePeers(n *Nylon) error {
 			if n.IsClient(*nid) {
 				// we have a passive client
 				for _, newPrefix := range ncfg.Prefixes {
-					recentlyAdvertised := r.hasRecentlyAdvertised(newPrefix.GetPrefix())
+					recentlyAdvertised := n.hasRecentlyAdvertised(newPrefix.GetPrefix())
 					if recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised {
-						r.updatePassiveClient(n, newPrefix, *nid, !recentlyUpdated)
+						n.updatePassiveClient(newPrefix, *nid, !recentlyUpdated)
 					}
 				}
 			}
