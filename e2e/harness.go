@@ -28,10 +28,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
+var (
 	ImageName   = "nylon-debug:latest"
 	AppPort     = "57175/udp"
 	WaitTimeout = 2 * time.Minute
+	networkMu   sync.Mutex
 )
 
 type Harness struct {
@@ -67,6 +68,9 @@ func NewHarness(t *testing.T) *Harness {
 		}
 		rootDir = parent
 	}
+
+	networkMu.Lock()
+	defer networkMu.Unlock()
 
 	subnet, gateway, err := AllocateDockerSubnet(ctx)
 	if err != nil {

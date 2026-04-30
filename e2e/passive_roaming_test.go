@@ -20,6 +20,7 @@ import (
 )
 
 func TestPassiveRoaming(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 	ctx := context.Background()
 

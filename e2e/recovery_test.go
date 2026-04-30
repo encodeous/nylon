@@ -11,6 +11,7 @@ import (
 )
 
 func TestRecoveryExample(t *testing.T) {
+	t.Parallel()
 	h := NewHarness(t)
 
 	// Node names
