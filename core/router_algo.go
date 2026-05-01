@@ -82,7 +82,9 @@ func checkFeasibility(router *state.RouterState, advRoute state.PubRoute) bool {
 func FullTableUpdate(s *state.RouterState, r Router) {
 	// send a full table update to all neighbours
 	for _, route := range s.Routes {
-		updateFeasibility(s, route.PubRoute)
+		if route.Metric != state.INF {
+			updateFeasibility(s, route.PubRoute)
+		}
 		r.BroadcastSendRouteUpdate(route.PubRoute)
 	}
 }
@@ -90,7 +92,9 @@ func FullTableUpdate(s *state.RouterState, r Router) {
 func PushFullTable(s *state.RouterState, r Router, neigh state.NodeId) {
 	// send a full table update to one neighbour
 	for _, route := range s.Routes {
-		updateFeasibility(s, route.PubRoute)
+		if route.Metric != state.INF {
+			updateFeasibility(s, route.PubRoute)
+		}
 		r.SendRouteUpdate(neigh, route.PubRoute)
 	}
 }
@@ -105,18 +109,18 @@ func RunGC(s *state.RouterState, r Router) {
 
 	// scan neighbour routes for expiry
 	for _, neigh := range s.Neighbours {
-		for src, route := range neigh.Routes {
+		for prefix, route := range neigh.Routes {
 			if now.After(route.ExpireAt) {
 				if route.Metric == state.INF {
 					// route expired and is INF, delete it
-					delete(neigh.Routes, src)
-					r.RouterEvent(log.EventRouteExpired, "expired and removed", "neigh", neigh.Id, "src", src)
+					delete(neigh.Routes, prefix)
+					r.RouterEvent(log.EventRouteExpired, "expired and removed", "neigh", neigh.Id, "prefix", prefix)
 				} else {
 					// route expired, set metric to INF
 					route.Metric = state.INF
 					route.ExpireAt = time.Now().Add(state.RouteExpiryTime) // reset expiry time
-					neigh.Routes[src] = route                              // update the route
-					r.RouterEvent(log.EventRouteExpired, "expired and marked", "neigh", neigh.Id, "src", src)
+					neigh.Routes[prefix] = route                           // update the route
+					r.RouterEvent(log.EventRouteExpired, "expired and marked", "neigh", neigh.Id, "prefix", prefix)
 				}
 			}
 		}
@@ -217,7 +221,11 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						//   *  if the node has one or more feasible routes towards the requested
 						//      prefix with a next hop that is not the requesting node, then the
 						//      node MUST forward the request to the next hop of one such route;
-						if src.Prefix == route.Prefix && checkFeasibility(s, route.PubRoute) {
+						n := s.GetNeighbour(neigh)
+						if n == nil || n.BestEndpoint() == nil {
+							return false
+						}
+						if src.Prefix == route.Prefix && neigh != fromNeigh && checkFeasibility(s, route.PubRoute) {
 							nh = &neigh
 							return true // found a feasible route
 						}
@@ -227,6 +235,10 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						//      the requested prefix with a next hop that is not the requesting
 						//      node, then the node SHOULD forward the request to the next hop of
 						//      one such route.
+						n := s.GetNeighbour(neigh)
+						if n == nil || n.BestEndpoint() == nil {
+							return false
+						}
 						if src.Prefix == route.Prefix && neigh != fromNeigh {
 							nh = &neigh
 							return true // found a route
@@ -315,7 +327,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		//      entry, then the update MAY be ignored;
 
 		selRoute, hasSelected := s.Routes[adv.Source.Prefix]
-		isSelected := hasSelected && selRoute.Nh == neighId
+		isSelected := hasSelected && selRoute.Nh == neighId && selRoute.Source == adv.Source
 		if !checkFeasibility(s, adv) {
 			dummy := state.SelRoute{
 				PubRoute: adv,
@@ -539,6 +551,11 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				newTable[prefix] = newRoute
 			} else {
 				// check if we should switch to this route
+				if oldRoute.Metric == newRoute.Metric {
+					if prevRoute, ok := s.Routes[prefix]; ok && sameRoute(oldRoute, prevRoute) {
+						continue
+					}
+				}
 				if ShouldSwitch(oldRoute, newRoute) {
 					newTable[prefix] = newRoute
 				}
@@ -588,6 +605,8 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				oldRoute.Metric = state.INF
 				oldRoute.RetractedBy = nil
 				newTable[prefix] = oldRoute
+				// insert blackhole
+				r.TableInsertRoute(prefix, oldRoute)
 			}
 		}
 	}
@@ -659,4 +678,8 @@ func ShouldSwitch(curRoute state.SelRoute, newRoute state.SelRoute) bool {
 		return false
 	}
 	return true
+}
+
+func sameRoute(a state.SelRoute, b state.SelRoute) bool {
+	return a.Nh == b.Nh && a.Source == b.Source
 }

@@ -55,6 +55,9 @@ func (n *Nylon) InstallTC() {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
 			if ok && !packet.Incoming() {
+				if entry.Blackhole {
+					return device.TcDrop, nil
+				}
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
 					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
@@ -68,6 +71,9 @@ func (n *Nylon) InstallTC() {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
 			if ok {
+				if entry.Blackhole {
+					return device.TcDrop, nil
+				}
 				packet.ToPeer = entry.Peer
 				if state.DBG_trace_tc {
 					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))

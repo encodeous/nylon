@@ -15,8 +15,9 @@ import (
 )
 
 type RouteTableEntry struct {
-	Nh   state.NodeId
-	Peer *device.Peer
+	Nh        state.NodeId
+	Peer      *device.Peer
+	Blackhole bool
 }
 
 func (n *Nylon) GetNeighIO(neigh state.NodeId) *IOPending {
@@ -97,6 +98,14 @@ func (n *Nylon) UpdateNeighbour(neigh state.NodeId) {
 
 func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 	nh := route.Nh
+	if route.Metric == state.INF {
+		n.router.ForwardTable.Insert(prefix, RouteTableEntry{
+			Nh:        nh,
+			Blackhole: true,
+		})
+		n.router.ExitTable.Delete(prefix)
+		return
+	}
 	peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(nh).PubKey))
 	n.router.ForwardTable.Insert(prefix, RouteTableEntry{
 		Nh:   nh,
@@ -291,6 +300,7 @@ func (n *Nylon) routerHandleRouteUpdate(node state.NodeId, update *protocol.Ny_U
 			Metric: update.Metric,
 		},
 	})
+	ComputeRoutes(n.RouterState, n)
 	return nil
 }
 

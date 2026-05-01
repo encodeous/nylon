@@ -62,7 +62,8 @@ func NewMockEndpoint(node state.NodeId, metric uint32) *MockEndpoint {
 }
 
 type RouterHarness struct {
-	actions []RouterEvent
+	actions      []RouterEvent
+	tableActions []RouterEvent
 }
 
 type RouterEvent struct {
@@ -76,6 +77,8 @@ const (
 	eventBroadcastRouteUpdate  = "broadcast_route_update"
 	eventSendSeqnoRequest      = "send_seqno_request"
 	eventBroadcastSeqnoRequest = "broadcast_seqno_request"
+	eventTableInsertRoute      = "table_insert_route"
+	eventTableDeleteRoute      = "table_delete_route"
 	eventRouterLog             = "router_log"
 )
 
@@ -103,6 +106,14 @@ func BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8) RouterE
 	return NewRouterEvent(eventBroadcastSeqnoRequest, src, seqno, hopCnt)
 }
 
+func TableInsert(prefix netip.Prefix, route state.SelRoute) RouterEvent {
+	return NewRouterEvent(eventTableInsertRoute, prefix, route)
+}
+
+func TableDelete(prefix netip.Prefix) RouterEvent {
+	return NewRouterEvent(eventTableDeleteRoute, prefix)
+}
+
 func RouterLog(event string, desc string, args ...any) RouterEvent {
 	eventArgs := []any{event, desc}
 	eventArgs = append(eventArgs, args...)
@@ -110,11 +121,11 @@ func RouterLog(event string, desc string, args ...any) RouterEvent {
 }
 
 func (h *RouterHarness) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
-
+	h.tableActions = append(h.tableActions, TableInsert(prefix, route))
 }
 
 func (h *RouterHarness) TableDeleteRoute(prefix netip.Prefix) {
-
+	h.tableActions = append(h.tableActions, TableDelete(prefix))
 }
 
 func (h *RouterHarness) SendAckRetract(neigh state.NodeId, prefix netip.Prefix) {
@@ -165,6 +176,12 @@ func (h *RouterHarness) GetActions() HarnessEvents {
 	}
 
 	h.actions = make([]RouterEvent, 0)
+	return x
+}
+
+func (h *RouterHarness) GetTableActions() HarnessEvents {
+	x := slices.Clone(h.tableActions)
+	h.tableActions = make([]RouterEvent, 0)
 	return x
 }
 

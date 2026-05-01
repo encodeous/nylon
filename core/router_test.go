@@ -505,6 +505,52 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 	a.AssertEqual(t, BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 5, 0)))
 }
 
+func TestRouter_SeqnoRequestNotForwardedBackToRequester(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	// A has a stale selected route to S through requester B. In A's neighbour
+	// table, B is still the only feasible route for S, while C has an older
+	// route to S. If B loses its route and asks A for a newer seqno before A
+	// has processed B's retraction, A must not forward the request back to B.
+	//
+	//      B  (stale route to S at metric 1)
+	//      | 1
+	//      A
+	//      | 1
+	//      C  (older route to S at metric 3)
+	//
+	// A selected route: S via B, seqno 0, metric 2
+	// B asks A for:    S seqno 1
+	// Expected:        A forwards to C
+	// Forbidden:       A forwards back to B
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+
+	h.NeighUpdate(rs, "C", "S", sPrefix, 0, 3)
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 2}, rs.Sources[state.Source{NodeId: "S", Prefix: sPrefix}])
+	h.GetActions()
+
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 64)
+	a := h.GetActions()
+	a.AssertNotContains(t, RequestSeqno("B", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+	a.AssertContains(t, RequestSeqno("C", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+}
+
 func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
@@ -752,6 +798,268 @@ func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
 	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 20)
 	a := h.GetActions()
 	a.AssertNotContains(t, RequestSeqno("B", state.Source{NodeId: "C", Prefix: cPrefix}, 1, 64))
+}
+
+func TestRouter_KeepsSelectedRouteOnEqualMetric(t *testing.T) {
+	ConfigureConstants()
+	// A has two equal-cost paths to S. Once A selects B, a later recompute
+	// should not switch to C only because C appears later in the neighbour list.
+	//
+	//       B
+	//     1 | 1
+	//       A
+	//     1 | 1
+	//       C
+	//
+	// B and C both advertise S at metric 1.
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	h.GetActions()
+
+	h.NeighUpdate(rs, "C", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	assert.Equal(t, uint32(2), rs.Routes[sPrefix].Metric)
+	assert.Empty(t, h.GetActions())
+}
+
+func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
+	ConfigureConstants()
+	// A has a covering aggregate through B and a more specific route through C.
+	// When C disappears, the specific route must become an exact blackhole while
+	// it is held; deleting only the specific route would allow the aggregate to
+	// match and forward traffic that should be blackholed.
+	//
+	//       B advertises 10.0.0.0/24
+	//       |
+	//       A
+	//       |
+	//       C advertises 10.0.0.3/32
+
+	h := &RouterHarness{}
+	aggregate := netip.MustParsePrefix("10.0.0.0/24")
+	specific := nodeToPrefix("C")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	AC := AddLink(rs, NewMockEndpoint("C", 1))
+
+	h.NeighUpdate(rs, "B", "B", aggregate, 0, 0)
+	h.NeighUpdate(rs, "C", "C", specific, 0, 0)
+	ComputeRoutes(rs, h)
+	h.GetActions()
+	h.GetTableActions()
+
+	RemoveLink(rs, AC)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, state.INF, rs.Routes[specific].Metric)
+	tableActions := h.GetTableActions()
+	tableActions.AssertContains(t, TableDelete(specific))
+	foundBlackhole := false
+	for _, action := range tableActions {
+		if action.Type != eventTableInsertRoute || action.Args[0] != specific {
+			continue
+		}
+		route := action.Args[1].(state.SelRoute)
+		foundBlackhole = route.Metric == state.INF
+	}
+	assert.True(t, foundBlackhole, "held route should be installed as an exact-prefix blackhole")
+}
+
+func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T) {
+	ConfigureConstants()
+	// A selected B's route to P with source S. B then changes the source for
+	// the same prefix to T, but that update is unfeasible. Since the source no
+	// longer matches the selected route, A must not ignore the update as if the
+	// selected route was merely becoming unfeasible.
+	//
+	//   Prefix P is originated by router-id S.
+	//
+	//          S (origin for P)
+	//          |
+	//          B
+	//        1 |
+	//          A
+	//
+	// Initially, B advertises a route to P whose origin router-id is S at
+	// metric 0, so A selects:
+	//   P via B, source S, total metric 1.
+	//
+	// Later, B advertises the same prefix P as source T at metric 5. That update
+	// is unfeasible for T, but it is not the selected source S becoming
+	// unfeasible; it is a source change and must replace B's neighbour entry.
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("P")
+	oldSrc := state.Source{NodeId: "S", Prefix: prefix}
+	newSrc := state.Source{NodeId: "T", Prefix: prefix}
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	h.NeighUpdate(rs, "B", oldSrc.NodeId, prefix, 0, 0)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, oldSrc, rs.Routes[prefix].Source)
+	h.GetActions()
+
+	rs.Sources[newSrc] = state.FD{Seqno: 0, Metric: 1}
+	h.NeighUpdate(rs, "B", newSrc.NodeId, prefix, 0, 5)
+	ComputeRoutes(rs, h)
+
+	assert.NotEqual(t, oldSrc, rs.GetNeighbour("B").Routes[prefix].Source)
+	assert.Equal(t, state.INF, rs.Routes[prefix].Metric)
+}
+
+func TestRouter_DoesNotSelectInactiveEndpointRoute(t *testing.T) {
+	ConfigureConstants()
+	// A has learned a route to S from B, but its only endpoint to B is inactive.
+	// An inactive endpoint should be treated as no usable link, so A must not
+	// select or install the route.
+	//
+	//          S
+	//          |
+	//          B  (advertises S at metric 0)
+	//       x  |
+	//          A
+	//
+	// x = inactive A-B endpoint
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	ep := NewMockEndpoint("B", 1)
+	ep.active = false
+	_ = AddLink(rs, ep)
+
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 0)
+	ComputeRoutes(rs, h)
+
+	_, exists := rs.Routes[sPrefix]
+	assert.False(t, exists)
+}
+
+func TestRouter_SeqnoRequestSkipsInactiveForwardingNeighbour(t *testing.T) {
+	ConfigureConstants()
+	// A receives a seqno request from B for S. C and D both have neighbour-table
+	// routes for S, but C's endpoint is inactive. A must skip C and forward the
+	// request to the reachable neighbour D.
+	//
+	//          B  (requester)
+	//        1 |
+	//          A
+	//       x / \ 1
+	//        C   D
+	//
+	// C and D both advertise S. x = inactive A-C endpoint.
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C", "D"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	inactive := NewMockEndpoint("C", 1)
+	inactive.active = false
+	_ = AddLink(rs, inactive)
+	_ = AddLink(rs, NewMockEndpoint("D", 1))
+
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+	h.NeighUpdate(rs, "C", "S", sPrefix, 0, 1)
+	h.NeighUpdate(rs, "D", "S", sPrefix, 0, 1)
+	h.GetActions()
+
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 64)
+	a := h.GetActions()
+	a.AssertNotContains(t, RequestSeqno("C", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+	a.AssertContains(t, RequestSeqno("D", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+}
+
+func TestRouter_FullTableUpdateDoesNotUpdateFeasibilityForRetraction(t *testing.T) {
+	ConfigureConstants()
+	// A is holding a retraction for S and must continue advertising that INF
+	// route. Sending the retraction should not update A's feasibility distance:
+	// FD updates are for finite updates, not retractions.
+	//
+	//          S  (held as INF)
+	//          |
+	//          B
+	//          |
+	//          A
+	//
+	// Before full-table update: FD(S) = (seqno 0, metric 1)
+	// Held retraction sent:     S seqno 1, metric INF
+	// Expected after send:      FD(S) remains (seqno 0, metric 1)
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("S")
+	src := state.Source{NodeId: "S", Prefix: prefix}
+	rs := &state.RouterState{
+		Id:        "A",
+		SelfSeqno: make(map[netip.Prefix]uint16),
+		Routes: map[netip.Prefix]state.SelRoute{
+			prefix: {
+				PubRoute: MakePubRoute("S", prefix, 1, state.INF),
+				Nh:       "B",
+				ExpireAt: maxTime,
+			},
+		},
+		Sources: map[state.Source]state.FD{
+			src: {Seqno: 0, Metric: 1},
+		},
+		Neighbours: MakeNeighbours("B"),
+		Advertised: make(map[netip.Prefix]state.Advertisement),
+	}
+
+	FullTableUpdate(rs, h)
+
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 1}, rs.Sources[src])
+	h.GetActions().AssertContains(t, BroadcastUpdateRoute(MakePubRoute("S", prefix, 1, state.INF)))
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {
