@@ -7,6 +7,7 @@ import (
 
 	"github.com/encodeous/nylon/polyamide/ipc"
 	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/state"
 )
 
 func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
@@ -28,7 +29,11 @@ func InitInterface(logger *slog.Logger, ifName string) error {
 }
 
 func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
-	return Exec(logger, "ip", "addr", "add", addr.String(), "dev", ifName)
+	return Exec(logger, "ip", "addr", "add", state.AddrToPrefix(addr).String(), "dev", ifName)
+}
+
+func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
+	return Exec(logger, "ip", "addr", "del", state.AddrToPrefix(addr).String(), "dev", ifName)
 }
 
 func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {

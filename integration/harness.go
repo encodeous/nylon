@@ -188,15 +188,12 @@ func (v *VirtualHarness) Start() chan error {
 			time.Sleep(sd)
 			labels := pprof.Labels("nylon node", string(rt.Id))
 			pprof.Do(context.Background(), labels, func(_ context.Context) {
-				restart, cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
+				cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
 					"vnet": vn,
 				}, &v.Nylons[idx])
 				if cErr != nil {
 					errChan <- cErr
 					return
-				}
-				if restart {
-					panic(fmt.Sprintf("node restart is not implemented"))
 				}
 			})
 		}()
@@ -206,7 +203,7 @@ func (v *VirtualHarness) Start() chan error {
 	for {
 		started := true
 		for idx, _ := range v.Central.Routers {
-			if v.Nylons[idx] == nil || !v.Nylons[idx].Started.Load() {
+			if v.Nylons[idx] == nil {
 				started = false
 				break
 			}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
@@ -78,35 +79,48 @@ func checkForConfigUpdates(n *Nylon) error {
 	if n.CentralCfg.Dist == nil {
 		return errors.New("nylon is not configured for automatic config distribution")
 	}
-	for _, repoStr := range n.CentralCfg.Dist.Repos {
+	key := n.CentralCfg.Dist.Key
+	currentTimestamp := n.Timestamp
+	repos := slices.Clone(n.CentralCfg.Dist.Repos)
+	for _, repoStr := range repos {
 		go func(repo string) {
 			err := func() error {
-				config, err := FetchConfig(repo, n.CentralCfg.Dist.Key)
+				config, err := FetchConfig(repo, key)
 				if err != nil {
 					return err
 				}
-				if config.Timestamp > n.Timestamp && !n.Updating.Swap(true) {
-					n.Log.Info("Found a new config update in repo", "repo", repo)
-					bytes, err := yaml.Marshal(config)
-					if err != nil {
-						n.Log.Error("Error marshalling new config", "err", err.Error())
-						goto err
+				if config.Timestamp <= currentTimestamp {
+					if state.DBG_log_repo_updates {
+						n.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo))
 					}
-					err = os.WriteFile(n.ConfigPath, bytes, 0700)
-					if err != nil {
-						n.Log.Error("Error writing new config", "err", err.Error())
-						goto err
-					}
-					n.Cancel(errors.New("shutting down for config update"))
 					return nil
-				err:
-					n.Updating.Store(false)
-				} else if state.DBG_log_repo_updates {
-					n.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo))
 				}
+				n.Dispatch(func() error {
+					if config.Timestamp <= n.Timestamp {
+						return nil
+					}
+					n.Log.Info("Found a new config update in repo", "repo", repo)
+					result, err := n.ApplyCentralConfig(*config)
+					if err != nil {
+						n.Log.Error("failed to apply central config update", "repo", repo, "result", result, "err", err)
+						return nil
+					}
+					if n.ConfigPath != "" {
+						bytes, err := yaml.Marshal(config)
+						if err != nil {
+							n.Log.Error("Error marshalling new config", "err", err.Error())
+							return nil
+						}
+						err = os.WriteFile(n.ConfigPath, bytes, 0700)
+						if err != nil {
+							n.Log.Error("Error writing new config", "err", err.Error())
+						}
+					}
+					return nil
+				})
 				return nil
 			}()
-			if err != nil && state.DBG_log_repo_updates {
+			if err != nil {
 				n.Log.Error("Error updating config", "err", err.Error())
 			}
 		}(repoStr)

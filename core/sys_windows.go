@@ -32,6 +32,10 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	return Exec(logger, "netsh", "interface", "ip", "add", "address", ifName, addr.String())
 }
 
+func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
+	return Exec(logger, "netsh", "interface", "ip", "delete", "address", ifName, addr.String())
+}
+
 func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
 	ifId := wintypes.LUID((dev.(*tun.NativeTun)).LUID())
 	itf, err := ifId.Interface()
