@@ -219,6 +219,7 @@ func eventMatchArgs(event any, args []any) (string, []any) {
 }
 
 func (e HarnessEvents) AssertContains(t *testing.T, event any, args ...any) {
+	t.Helper()
 	eventType, eventArgs := eventMatchArgs(event, args)
 	if e.contains(eventType, eventArgs...) {
 		return
@@ -227,6 +228,7 @@ func (e HarnessEvents) AssertContains(t *testing.T, event any, args ...any) {
 }
 
 func (e HarnessEvents) AssertNotContains(t *testing.T, event any, args ...any) {
+	t.Helper()
 	eventType, eventArgs := eventMatchArgs(event, args)
 	if e.contains(eventType, eventArgs...) {
 		t.Fatal("Unexpected event found: ", eventType, " with args: ", eventArgs, " in ", e)

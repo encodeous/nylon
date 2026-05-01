@@ -879,16 +879,8 @@ func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
 
 	assert.Equal(t, state.INF, rs.Routes[specific].Metric)
 	tableActions := h.GetTableActions()
-	tableActions.AssertContains(t, TableDelete(specific))
-	foundBlackhole := false
-	for _, action := range tableActions {
-		if action.Type != eventTableInsertRoute || action.Args[0] != specific {
-			continue
-		}
-		route := action.Args[1].(state.SelRoute)
-		foundBlackhole = route.Metric == state.INF
-	}
-	assert.True(t, foundBlackhole, "held route should be installed as an exact-prefix blackhole")
+	tableActions.AssertContains(t, TableInsert(specific, rs.Routes[specific]))
+	assert.Equal(t, state.INF, rs.Routes[specific].Metric, "held route should be installed as an exact-prefix blackhole")
 }
 
 func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T) {
@@ -1060,6 +1052,215 @@ func TestRouter_FullTableUpdateDoesNotUpdateFeasibilityForRetraction(t *testing.
 
 	assert.Equal(t, state.FD{Seqno: 0, Metric: 1}, rs.Sources[src])
 	h.GetActions().AssertContains(t, BroadcastUpdateRoute(MakePubRoute("S", prefix, 1, state.INF)))
+}
+
+func TestRouter_SolveStarvationIgnoresRetractedNeighbourRoute(t *testing.T) {
+	ConfigureConstants()
+	// A has lost its feasible route to S. The only remaining neighbour-table
+	// entry is B's retraction, so it must not satisfy the "has a feasible
+	// route" check that suppresses starvation seqno requests.
+	//
+	//          S
+	//          |
+	//          B  advertises S at INF
+	//        1 |
+	//          A
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("S")
+	src := state.Source{NodeId: "S", Prefix: prefix}
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    map[state.Source]state.FD{src: {Seqno: 0, Metric: 1}},
+		Neighbours: MakeNeighbours("B"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	rs.GetNeighbour("B").Routes[prefix] = state.NeighRoute{
+		PubRoute: MakePubRoute("S", prefix, 0, state.INF),
+		ExpireAt: maxTime,
+	}
+
+	SolveStarvation(rs, h)
+
+	h.GetActions().AssertContains(t, BroadcastRequestSeqno(src, 1, state.SeqnoRequestHopCount))
+}
+
+func TestRouter_SeqnoRequestDoesNotForwardToRetractedRoute(t *testing.T) {
+	ConfigureConstants()
+	// B asks A for a newer seqno for S. A has a held selected route for S and
+	// two other neighbour entries: C has only a retraction, while D has a real
+	// finite route. A must not forward the request to C just because INF passes
+	// the feasibility helper used for accepting retractions.
+	//
+	//          B  (requester)
+	//        1 |
+	//          A
+	//        1/ \1
+	//        C   D
+	//
+	// C advertises S at INF; D advertises S at metric 1.
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("S")
+	src := state.Source{NodeId: "S", Prefix: prefix}
+	rs := &state.RouterState{
+		Id:        "A",
+		SelfSeqno: make(map[netip.Prefix]uint16),
+		Routes: map[netip.Prefix]state.SelRoute{
+			prefix: {
+				PubRoute: MakePubRoute("S", prefix, 0, state.INF),
+				Nh:       "B",
+				ExpireAt: maxTime,
+			},
+		},
+		Sources:    map[state.Source]state.FD{src: {Seqno: 0, Metric: 1}},
+		Neighbours: MakeNeighbours("B", "C", "D"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("D", 1))
+	rs.GetNeighbour("C").Routes[prefix] = state.NeighRoute{
+		PubRoute: MakePubRoute("S", prefix, 1, state.INF),
+		ExpireAt: maxTime,
+	}
+	rs.GetNeighbour("D").Routes[prefix] = state.NeighRoute{
+		PubRoute: MakePubRoute("S", prefix, 1, 1),
+		ExpireAt: maxTime,
+	}
+
+	HandleSeqnoRequest(rs, h, "B", src, 1, 64)
+	a := h.GetActions()
+	a.AssertNotContains(t, RequestSeqno("C", src, 1, 63))
+	a.AssertContains(t, RequestSeqno("D", src, 1, 63))
+}
+
+func TestRouter_UnfeasibleEqualMetricUpdateDoesNotRequestSeqno(t *testing.T) {
+	ConfigureConstants()
+	state.HopCost = 5
+	// A selected C's route to S at total metric 10. The A-C link later worsens,
+	// so the selected route's current total metric is 25. B then sends an
+	// unfeasible update that would also total 25 if accepted. Equal cost is not
+	// a preferable route, so A should not send a seqno request to B.
+	//
+	// A --(5, then 20)-- C -- S
+	// A --(5)-- B -- S
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("S")
+	src := state.Source{NodeId: "S", Prefix: prefix}
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	AC := AddLink(rs, NewMockEndpoint("C", 5))
+	_ = AddLink(rs, NewMockEndpoint("B", 5))
+
+	h.NeighUpdate(rs, "C", "S", prefix, 0, 0)
+	h.NeighUpdate(rs, "B", "S", prefix, 0, 10)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "C", string(rs.Routes[prefix].Nh))
+	assert.Equal(t, uint32(10), rs.Routes[prefix].Metric)
+	h.GetActions()
+
+	AC.metric = 20
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "C", string(rs.Routes[prefix].Nh))
+	assert.Equal(t, uint32(25), rs.Routes[prefix].Metric)
+	h.GetActions()
+
+	h.NeighUpdate(rs, "B", "S", prefix, 0, 15)
+
+	h.GetActions().AssertNotContains(t, RequestSeqno("B", src, 1, state.SeqnoRequestHopCount))
+}
+
+func TestRouter_BroadcastUsesConfiguredNeighbours(t *testing.T) {
+	ConfigureConstants()
+	// broadcast must fan out over RouterState.Neighbours. The IO map
+	// is only a pending-output cache; if it starts empty, broadcasting over IO
+	// silently drops the update/request.
+
+	prefix := nodeToPrefix("S")
+	src := state.Source{NodeId: "S", Prefix: prefix}
+	n := &Nylon{
+		RouterState: &state.RouterState{
+			Id:         "A",
+			SelfSeqno:  make(map[netip.Prefix]uint16),
+			Routes:     make(map[netip.Prefix]state.SelRoute),
+			Sources:    make(map[state.Source]state.FD),
+			Neighbours: MakeNeighbours("B", "C"),
+			Advertised: make(map[netip.Prefix]state.Advertisement),
+		},
+	}
+	n.router.IO = make(map[state.NodeId]*IOPending)
+
+	n.BroadcastSendRouteUpdate(MakePubRoute("S", prefix, 0, 1))
+	if assert.Contains(t, n.router.IO, state.NodeId("B")) {
+		assert.Contains(t, n.router.IO["B"].Updates, prefix)
+	}
+	if assert.Contains(t, n.router.IO, state.NodeId("C")) {
+		assert.Contains(t, n.router.IO["C"].Updates, prefix)
+	}
+
+	n.router.IO = make(map[state.NodeId]*IOPending)
+	n.BroadcastRequestSeqno(src, 1, 64)
+	if assert.Contains(t, n.router.IO, state.NodeId("B")) {
+		assert.Contains(t, n.router.IO["B"].SeqnoReq, src)
+	}
+	if assert.Contains(t, n.router.IO, state.NodeId("C")) {
+		assert.Contains(t, n.router.IO["C"].SeqnoReq, src)
+	}
+}
+
+func TestRouter_HeldRouteDoesNotReinstallBlackholeOnNoopRecompute(t *testing.T) {
+	ConfigureConstants()
+	// A holds S as an INF route after losing C. The first transition to held
+	// state installs an exact-prefix blackhole; a later recompute with no state
+	// change should not reinstall that same blackhole again.
+	//
+	//          B
+	//        1 |
+	//          A
+	//        1 |
+	//          C  advertises S, then disappears
+
+	h := &RouterHarness{}
+	prefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	AC := AddLink(rs, NewMockEndpoint("C", 1))
+	h.NeighUpdate(rs, "C", "S", prefix, 0, 0)
+	ComputeRoutes(rs, h)
+	h.GetActions()
+	h.GetTableActions()
+
+	RemoveLink(rs, AC)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, state.INF, rs.Routes[prefix].Metric)
+	h.GetActions()
+	h.GetTableActions()
+
+	ComputeRoutes(rs, h)
+
+	assert.Empty(t, h.GetTableActions())
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {

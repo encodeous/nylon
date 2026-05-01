@@ -52,8 +52,8 @@ func (n *Nylon) SendAckRetract(neigh state.NodeId, prefix netip.Prefix) {
 }
 
 func (n *Nylon) BroadcastSendRouteUpdate(advRoute state.PubRoute) {
-	for neigh := range n.router.IO {
-		n.SendRouteUpdate(neigh, advRoute)
+	for _, neigh := range n.RouterState.Neighbours {
+		n.SendRouteUpdate(neigh.Id, advRoute)
 	}
 }
 
@@ -80,8 +80,8 @@ func (n *Nylon) RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16,
 }
 
 func (n *Nylon) BroadcastRequestSeqno(src state.Source, seqno uint16, hopCnt uint8) {
-	for neigh := range n.router.IO {
-		n.RequestSeqno(neigh, src, seqno, hopCnt)
+	for _, neigh := range n.RouterState.Neighbours {
+		n.RequestSeqno(neigh.Id, src, seqno, hopCnt)
 	}
 }
 
