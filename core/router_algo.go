@@ -254,6 +254,9 @@ func HandleAckRetract(s *state.RouterState, r Router, neighId state.NodeId, pref
 		r.RouterEvent(log.EventInconsistentState, "attempted to ack the retraction of a non-existent route", "prefix", prefix)
 		return // route does not exist
 	}
+	if rt.Metric != state.INF {
+		return // retraction ACKs only apply to held routes
+	}
 	if !slices.Contains(rt.RetractedBy, neighId) {
 		rt.RetractedBy = append(rt.RetractedBy, neighId)
 		s.Routes[prefix] = rt // update the route table
@@ -492,9 +495,10 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 			oldRoute, exists := newTable[prefix]
 
-			retractedBy := make([]state.NodeId, 0)
-			if exists {
-				retractedBy = oldRoute.RetractedBy
+			//   *  a route with infinite metric (a retracted route) is never
+			//      selected;
+			if totalCost == state.INF {
+				continue // ignored
 			}
 
 			fd := state.FD{
@@ -508,23 +512,19 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				},
 				Nh:          neigh.Id,
 				ExpireAt:    adv.ExpireAt,
-				RetractedBy: retractedBy,
-			}
-
-			// update the route if it is currently selected
-			if exists && oldRoute.Nh == newRoute.Nh {
-				newTable[prefix] = newRoute
-			}
-
-			//   *  a route with infinite metric (a retracted route) is never
-			//      selected;
-			if totalCost == state.INF {
-				continue // ignored
+				RetractedBy: []state.NodeId{},
 			}
 
 			//   *  an unfeasible route is never selected.
 			if !checkFeasibility(s, adv.PubRoute) {
 				continue // ignored
+			}
+
+			// Refresh the current winner for this recomputation. This keeps a
+			// selected next hop selected even when its metric worsens.
+			if exists && oldRoute.Nh == newRoute.Nh {
+				newTable[prefix] = newRoute
+				continue
 			}
 
 			if !exists {
@@ -579,6 +579,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				r.RouterEvent(log.EventRouteRetracted, "retracted", "prefix", prefix, "old", oldRoute)
 				// Add the retracted route back as INF so it can be held
 				oldRoute.Metric = state.INF
+				oldRoute.RetractedBy = nil
 				newTable[prefix] = oldRoute
 			}
 		}
