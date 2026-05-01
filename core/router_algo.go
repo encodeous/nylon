@@ -317,11 +317,18 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		selRoute, hasSelected := s.Routes[adv.Source.Prefix]
 		isSelected := hasSelected && selRoute.Nh == neighId
 		if !checkFeasibility(s, adv) {
-			isMoreOptimal := hasSelected && ShouldSwitch(selRoute, state.SelRoute{
+			dummy := state.SelRoute{
 				PubRoute: adv,
 				Nh:       neighId,
 				ExpireAt: time.Time{},
-			})
+			}
+			bestEp := n.BestEndpoint()
+			if bestEp != nil {
+				dummy.Metric = AddMetric(dummy.Metric, AddMetric(bestEp.Metric(), state.HopCost))
+			} else {
+				dummy.Metric = state.INF
+			}
+			isMoreOptimal := hasSelected && ShouldSwitch(selRoute, dummy)
 			if isSelected {
 				// 3.8.2.2.  Dealing with Unfeasible Updates
 				//   In order to keep routes from spuriously expiring because they have
