@@ -640,6 +640,78 @@ func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
 	assert.Equal(t, uint32(11), rs.Routes[cPrefix].Metric)
 }
 
+func TestRouter_RetractedByClearedWhenHeldRouteRecovers(t *testing.T) {
+	ConfigureConstants()
+	// Topology:
+	// A --(1)-- C
+	// A --(1)-- B --(10)-- C
+	// A --(1)-- D
+	// D keeps the held route alive after B acknowledges the retraction.
+
+	h := &RouterHarness{}
+	cPrefix := nodeToPrefix("C")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C", "D"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	AC := AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("D", 1))
+
+	h.NeighUpdate(rs, "C", "C", cPrefix, 0, 0)
+	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 10)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, "C", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(1), rs.Routes[cPrefix].Metric)
+
+	RemoveLink(rs, AC)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, state.INF, rs.Routes[cPrefix].Metric)
+
+	HandleAckRetract(rs, h, "B", cPrefix)
+	assert.Equal(t, []state.NodeId{"B"}, rs.Routes[cPrefix].RetractedBy)
+
+	h.NeighUpdate(rs, "B", "C", cPrefix, 1, 10)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, "B", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(11), rs.Routes[cPrefix].Metric)
+	assert.Empty(t, rs.Routes[cPrefix].RetractedBy)
+}
+
+func TestRouter_AckRetractIgnoredForFiniteRoute(t *testing.T) {
+	ConfigureConstants()
+
+	h := &RouterHarness{}
+	cPrefix := nodeToPrefix("C")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+
+	h.NeighUpdate(rs, "C", "C", cPrefix, 0, 0)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, "C", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(1), rs.Routes[cPrefix].Metric)
+
+	HandleAckRetract(rs, h, "B", cPrefix)
+	assert.Empty(t, rs.Routes[cPrefix].RetractedBy)
+}
+
 func TestRouter5A_GCRoutes(t *testing.T) {
 	ConfigureConstants()
 	state.RouteExpiryTime = -1 // for testing, we want routes to expire immediately
