@@ -188,7 +188,10 @@ func (n *Neighbour) BestEndpoint() Endpoint {
 	var best Endpoint
 
 	for _, link := range n.Eps {
-		if best == nil || link.Metric() < best.Metric() || (link.IsActive() && !best.IsActive()) {
+		if !link.IsActive() {
+			continue
+		}
+		if best == nil || link.Metric() < best.Metric() {
 			best = link
 		}
 	}

@@ -148,7 +148,11 @@ func HandleNylonIPCGet(n *Nylon, rw *bufio.ReadWriter) error {
 		sb.WriteString("\n\nForward Table:\n")
 		rt = make([]string, 0)
 		for prefix, route := range n.router.ForwardTable.All() {
-			rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
+			if route.Blackhole {
+				rt = append(rt, fmt.Sprintf(" - %s blackhole", prefix))
+			} else {
+				rt = append(rt, fmt.Sprintf(" - %s via %s", prefix, route.Nh))
+			}
 		}
 		slices.Sort(rt)
 		sb.WriteString(strings.Join(rt, "\n") + "\n")
