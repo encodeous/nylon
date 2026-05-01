@@ -291,6 +291,7 @@ func (n *Nylon) routerHandleRouteUpdate(node state.NodeId, update *protocol.Ny_U
 			Metric: update.Metric,
 		},
 	})
+	ComputeRoutes(n.RouterState, n)
 	return nil
 }
 

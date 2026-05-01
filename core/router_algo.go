@@ -217,7 +217,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						//   *  if the node has one or more feasible routes towards the requested
 						//      prefix with a next hop that is not the requesting node, then the
 						//      node MUST forward the request to the next hop of one such route;
-						if src.Prefix == route.Prefix && checkFeasibility(s, route.PubRoute) {
+						if src.Prefix == route.Prefix && neigh != fromNeigh && checkFeasibility(s, route.PubRoute) {
 							nh = &neigh
 							return true // found a feasible route
 						}
@@ -539,6 +539,11 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				newTable[prefix] = newRoute
 			} else {
 				// check if we should switch to this route
+				if oldRoute.Metric == newRoute.Metric {
+					if prevRoute, ok := s.Routes[prefix]; ok && sameRoute(oldRoute, prevRoute) {
+						continue
+					}
+				}
 				if ShouldSwitch(oldRoute, newRoute) {
 					newTable[prefix] = newRoute
 				}
@@ -659,4 +664,8 @@ func ShouldSwitch(curRoute state.SelRoute, newRoute state.SelRoute) bool {
 		return false
 	}
 	return true
+}
+
+func sameRoute(a state.SelRoute, b state.SelRoute) bool {
+	return a.Nh == b.Nh && a.Source == b.Source
 }

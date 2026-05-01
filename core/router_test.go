@@ -505,6 +505,52 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 	a.AssertEqual(t, BroadcastUpdateRoute(MakePubRoute("A", nodeToPrefix("A"), 5, 0)))
 }
 
+func TestRouter_SeqnoRequestNotForwardedBackToRequester(t *testing.T) {
+	ConfigureConstants()
+	// This test is for the following network with our router being A:
+	// A has a stale selected route to S through requester B. In A's neighbour
+	// table, B is still the only feasible route for S, while C has an older
+	// route to S. If B loses its route and asks A for a newer seqno before A
+	// has processed B's retraction, A must not forward the request back to B.
+	//
+	//      B  (stale route to S at metric 1)
+	//      | 1
+	//      A
+	//      | 1
+	//      C  (older route to S at metric 3)
+	//
+	// A selected route: S via B, seqno 0, metric 2
+	// B asks A for:    S seqno 1
+	// Expected:        A forwards to C
+	// Forbidden:       A forwards back to B
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+
+	h.NeighUpdate(rs, "C", "S", sPrefix, 0, 3)
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	assert.Equal(t, state.FD{Seqno: 0, Metric: 2}, rs.Sources[state.Source{NodeId: "S", Prefix: sPrefix}])
+	h.GetActions()
+
+	HandleSeqnoRequest(rs, h, "B", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 64)
+	a := h.GetActions()
+	a.AssertNotContains(t, RequestSeqno("B", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+	a.AssertContains(t, RequestSeqno("C", state.Source{NodeId: "S", Prefix: sPrefix}, 1, 63))
+}
+
 func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 	ConfigureConstants()
 	// This test is for the following network with our router being A:
@@ -752,6 +798,46 @@ func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
 	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 20)
 	a := h.GetActions()
 	a.AssertNotContains(t, RequestSeqno("B", state.Source{NodeId: "C", Prefix: cPrefix}, 1, 64))
+}
+
+func TestRouter_KeepsSelectedRouteOnEqualMetric(t *testing.T) {
+	ConfigureConstants()
+	// A has two equal-cost paths to S. Once A selects B, a later recompute
+	// should not switch to C only because C appears later in the neighbour list.
+	//
+	//       B
+	//     1 | 1
+	//       A
+	//     1 | 1
+	//       C
+	//
+	// B and C both advertise S at metric 1.
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	_ = AddLink(rs, NewMockEndpoint("B", 1))
+	_ = AddLink(rs, NewMockEndpoint("C", 1))
+
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	h.GetActions()
+
+	h.NeighUpdate(rs, "C", "S", sPrefix, 0, 1)
+	ComputeRoutes(rs, h)
+
+	assert.Equal(t, "B", string(rs.Routes[sPrefix].Nh))
+	assert.Equal(t, uint32(2), rs.Routes[sPrefix].Metric)
+	assert.Empty(t, h.GetActions())
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {
