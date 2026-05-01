@@ -31,7 +31,7 @@ func (n *Nylon) initWireGuard() error {
 	n.Log.Info("installed nylon traffic control filter for polysock")
 
 	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
-		return HandleNylonIPCGet(n, writer)
+		return HandleNylonIPC(n, writer)
 	}
 
 	// TODO: fully convert to code-based api

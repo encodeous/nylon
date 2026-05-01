@@ -10,8 +10,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "nylon",
 	Short: "Nylon CLI",
-	Long: `Nylon is a mesh networking system.
-At its core, nylon ensures nodes are reachable even under the most difficult network conditions, without compromising performance or security.`,
+	Long: `Nylon is a mesh networking system, designed to provide secure, reliable, and high-performance connectivity for distributed systems.
+
+Documentation: https://nylon.jq.ax
+GitHub: https://github.com/encodeous/nylon`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

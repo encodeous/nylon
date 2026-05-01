@@ -23,6 +23,8 @@ import (
 	"github.com/encodeous/nylon/polyamide/ipc"
 )
 
+var ErrIPCStatusHandled = errors.New("ipc status handled by custom handler")
+
 type IPCError struct {
 	code int64 // error code
 	err  error // underlying/wrapped error
@@ -457,6 +459,10 @@ func (device *Device) IpcHandle(socket net.Conn) {
 		}
 
 		// write status
+		if errors.Is(err, ErrIPCStatusHandled) {
+			err = nil
+			continue
+		}
 		var status *IPCError
 		if err != nil && !errors.As(err, &status) {
 			// shouldn't happen
