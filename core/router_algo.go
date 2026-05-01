@@ -225,7 +225,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						if n == nil || n.BestEndpoint() == nil {
 							return false
 						}
-						if src.Prefix == route.Prefix && neigh != fromNeigh && checkFeasibility(s, route.PubRoute) {
+						if src.Prefix == route.Prefix && neigh != fromNeigh && route.Metric != state.INF && checkFeasibility(s, route.PubRoute) {
 							nh = &neigh
 							return true // found a feasible route
 						}
@@ -239,7 +239,7 @@ func HandleSeqnoRequest(s *state.RouterState, r Router, fromNeigh state.NodeId, 
 						if n == nil || n.BestEndpoint() == nil {
 							return false
 						}
-						if src.Prefix == route.Prefix && neigh != fromNeigh {
+						if src.Prefix == route.Prefix && neigh != fromNeigh && route.Metric != state.INF {
 							nh = &neigh
 							return true // found a route
 						}
@@ -340,7 +340,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 			} else {
 				dummy.Metric = state.INF
 			}
-			isMoreOptimal := hasSelected && ShouldSwitch(selRoute, dummy)
+			isMoreOptimal := hasSelected && IsStrictlyBetter(selRoute, dummy)
 			if isSelected {
 				// 3.8.2.2.  Dealing with Unfeasible Updates
 				//   In order to keep routes from spuriously expiring because they have
@@ -574,7 +574,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 	for prefix, newRoute := range newTable {
 		oldRoute, exists := s.Routes[prefix]
-		if !exists || oldRoute.Metric == state.INF {
+		if !exists || oldRoute.Metric == state.INF && newRoute.Metric != state.INF {
 			r.TableInsertRoute(prefix, newRoute)
 			r.RouterEvent(log.EventRouteInserted, "inserted", "prefix", prefix, "new", newRoute)
 		} else if oldRoute.Nh != newRoute.Nh {
@@ -599,7 +599,6 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 			// route is no longer reachable, retract it
 			if oldRoute.Metric != state.INF {
 				retract(s, r, prefix)
-				r.TableDeleteRoute(prefix)
 				r.RouterEvent(log.EventRouteRetracted, "retracted", "prefix", prefix, "old", oldRoute)
 				// Add the retracted route back as INF so it can be held
 				oldRoute.Metric = state.INF
@@ -607,6 +606,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				newTable[prefix] = oldRoute
 				// insert blackhole
 				r.TableInsertRoute(prefix, oldRoute)
+				r.RouterEvent(log.EventRouteUpdated, "blackholed", "prefix", prefix, "route", oldRoute)
 			}
 		}
 	}
@@ -634,7 +634,8 @@ func SolveStarvation(router *state.RouterState, r Router) {
 		}
 		for _, route := range neigh.Routes {
 			curFeasible, present := isFeasible[route.Source]
-			isFeasible[route.Source] = (present && curFeasible) || checkFeasibility(router, route.PubRoute)
+			routeFeasible := route.Metric != state.INF && checkFeasibility(router, route.PubRoute)
+			isFeasible[route.Source] = (present && curFeasible) || routeFeasible
 		}
 	}
 
@@ -678,6 +679,10 @@ func ShouldSwitch(curRoute state.SelRoute, newRoute state.SelRoute) bool {
 		return false
 	}
 	return true
+}
+
+func IsStrictlyBetter(curRoute state.SelRoute, newRoute state.SelRoute) bool {
+	return newRoute.Metric < curRoute.Metric
 }
 
 func sameRoute(a state.SelRoute, b state.SelRoute) bool {
