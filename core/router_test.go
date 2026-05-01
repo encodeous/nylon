@@ -712,6 +712,48 @@ func TestRouter_AckRetractIgnoredForFiniteRoute(t *testing.T) {
 	assert.Empty(t, rs.Routes[cPrefix].RetractedBy)
 }
 
+func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
+	ConfigureConstants()
+	state.HopCost = 5
+	// Topology:
+	// A --(5, then 20)-- C
+	// A --(5)-- B --(10, then 20)-- C
+	// B's later update is unfeasible and its advertised metric is lower than
+	// the selected total metric, but its total metric through B is worse once
+	// link cost and HopCost are included.
+
+	h := &RouterHarness{}
+	cPrefix := nodeToPrefix("C")
+	rs := &state.RouterState{
+		Id:         "A",
+		SelfSeqno:  make(map[netip.Prefix]uint16),
+		Routes:     make(map[netip.Prefix]state.SelRoute),
+		Sources:    make(map[state.Source]state.FD),
+		Neighbours: MakeNeighbours("B", "C"),
+		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	AC := AddLink(rs, NewMockEndpoint("C", 5))
+	_ = AddLink(rs, NewMockEndpoint("B", 5))
+
+	h.NeighUpdate(rs, "C", "C", cPrefix, 0, 0)
+	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 10)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "C", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(10), rs.Routes[cPrefix].Metric)
+	h.GetActions()
+
+	AC.metric = 20
+	ComputeRoutes(rs, h)
+	assert.Equal(t, "C", string(rs.Routes[cPrefix].Nh))
+	assert.Equal(t, uint32(25), rs.Routes[cPrefix].Metric)
+	h.GetActions()
+
+	h.NeighUpdate(rs, "B", "C", cPrefix, 0, 20)
+	a := h.GetActions()
+	a.AssertNotContains(t, RequestSeqno("B", state.Source{NodeId: "C", Prefix: cPrefix}, 1, 64))
+}
+
 func TestRouter5A_GCRoutes(t *testing.T) {
 	ConfigureConstants()
 	state.RouteExpiryTime = -1 // for testing, we want routes to expire immediately
