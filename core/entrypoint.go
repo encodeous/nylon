@@ -106,7 +106,7 @@ func readNodeConfig(nodePath string) (*state.LocalCfg, error) {
 	return &nodeCfg, nil
 }
 
-// Bootstrap manages the lifetime of the whole application. Nylon may be restarted multiple times, but Bootstrap is only called once.
+// Bootstrap provides startup logic in a real environment
 func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 	setupDebugging()
 	level := slog.LevelInfo
@@ -114,39 +114,34 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 		level = slog.LevelDebug
 	}
 
-	for {
-		centralCfg, err := readCentralConfig(centralPath, nodePath)
-		if err != nil {
-			panic(err)
-		}
-		nodeCfg, err := readNodeConfig(nodePath)
-		if err != nil {
-			panic(err)
-		}
-		if logPath != "" {
-			nodeCfg.LogPath = logPath
-		}
+	centralCfg, err := readCentralConfig(centralPath, nodePath)
+	if err != nil {
+		panic(err)
+	}
+	nodeCfg, err := readNodeConfig(nodePath)
+	if err != nil {
+		panic(err)
+	}
+	if logPath != "" {
+		nodeCfg.LogPath = logPath
+	}
 
-		state.ExpandCentralConfig(centralCfg)
-		err = state.CentralConfigValidator(centralCfg)
-		if err != nil {
-			panic(err)
-		}
-		err = state.NodeConfigValidator(nodeCfg)
-		if err != nil {
-			panic(err)
-		}
-		restart, err := Start(*centralCfg, *nodeCfg, level, centralPath, nil, nil)
-		if err != nil {
-			panic(err)
-		}
-		if !restart {
-			break
-		}
+	state.ExpandCentralConfig(centralCfg)
+	err = state.CentralConfigValidator(centralCfg)
+	if err != nil {
+		panic(err)
+	}
+	err = state.NodeConfigValidator(nodeCfg)
+	if err != nil {
+		panic(err)
+	}
+	err = Start(*centralCfg, *nodeCfg, level, centralPath, nil, nil)
+	if err != nil {
+		panic(err)
 	}
 }
 
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initNylon **Nylon) (bool, error) {
+func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initNylon **Nylon) error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	dispatch := make(chan func() error, 128)
@@ -176,11 +171,11 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 	if ncfg.LogPath != "" {
 		err := os.MkdirAll(path.Dir(ncfg.LogPath), 0700)
 		if err != nil {
-			return false, err
+			return err
 		}
 		f, err := os.OpenFile(ncfg.LogPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0700)
 		if err != nil {
-			return false, err
+			return err
 		}
 		handlers = append(handlers, slog.NewTextHandler(f, &slog.HandlerOptions{Level: logLevel}))
 	}
@@ -208,12 +203,12 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 	n.Log.Info("init modules")
 
-	if initNylon != nil {
-		*initNylon = n
-	}
 	err := n.Init()
 	if err != nil {
-		return false, err
+		return err
+	}
+	if initNylon != nil {
+		*initNylon = n
 	}
 	n.Log.Info("init modules complete")
 
@@ -232,18 +227,13 @@ func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, conf
 
 	err = MainLoop(n, dispatch)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if n.Updating.Load() {
-		n.Log.Info("Restarting Nylon...")
-		return true, nil
-	}
-	return false, nil
+	return nil
 }
 
 func MainLoop(n *Nylon, dispatch <-chan func() error) error {
 	n.Log.Debug("started main loop")
-	n.Started.Store(true)
 	for {
 		select {
 		case fun := <-dispatch:
@@ -274,18 +264,17 @@ endLoop:
 }
 
 func Stop(n *Nylon) {
-	if n.Stopping.Swap(true) {
-		return // don't stop twice
-	}
-	n.Cancel(context.Canceled)
-	if n.DispatchChannel != nil {
-		close(n.DispatchChannel)
-		n.DispatchChannel = nil
-	}
-	n.Log.Info("cleaning up modules")
-	err := n.Cleanup()
-	if err != nil {
-		n.Log.Error("error occurred during Stop: ", "error", err)
-	}
-	n.Log.Info("stopped")
+	n.cleanupOnce.Do(func() {
+		n.Cancel(context.Canceled)
+		if n.DispatchChannel != nil {
+			close(n.DispatchChannel)
+			n.DispatchChannel = nil
+		}
+		n.Log.Info("cleaning up modules")
+		err := n.Cleanup()
+		if err != nil {
+			n.Log.Error("error occurred during Stop: ", "error", err)
+		}
+		n.Log.Info("stopped")
+	})
 }

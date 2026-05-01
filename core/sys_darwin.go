@@ -31,6 +31,14 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	}
 }
 
+func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
+	if addr.Is4() {
+		return Exec(logger, "/sbin/ifconfig", ifName, "-alias", addr.String())
+	} else {
+		return Exec(logger, "/sbin/ifconfig", ifName, "inet6", addr.String(), "-alias")
+	}
+}
+
 func PrefixToMaskString(p netip.Prefix) string {
 	if !p.IsValid() {
 		return "Invalid Prefix"

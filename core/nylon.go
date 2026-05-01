@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/encodeous/nylon/polyamide/device"
@@ -16,8 +16,13 @@ import (
 )
 
 type Nylon struct {
-	Trace       *NylonTrace
-	RouterState *state.RouterState
+	Trace *NylonTrace
+
+	// state
+	state.ConfigState
+	RouterState   *state.RouterState
+	AppliedSystem AppliedSystemState
+	PingBuf       *ttlcache.Cache[uint64, EpPing]
 
 	router struct {
 		LastStarvationRequest time.Time
@@ -30,23 +35,30 @@ type Nylon struct {
 		log       *slog.Logger
 	}
 
+	// runtime/application
 	DispatchChannel chan func() error
-	state.ConfigState
-	Context    context.Context
-	Cancel     context.CancelCauseFunc
-	Log        *slog.Logger
-	AuxConfig  map[string]any
-	Updating   atomic.Bool
-	Stopping   atomic.Bool
-	Started    atomic.Bool
-	ConfigPath string
+	Log             *slog.Logger
+	ConfigPath      string
 
-	PingBuf             *ttlcache.Cache[uint64, EpPing]
-	Device              *device.Device
-	Tun                 tun.Device
-	wgUapi              net.Listener
-	itfName             string
-	prevInstalledRoutes []netip.Prefix
+	// resources
+	Tun       tun.Device
+	wgUapi    net.Listener
+	Interface string
+	Device    *device.Device
+
+	// only used for debugging & tests
+	AuxConfig map[string]any
+
+	// lifecycle
+	Context     context.Context
+	Cancel      context.CancelCauseFunc
+	cleanupOnce sync.Once
+}
+
+type AppliedSystemState struct {
+	Routes  []netip.Prefix
+	Aliases []netip.Addr
+	Peers   map[state.NodeId]state.NyPublicKey
 }
 
 func (n *Nylon) Init() error {
@@ -63,22 +75,12 @@ func (n *Nylon) Init() error {
 
 	state.SetResolvers(n.DnsResolvers)
 
-	// add neighbours
-	for _, peer := range n.GetPeers(n.LocalCfg.Id) {
-		if !n.IsRouter(peer) {
-			continue
-		}
-		stNeigh := &state.Neighbour{
-			Id:     peer,
-			Routes: make(map[netip.Prefix]state.NeighRoute),
-			Eps:    make([]state.Endpoint, 0),
-		}
-		cfg := n.GetRouter(peer)
-		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil))
-		}
-
-		n.RouterState.Neighbours = append(n.RouterState.Neighbours, stNeigh)
+	if n.AppliedSystem.Peers == nil {
+		n.AppliedSystem.Peers = make(map[state.NodeId]state.NyPublicKey)
+	}
+	err = n.reconcileRouterState(n.CentralCfg)
+	if err != nil {
+		return err
 	}
 
 	n.PingBuf = ttlcache.New[uint64, EpPing](
@@ -124,11 +126,7 @@ func (n *Nylon) Init() error {
 		return n.probeNew()
 	}, state.ProbeDiscoveryDelay)
 
-	// prefix healthcheck
-	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
-		n.Log.Info("starting prefix healthcheck", "prefix", ph.GetPrefix())
-		ph.Start(n.Log)
-	}
+	n.startAdvertisedPrefixHealth()
 
 	err = n.initPassiveClient()
 	if err != nil {
