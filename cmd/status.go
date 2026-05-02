@@ -117,10 +117,10 @@ func renderStatus(s *protocol.StatusResponse, opts statusRenderOptions) {
 		}
 		if opts.showRoutes && len(neigh.Routes) > 0 {
 			fmt.Println("    " + p.section("advertised routes:"))
-			printNeighRoutes(p, neigh.Routes, opts.showFull)
+			printNeighRoutes(p, neigh.PeerId, neigh.Routes, opts.showFull)
 		} else {
 			fmt.Println("    " + p.section("advertised prefixes:"))
-			printCondensedNeighRoutes(p, neigh.Routes, 3)
+			printCondensedNeighRoutes(p, neigh.PeerId, neigh.Routes, 3)
 		}
 		if opts.showRoutes && len(neigh.Advertised) > 0 {
 			fmt.Println("    " + p.section("local advertisements for peer:"))
@@ -243,7 +243,7 @@ func printEndpoints(p paletteValues, endpoints []*protocol.EndpointInfo, best *p
 	printTable(p, 3, headers, rows)
 }
 
-func printNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, full bool) {
+func printNeighRoutes(p paletteValues, neigh string, routes []*protocol.NeighRoute, full bool) {
 	headers := []string{"prefix", "router", "seqno", "metric"}
 	if full {
 		headers = append(headers, "expires")
@@ -253,7 +253,11 @@ func printNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, full bool)
 		pub := route.GetPubRoute()
 		src := pub.GetSource()
 		fd := pub.GetFd()
-		row := []string{src.Prefix, src.NodeId, fmt.Sprint(fd.Seqno), metricText(p, fd.Metric)}
+		prefix := src.Prefix
+		if src.NodeId == neigh {
+			prefix = p.good(prefix)
+		}
+		row := []string{prefix, src.NodeId, fmt.Sprint(fd.Seqno), metricText(p, fd.Metric)}
 		if full {
 			row = append(row, formatExpiry(route.ExpireAtUnix))
 		}
@@ -262,9 +266,12 @@ func printNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, full bool)
 	printTable(p, 3, headers, rows)
 }
 
-func printCondensedNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, indent int) {
+func printCondensedNeighRoutes(p paletteValues, neigh string, routes []*protocol.NeighRoute, indent int) {
 	prefixes := make([]string, 0, len(routes))
 	for _, route := range routes {
+		if route.PubRoute.Source.NodeId != neigh {
+			continue
+		}
 		prefixes = append(prefixes, route.PubRoute.GetSource().Prefix)
 	}
 	printCommaList(p, indent, prefixes)

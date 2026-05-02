@@ -137,7 +137,7 @@ func formatExpiry(unix int64) string {
 }
 
 func formatHandshake(unix int64) string {
-	if unix == 0 {
+	if unix <= 0 {
 		return "never"
 	}
 	return time.Since(time.Unix(0, unix)).Truncate(time.Second).String() + " ago"
