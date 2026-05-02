@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/hex"
 	"fmt"
+	"runtime"
 	"slices"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -252,6 +253,16 @@ func (n *Nylon) SyncSystemState() error {
 
 func (n *Nylon) syncAliases() error {
 	desired := n.GetRouter(n.LocalCfg.Id).Addresses
+	// we must first add the new alias before removing the old ones, else the system might flush our routes
+	for _, newEntry := range desired {
+		if !slices.Contains(n.AppliedSystem.Aliases, newEntry) {
+			n.Log.Debug("installing alias", "addr", newEntry.String())
+			err := ConfigureAlias(n.Log, n.Interface, newEntry)
+			if err != nil {
+				n.Log.Error("failed to configure alias", "err", err)
+			}
+		}
+	}
 	for _, oldEntry := range n.AppliedSystem.Aliases {
 		if !slices.Contains(desired, oldEntry) {
 			n.Log.Debug("removing old alias", "addr", oldEntry.String())
@@ -261,14 +272,9 @@ func (n *Nylon) syncAliases() error {
 			}
 		}
 	}
-	for _, newEntry := range desired {
-		if !slices.Contains(n.AppliedSystem.Aliases, newEntry) {
-			n.Log.Debug("installing alias", "addr", newEntry.String())
-			err := ConfigureAlias(n.Log, n.Interface, newEntry)
-			if err != nil {
-				n.Log.Error("failed to configure alias", "err", err)
-			}
-		}
+	// special case for linux: if all aliases are removed, the kernel will also flush the routes
+	if len(n.AppliedSystem.Aliases) != 0 && len(desired) == 0 && runtime.GOOS == "linux" {
+		n.AppliedSystem.Routes = nil
 	}
 	n.AppliedSystem.Aliases = slices.Clone(desired)
 	return nil
