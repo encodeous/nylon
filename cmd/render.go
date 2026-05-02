@@ -91,14 +91,14 @@ func printCommaList(p paletteValues, indent int, values []string) {
 func visibleLen(s string) int {
 	n := 0
 	inEscape := false
-	for i := 0; i < len(s); i++ {
+	for _, r := range s {
 		if inEscape {
-			if s[i] == 'm' {
+			if r == 'm' {
 				inEscape = false
 			}
 			continue
 		}
-		if s[i] == '\x1b' {
+		if r == '\x1b' {
 			inEscape = true
 			continue
 		}

@@ -10,7 +10,7 @@ import (
 )
 
 var verifyCmd = &cobra.Command{
-	Use:     "verify <config>",
+	Use:     "verify <central-config>",
 	Short:   "Validate nylon configuration files",
 	Args:    cobra.ExactArgs(1),
 	GroupID: "cfg",
@@ -57,5 +57,5 @@ var verifyCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(verifyCmd)
-	verifyCmd.Flags().String("node", "", "Validate a node config in addition")
+	verifyCmd.Flags().String("node", "", "Also validate the node config")
 }

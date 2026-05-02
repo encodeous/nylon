@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/base64"
+	"fmt"
 )
 
 func (k NyPrivateKey) MarshalText() ([]byte, error) {
@@ -13,7 +14,7 @@ func (k NyPublicKey) MarshalText() ([]byte, error) {
 func (k *NyPrivateKey) UnmarshalText(text []byte) error {
 	data, err := base64.StdEncoding.DecodeString(string(text))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to decode private key: %w", err)
 	}
 	*k = NyPrivateKey(data)
 	return nil
@@ -21,7 +22,7 @@ func (k *NyPrivateKey) UnmarshalText(text []byte) error {
 func (k *NyPublicKey) UnmarshalText(text []byte) error {
 	data, err := base64.StdEncoding.DecodeString(string(text))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to decode public key (%s): %w", text, err)
 	}
 	*k = NyPublicKey(data)
 	return nil

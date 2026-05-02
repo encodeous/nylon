@@ -10,7 +10,7 @@ import (
 )
 
 var probeCmd = &cobra.Command{
-	Use:     "probe <peer>",
+	Use:     "probe <peer-node-id>",
 	Short:   "Probe all endpoints of a neighbour",
 	Args:    cobra.ExactArgs(1),
 	GroupID: "ny",

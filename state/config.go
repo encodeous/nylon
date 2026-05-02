@@ -113,12 +113,12 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 			continue
 		}
 		if !slices.Contains(validSymbols, x) {
-			return nil, fmt.Errorf(`%s is not a valid node/group`, x)
+			return nil, fmt.Errorf(`invalid graph: %s is not a valid node/group`, x)
 		}
 		line = append(line, x)
 	}
 	if len(line) == 0 {
-		return nil, fmt.Errorf(`node/group list must not be empty`)
+		return nil, fmt.Errorf(`invalid graph: node/group list must not be empty`)
 	}
 	slices.Sort(line)
 	return line, nil
@@ -196,7 +196,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 			}
 			grp := strings.TrimSpace(spl[0])
 			if slices.Contains(nodes, grp) {
-				return nil, fmt.Errorf("group name must not be a node name: %s", grp)
+				return nil, fmt.Errorf("invalid graph: group name must not be a node name: %s", grp)
 			}
 			symbols = append(symbols, grp)
 		}
@@ -216,7 +216,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 			spl := strings.Split(line, "=")
 			grp := strings.TrimSpace(spl[0])
 			if _, ok := groups[grp]; ok {
-				return nil, fmt.Errorf("duplicate group name: %s", grp)
+				return nil, fmt.Errorf("invalid graph: duplicate group name: %s", grp)
 			}
 			lst, err := parseSymbolList(spl[1], symbols)
 			if err != nil {
@@ -243,7 +243,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 				return nil, err
 			}
 			if len(names) < 2 {
-				return nil, fmt.Errorf("invalid pairing, %v", names)
+				return nil, fmt.Errorf("invalid graph: invalid pairing, %v", names)
 			}
 			interconnectNodes := make([]NodeId, 0)
 			for _, name := range names {
@@ -274,7 +274,7 @@ func ParseGraph(graph []string, nodes []string) ([]Pair[NodeId, NodeId], error) 
 				cycleNodes = append(cycleNodes, node)
 			}
 			slices.Sort(cycleNodes)
-			return nil, fmt.Errorf("cycle detected in graph: %v", cycleNodes)
+			return nil, fmt.Errorf("invalid graph: cycle detected in graph: %v", cycleNodes)
 		}
 		delete(topo, group)
 

@@ -108,7 +108,7 @@ func TestIPCStatus(t *testing.T) {
 	}
 }
 
-func TestIPCReloadFile(t *testing.T) {
+func TestIPCReloadConfig(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	vh, errs := setupTwoNodeHarness(t)
 	defer vh.Stop()
@@ -122,10 +122,11 @@ func TestIPCReloadFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(tmpFile, cfgData, 0600))
 
 	a := vh.Nylons[vh.IndexOf("a")]
+	a.ConfigPath = tmpFile
 	done := make(chan *protocol.IpcResponse, 1)
 	go func() {
 		resp := ipcCall(t, a, &protocol.IpcRequest{
-			Request: &protocol.IpcRequest_Reload{Reload: &protocol.ReloadRequest{File: tmpFile}},
+			Request: &protocol.IpcRequest_Reload{Reload: &protocol.ReloadRequest{}},
 		})
 		done <- resp
 	}()
@@ -134,8 +135,7 @@ func TestIPCReloadFile(t *testing.T) {
 	case resp := <-done:
 		assert.True(t, resp.Ok)
 		r := resp.GetReload()
-		// Same config may be NOOP or APPLIED depending on expansion
-		assert.Contains(t, []protocol.ReloadResult{protocol.ReloadResult_NOOP, protocol.ReloadResult_APPLIED}, r.Result)
+		assert.Contains(t, []protocol.ReloadResult{protocol.ReloadResult_APPLIED}, r.Result)
 	case err := <-errs:
 		t.Fatal(err)
 	case <-time.After(10 * time.Second):
