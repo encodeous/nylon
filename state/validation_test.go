@@ -24,30 +24,30 @@ func TestNameValidator_Invalid(t *testing.T) {
 }
 
 func TestNodeConfigValidator_DnsResolver(t *testing.T) {
-	assert.NoError(t, NodeConfigValidator(&LocalCfg{
+	assert.NoError(t, NodeConfigValidator(nil, &LocalCfg{
 		Id:           "valid-node",
 		Port:         5,
 		Key:          [32]byte{1},
 		DnsResolvers: []string{"1.1.1.1:53"},
 	}))
-	assert.NoError(t, NodeConfigValidator(&LocalCfg{
+	assert.NoError(t, NodeConfigValidator(nil, &LocalCfg{
 		Id:   "valid-node",
 		Port: 5,
 		Key:  [32]byte{1},
 	}))
-	assert.Error(t, NodeConfigValidator(&LocalCfg{
+	assert.Error(t, NodeConfigValidator(nil, &LocalCfg{
 		Id:           "invalid-node",
 		Port:         5,
 		Key:          [32]byte{1},
 		DnsResolvers: []string{"google.com"},
 	}))
-	assert.Error(t, NodeConfigValidator(&LocalCfg{
+	assert.Error(t, NodeConfigValidator(nil, &LocalCfg{
 		Id:           "invalid-node",
 		Port:         5,
 		Key:          [32]byte{1},
 		DnsResolvers: []string{"google.com:53"},
 	}))
-	assert.Error(t, NodeConfigValidator(&LocalCfg{
+	assert.Error(t, NodeConfigValidator(nil, &LocalCfg{
 		Id:           "invalid-node",
 		Port:         5,
 		Key:          [32]byte{1},

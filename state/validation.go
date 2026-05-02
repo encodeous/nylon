@@ -20,7 +20,7 @@ func NameValidator(s string) error {
 	return nil
 }
 
-func NodeConfigValidator(node *LocalCfg) error {
+func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 	err := NameValidator(string(node.Id))
 	if err != nil {
 		return err
@@ -55,6 +55,10 @@ func NodeConfigValidator(node *LocalCfg) error {
 		if !p.IsValid() {
 			return fmt.Errorf("invalid prefix %s", p)
 		}
+	}
+	// check that node is in central config
+	if central != nil && !central.IsNode(node.Id) {
+		return fmt.Errorf("node %s is not in central config", node.Id)
 	}
 	return nil
 }
