@@ -1,4 +1,4 @@
-//go:generate protoc -I . --go_out=. ./protocol/nylon.proto
+//go:generate protoc -I . --go_out=. ./protocol/nylon.proto ./protocol/nylon_ipc.proto
 package main
 
 import (

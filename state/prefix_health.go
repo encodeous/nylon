@@ -260,7 +260,7 @@ func (p *PrefixHealthWrapper) UnmarshalYAML(unmarshal func(interface{}) error) e
 		}
 		p.PrefixHealth = &hp
 	default:
-		return nil
+		return fmt.Errorf("unknown prefix health type: %s", raw.Type)
 	}
 	return nil
 }

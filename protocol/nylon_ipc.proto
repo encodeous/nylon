@@ -1,0 +1,173 @@
+syntax = "proto3";
+package proto;
+
+option go_package = "protocol/";
+
+enum ReloadResult {
+  NOOP = 0;
+  APPLIED = 1;
+  REJECTED = 2;
+  RESTART_REQUIRED = 3;
+}
+
+message StatusRequest {}
+
+message ProbeRequest {
+  string peer_id = 1;
+}
+
+message ReloadRequest {}
+
+message TraceRequest {}
+
+message Source {
+  string node_id = 1;
+  string prefix = 2;
+}
+
+message FD {
+  uint32 seqno = 1;
+  uint32 metric = 2;
+}
+
+message PubRoute {
+  Source source = 1;
+  FD fd = 2;
+}
+
+message NeighRoute {
+  PubRoute pub_route = 1;
+  int64 expire_at_unix = 2;
+}
+
+message SelRoute {
+  PubRoute pub_route = 1;
+  string nh = 2;
+  int64 expire_at_unix = 3;
+  repeated string retracted_by = 4;
+}
+
+message Advertisement {
+  string node_id = 1;
+  string prefix = 2;
+  uint32 metric = 3;
+  int64 expiry_unix = 4;
+  bool passive_hold = 5;
+}
+
+message EndpointInfo {
+  string address = 1;
+  optional string resolved = 2;
+  bool active = 3;
+  bool remote_init = 4;
+  uint32 metric = 5;
+  int64 filtered_rtt_ns = 7;
+  int64 stabilized_rtt_ns = 8;
+}
+
+message WireGuardPeerStats {
+  int64 latest_handshake_unix = 1;
+  uint64 tx_bytes = 2;
+  uint64 rx_bytes = 3;
+  uint32 persistent_keepalive_interval = 4;
+  optional string endpoint = 5;
+}
+
+message NeighbourInfo {
+  string peer_id = 1;
+  string public_key = 2;
+  bool passive_client = 3;
+  repeated EndpointInfo endpoints = 4;
+  repeated NeighRoute routes = 5;
+  repeated Advertisement advertised = 6;
+  WireGuardPeerStats wireguard = 7;
+}
+
+message RouteTableEntry {
+  string prefix = 1;
+  string nh = 2;
+  bool blackhole = 3;
+}
+
+message RouteTables {
+  repeated SelRoute selected = 1;
+  repeated RouteTableEntry forward = 2;
+  repeated RouteTableEntry exit = 3;
+}
+
+message SeqnoEntry {
+  string prefix = 1;
+  uint32 seqno = 2;
+}
+
+message FeasibilityDistance {
+  Source source = 1;
+  FD fd = 2;
+}
+
+message NodeStats {
+  int32 neighbour_count = 1;
+  int32 active_endpoint_count = 2;
+  int32 selected_route_count = 3;
+  int32 advertised_prefix_count = 4;
+  uint64 tx_bytes = 5;
+  uint64 rx_bytes = 6;
+}
+
+message NodeStatus {
+  string node_id = 1;
+  string interface = 2;
+  string public_key = 3;
+  uint32 listen_port = 4;
+  int64 config_timestamp = 5;
+  bool trace_enabled = 6;
+  repeated Advertisement advertised = 7;
+  repeated SeqnoEntry seqnos = 8;
+  NodeStats stats = 9;
+}
+
+message StatusResponse {
+  NodeStatus node = 1;
+  repeated NeighbourInfo neighbours = 2;
+  RouteTables routes = 3;
+  repeated FeasibilityDistance feasibility_distances = 4;
+}
+
+message EndpointProbeResult {
+  string address = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message ProbeResponse {
+  repeated EndpointProbeResult results = 1;
+}
+
+message ReloadResponse {
+  ReloadResult result = 1;
+  string message = 2;
+}
+
+message TraceEvent {
+  string line = 1;
+}
+
+message IpcRequest {
+  oneof request {
+    StatusRequest status = 1;
+    ProbeRequest probe = 2;
+    ReloadRequest reload = 3;
+    TraceRequest trace = 4;
+  }
+}
+
+message IpcResponse {
+  bool ok = 1;
+  string error = 2;
+  oneof response {
+    StatusResponse status = 3;
+    ProbeResponse probe = 4;
+    ReloadResponse reload = 5;
+    TraceEvent trace = 6;
+  }
+}

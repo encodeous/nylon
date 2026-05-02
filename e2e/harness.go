@@ -11,12 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
 
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
 	"github.com/moby/moby/api/pkg/stdcopy"
@@ -26,6 +26,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var (
@@ -195,20 +196,52 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 func (h *Harness) WaitForMatch(nodeName string, pattern string) {
 	h.waitFor(nodeName, SourceStdout, pattern, true)
 }
-func (h *Harness) WaitForInspect(nodeName string, pattern string) {
+func (h *Harness) WaitForStatus(nodeName string, check func(*protocol.StatusResponse) bool) {
 	start := time.Now()
-	re := regexp.MustCompile(pattern)
 	for {
 		if time.Since(start) > WaitTimeout {
-			stdout, _, _ := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
-			h.t.Fatalf("timed out waiting for inspect pattern %q in node %s. Current inspect:\n%s", pattern, nodeName, stdout)
+			stdout, _, _ := h.Exec(nodeName, []string{"nylon", "status", "-i", "nylon0", "--json"})
+			h.t.Fatalf("timed out waiting for status predicate in node %s. Current status:\n%s", nodeName, stdout)
 		}
-		stdout, _, err := h.Exec(nodeName, []string{"nylon", "inspect", "nylon0"})
-		if err == nil && re.MatchString(stdout) {
+		status, err := h.ReadStatus(nodeName)
+		if err == nil && check(status) {
 			return
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func (h *Harness) ReadStatus(nodeName string) (*protocol.StatusResponse, error) {
+	stdout, _, err := h.Exec(nodeName, []string{"nylon", "status", "-i", "nylon0", "--json"})
+	if err != nil {
+		return nil, err
+	}
+	resp := &protocol.IpcResponse{}
+	if err := protojson.Unmarshal([]byte(stdout), resp); err != nil {
+		return nil, err
+	}
+	return resp.GetStatus(), nil
+}
+
+func HasSelectedRoute(status *protocol.StatusResponse, prefix, nh, router string) bool {
+	for _, route := range status.GetRoutes().GetSelected() {
+		source := route.GetPubRoute().GetSource()
+		if source.GetPrefix() == prefix && route.GetNh() == nh && source.GetNodeId() == router {
+			return true
+		}
+	}
+	return false
+}
+
+func HasResolvedEndpoint(status *protocol.StatusResponse, address, resolved string) bool {
+	for _, neigh := range status.GetNeighbours() {
+		for _, ep := range neigh.GetEndpoints() {
+			if ep.GetAddress() == address && ep.GetResolved() == resolved {
+				return true
+			}
+		}
+	}
+	return false
 }
 func (h *Harness) WaitForTrace(nodeName string, pattern string) {
 	h.waitFor(nodeName, SourceTrace, pattern, false)
@@ -262,7 +295,7 @@ func (h *Harness) StartTrace(nodeName string) {
 	go func() {
 		time.Sleep(time.Second)
 		execOptions := client.ExecCreateOptions{
-			Cmd:          []string{"nylon", "inspect", "nylon0", "--trace"},
+			Cmd:          []string{"nylon", "trace", "-i", "nylon0"},
 			AttachStdout: true,
 			AttachStderr: true,
 			TTY:          false,

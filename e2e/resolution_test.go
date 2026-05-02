@@ -7,10 +7,10 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 )
 
@@ -88,20 +88,21 @@ _nylon._udp.srv.example.com. 0 IN SRV 10 10 57175 node2.example.com.
 	h.WaitForLog("node-1", "Nylon has been initialized")
 	h.WaitForLog("node-2", "Nylon has been initialized")
 
-	verify := func(node string, expectedPattern string) {
+	verify := func(node string, check func(*protocol.StatusResponse) bool) {
 		timeout := time.After(30 * time.Second)
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-timeout:
-				t.Fatalf("timed out waiting for resolution pattern %q on node %s", expectedPattern, node)
+				stdout, _, _ := h.Exec(node, []string{"nylon", "status", "-i", "nylon0", "--json"})
+				t.Fatalf("timed out waiting for status predicate on node %s. Current status:\n%s", node, stdout)
 			case <-ticker.C:
-				stdout, _, err := h.Exec(node, []string{"nylon", "inspect", "nylon0"})
+				status, err := h.ReadStatus(node)
 				if err != nil {
 					continue
 				}
-				if strings.Contains(stdout, expectedPattern) {
+				if check(status) {
 					return
 				}
 			}
@@ -109,10 +110,14 @@ _nylon._udp.srv.example.com. 0 IN SRV 10 10 57175 node2.example.com.
 	}
 
 	// node-1 should resolve node-2 (srv.example.com) to node2IP:57175
-	verify("node-1", fmt.Sprintf("srv.example.com (resolved: %s:57175)", node2IP))
+	verify("node-1", func(status *protocol.StatusResponse) bool {
+		return HasResolvedEndpoint(status, "srv.example.com", fmt.Sprintf("%s:57175", node2IP))
+	})
 
 	// node-2 should resolve node-1 (example.com) to node1IP:57175
-	verify("node-2", fmt.Sprintf("example.com (resolved: %s:%d)", node1IP, state.DefaultPort))
+	verify("node-2", func(status *protocol.StatusResponse) bool {
+		return HasResolvedEndpoint(status, "example.com", fmt.Sprintf("%s:%d", node1IP, state.DefaultPort))
+	})
 }
 
 func TestDynamicResolution(t *testing.T) {
@@ -184,7 +189,7 @@ node2.example.com. 0 IN A %s
 	h.WaitForLog("node-1", "Nylon has been initialized")
 	h.WaitForLog("node-2", "Nylon has been initialized")
 
-	verify := func(node string, expectedPattern string) {
+	verify := func(node string, check func(*protocol.StatusResponse) bool) {
 		timeout := time.After(60 * time.Second)
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -193,14 +198,14 @@ node2.example.com. 0 IN A %s
 			case <-timeout:
 				// Print logs of node-1 to help debugging
 				h.PrintLogs("node-1")
-				stdout, _, _ := h.Exec(node, []string{"nylon", "inspect", "nylon0"})
-				t.Fatalf("timed out waiting for resolution pattern %q on node %s. Current inspect:\n%s", expectedPattern, node, stdout)
+				stdout, _, _ := h.Exec(node, []string{"nylon", "status", "-i", "nylon0", "--json"})
+				t.Fatalf("timed out waiting for status predicate on node %s. Current status:\n%s", node, stdout)
 			case <-ticker.C:
-				stdout, _, err := h.Exec(node, []string{"nylon", "inspect", "nylon0"})
+				status, err := h.ReadStatus(node)
 				if err != nil {
 					continue
 				}
-				if strings.Contains(stdout, expectedPattern) {
+				if check(status) {
 					return
 				}
 			}
@@ -208,7 +213,9 @@ node2.example.com. 0 IN A %s
 	}
 
 	// Verify initial connection
-	verify("node-1", fmt.Sprintf("node2.example.com (resolved: %s:57175)", node2IP_A))
+	verify("node-1", func(status *protocol.StatusResponse) bool {
+		return HasResolvedEndpoint(status, "node2.example.com", fmt.Sprintf("%s:57175", node2IP_A))
+	})
 
 	h.WaitForLog("node-1", "installing new route prefix=10.0.0.2")
 	h.WaitForLog("node-2", "installing new route prefix=10.0.0.1")
@@ -245,7 +252,9 @@ node2.example.com. 0 IN A %s
 	h.WaitForLog("node-2-new", "Nylon has been initialized")
 
 	// Wait for Nylon on node-1 to re-resolve.
-	verify("node-1", fmt.Sprintf("node2.example.com (resolved: %s:57175)", node2IP_B))
+	verify("node-1", func(status *protocol.StatusResponse) bool {
+		return HasResolvedEndpoint(status, "node2.example.com", fmt.Sprintf("%s:57175", node2IP_B))
+	})
 
 	h.WaitForLog("node-2-new", "installing new route prefix=10.0.0.1/32")
 
@@ -260,10 +269,10 @@ node2.example.com. 0 IN A %s
 		time.Sleep(2 * time.Second)
 	}
 	if lastErr != nil {
-		stdout, _, _ := h.Exec("node-1", []string{"nylon", "inspect", "nylon0"})
-		t.Logf("Node 1 inspect:\n%s", stdout)
-		stdout2, _, _ := h.Exec("node-2-new", []string{"nylon", "inspect", "nylon0"})
-		t.Logf("Node 2-new inspect:\n%s", stdout2)
+		stdout, _, _ := h.Exec("node-1", []string{"nylon", "status", "-i", "nylon0", "--json"})
+		t.Logf("Node 1 status:\n%s", stdout)
+		stdout2, _, _ := h.Exec("node-2-new", []string{"nylon", "status", "-i", "nylon0", "--json"})
+		t.Logf("Node 2-new status:\n%s", stdout2)
 		t.Fatalf("ping after DNS change failed after retries: %v", lastErr)
 	}
 }
