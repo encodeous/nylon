@@ -3,12 +3,11 @@ package state
 import (
 	"cmp"
 	"fmt"
-	"net"
 	"net/netip"
 	"slices"
 	"strings"
 
-	"github.com/cilium/cilium/pkg/ip"
+	"go4.org/netipx"
 )
 
 type NodeCfg struct {
@@ -124,39 +123,16 @@ func parseSymbolList(s string, validSymbols []string) ([]string, error) {
 	return line, nil
 }
 
-func toIPNets(prefixes []netip.Prefix) []*net.IPNet {
-	nets := make([]*net.IPNet, 0, len(prefixes))
-	for _, p := range prefixes {
-		if p.IsValid() {
-			nets = append(nets, &net.IPNet{
-				IP:   p.Addr().AsSlice(),
-				Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen()),
-			})
-		}
+func MakeSet(prefix []netip.Prefix) *netipx.IPSet {
+	builder := netipx.IPSetBuilder{}
+	for _, pfx := range prefix {
+		builder.AddPrefix(pfx)
 	}
-	return nets
-}
-
-func fromIPNets(nets []*net.IPNet) []netip.Prefix {
-	output := make([]netip.Prefix, 0, len(nets))
-	for _, n := range nets {
-		if addr, ok := netip.AddrFromSlice(n.IP); ok {
-			ones, _ := n.Mask.Size()
-			output = append(output, netip.PrefixFrom(addr.Unmap(), ones))
-		}
+	res, err := builder.IPSet()
+	if err != nil {
+		panic(err)
 	}
-	return output
-}
-
-func SubtractPrefix(includesPrefix, excludesPrefix []netip.Prefix) []netip.Prefix {
-	result := ip.RemoveCIDRs(toIPNets(includesPrefix), toIPNets(excludesPrefix))
-	ipv4, ipv6 := ip.CoalesceCIDRs(result)
-	return fromIPNets(append(ipv4, ipv6...))
-}
-
-func CoalescePrefix(prefixes []netip.Prefix) []netip.Prefix {
-	ipv4, ipv6 := ip.CoalesceCIDRs(toIPNets(prefixes))
-	return fromIPNets(append(ipv4, ipv6...))
+	return res
 }
 
 /*

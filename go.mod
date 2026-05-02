@@ -3,7 +3,6 @@ module github.com/encodeous/nylon
 go 1.26.2
 
 require (
-	github.com/cilium/cilium v1.18.9
 	github.com/digineo/go-ping v1.2.0
 	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
@@ -15,12 +14,14 @@ require (
 	github.com/kmahyyg/go-network-compo v0.2.10
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
+	github.com/moby/term v0.5.2
 	github.com/samber/slog-multi v1.5.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	go.step.sm/crypto v0.70.0
 	go.uber.org/goleak v1.3.0
+	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.48.0
 	golang.org/x/net v0.49.0
 	golang.org/x/sys v0.42.0
@@ -63,7 +64,6 @@ require (
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
-	github.com/moby/term v0.5.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -75,8 +75,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
-	github.com/vishvananda/netlink v1.3.2-0.20250926155043-cd3cb2e12c97 // indirect
-	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
@@ -85,7 +83,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
-	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
