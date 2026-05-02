@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
 )
@@ -99,8 +100,12 @@ func TestHealthcheckPing(t *testing.T) {
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForInspect("node3", `10\.0\.1\.4/32 via \(nh: node2, router: node1`)
-	h.WaitForInspect("node1", `10\.0\.0\.3/32 via node2`)
+	h.WaitForStatus("node3", func(status *protocol.StatusResponse) bool {
+		return HasSelectedRoute(status, "10.0.1.4/32", "node2", "node1")
+	})
+	h.WaitForStatus("node1", func(status *protocol.StatusResponse) bool {
+		return HasSelectedRoute(status, "10.0.0.3/32", "node2", "node3")
+	})
 
 	// ping from 3 to 10.0.0.4
 	stdout, stderr, err := h.Exec("node3", []string{"ping", "-c", "3", "10.0.1.4"})
@@ -214,7 +219,9 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Client should route to Backup (Metric 1000).
 
 	t.Log("Step A: Waiting for routing to fallback (Primary DOWN)")
-	h.WaitForInspect("client", `10\.0\.3\.1/32 via backup`)
+	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
+		return HasSelectedRoute(status, "10.0.3.1/32", "backup", "backup")
+	})
 
 	// B. Start HTTP Server on Primary
 	t.Log("Step B: Starting HTTP server on Primary")
@@ -227,7 +234,9 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Primary should advertise Metric 10.
 	// Client should switch to Primary.
 	t.Log("Step C: Waiting for routing to switch to Primary (Primary UP)")
-	h.WaitForInspect("client", `10\.0\.3\.1/32 via primary`)
+	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
+		return HasSelectedRoute(status, "10.0.3.1/32", "primary", "primary")
+	})
 
 	// D. Stop HTTP Server
 	t.Log("Step D: Stopping HTTP server")
@@ -236,5 +245,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 
 	// E. Wait for fallback to Backup
 	t.Log("Step E: Waiting for fallback to Backup")
-	h.WaitForInspect("client", `10\.0\.3\.1/32 via backup`)
+	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
+		return HasSelectedRoute(status, "10.0.3.1/32", "backup", "backup")
+	})
 }
