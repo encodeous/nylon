@@ -16,15 +16,9 @@ var reloadCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		itf, _ := cmd.Flags().GetString("interface")
 		jsonOut, _ := cmd.Flags().GetBool("json")
-		file, _ := cmd.Flags().GetString("file")
-
-		if file == "" {
-			fmt.Fprintln(os.Stderr, "Error: specify --file PATH")
-			os.Exit(1)
-		}
 
 		resp, err := core.SendIPCRequest(itf, &protocol.IpcRequest{
-			Request: &protocol.IpcRequest_Reload{Reload: &protocol.ReloadRequest{File: file}},
+			Request: &protocol.IpcRequest_Reload{Reload: &protocol.ReloadRequest{}},
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)

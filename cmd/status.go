@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/moby/term"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var statusCmd = &cobra.Command{
@@ -54,184 +52,153 @@ type statusRenderOptions struct {
 	color      bool
 }
 
-type statusPalette struct {
-	header func(string) string
-	key    func(string) string
-	good   func(string) string
-	warn   func(string) string
-	bad    func(string) string
-	muted  func(string) string
-}
-
-func palette(enabled bool) statusPalette {
-	paint := func(code string) func(string) string {
-		if !enabled {
-			return func(s string) string { return s }
-		}
-		return func(s string) string { return "\x1b[" + code + "m" + s + "\x1b[0m" }
-	}
-	return statusPalette{
-		header: paint("1;36"),
-		key:    paint("1"),
-		good:   paint("32"),
-		warn:   paint("33"),
-		bad:    paint("31"),
-		muted:  paint("2"),
-	}
-}
-
 func renderStatus(s *protocol.StatusResponse, opts statusRenderOptions) {
 	p := palette(opts.color)
 	node := s.GetNode()
 	stats := node.GetStats()
 
 	fmt.Println(p.header("interface") + ": " + node.Interface)
-	fmt.Printf("  %s: %s\n", p.key("node"), node.NodeId)
-	fmt.Printf("  %s: %s\n", p.key("public key"), node.PublicKey)
-	fmt.Printf("  %s: %d\n", p.key("listening port"), node.ListenPort)
-	fmt.Printf("  %s: %d\n", p.key("config timestamp"), node.ConfigTimestamp)
-	fmt.Printf("  %s: %v\n", p.key("trace enabled"), node.TraceEnabled)
-	fmt.Printf("  %s: neighbours=%d active_endpoints=%d selected_routes=%d advertised=%d tx=%s rx=%s\n",
-		p.key("stats"), stats.NeighbourCount, stats.ActiveEndpointCount, stats.SelectedRouteCount,
-		stats.AdvertisedPrefixCount, formatBytes(stats.TxBytes), formatBytes(stats.RxBytes))
+	printKV(p, 1, "node", node.NodeId)
+	printKV(p, 1, "public key", node.PublicKey)
+	printKV(p, 1, "listening port", fmt.Sprint(node.ListenPort))
+	printKV(p, 1, "config timestamp", fmt.Sprint(node.ConfigTimestamp))
+	printKV(p, 1, "trace enabled", fmt.Sprint(node.TraceEnabled))
+	printTable(p, 1,
+		[]string{"neighbours", "active endpoints", "selected routes", "advertised", "tx", "rx"},
+		[][]string{{
+			fmt.Sprint(stats.NeighbourCount),
+			fmt.Sprint(stats.ActiveEndpointCount),
+			fmt.Sprint(stats.SelectedRouteCount),
+			fmt.Sprint(stats.AdvertisedPrefixCount),
+			formatBytes(stats.TxBytes),
+			formatBytes(stats.RxBytes),
+		}},
+	)
+	fmt.Println()
 
-	if len(node.Advertised) > 0 {
+	if len(node.Seqnos) > 0 {
+		fmt.Println(p.header("local seqnos"))
+		printSeqnos(p, node.Seqnos)
 		fmt.Println()
-		fmt.Println(p.header("advertised"))
-		for _, adv := range node.Advertised {
-			fmt.Printf("  %s from %s metric %d expires %s%s\n",
-				adv.Prefix, adv.NodeId, adv.Metric, formatExpiry(adv.ExpiryUnix), passiveHoldSuffix(p, adv.PassiveHold))
-		}
 	}
 
-	fmt.Println()
+	if len(node.Advertised) > 0 {
+		fmt.Println(p.header("advertised"))
+		printAdvertisements(p, node.Advertised, false)
+		fmt.Println()
+	}
+
 	fmt.Println(p.header("peers"))
 	if len(s.Neighbours) == 0 {
 		fmt.Println("  " + p.muted("none"))
 	}
 	for _, neigh := range s.Neighbours {
-		kind := "router"
+		suffix := ""
 		if neigh.PassiveClient {
-			kind = "passive-client"
+			suffix = " " + p.warn("[passive client]")
 		}
-		fmt.Printf("  %s (%s)\n", p.key(neigh.PeerId), kind)
-		fmt.Printf("    public key: %s\n", neigh.PublicKey)
-		fmt.Printf("    best metric: %s\n", metricText(p, neigh.BestMetric))
+		fmt.Printf("  %s %s%s\n", p.key(neigh.PeerId), p.value("("+neigh.PublicKey+")"), suffix)
+		best := bestEndpoint(neigh.Endpoints)
+		bestMetric := uint32(state.INF)
+		if best != nil {
+			bestMetric = best.Metric
+		}
 		wg := neigh.GetWireguard()
-		fmt.Printf("    latest handshake: %s; transfer: %s received, %s sent\n",
-			formatHandshake(wg.LatestHandshakeUnixNano), formatBytes(wg.RxBytes), formatBytes(wg.TxBytes))
-		if wg.Endpoint != "" {
-			fmt.Printf("    wireguard endpoint: %s\n", wg.Endpoint)
+		statHeaders := []string{"best metric", "latest handshake", "tx", "rx"}
+		statRow := []string{metricText(p, bestMetric), formatHandshake(wg.LatestHandshakeUnix), formatBytes(wg.TxBytes), formatBytes(wg.RxBytes)}
+		if wg.Endpoint != nil {
+			statHeaders = append(statHeaders, "wireguard endpoint")
+			statRow = append(statRow, *wg.Endpoint)
 		}
+		printTable(p, 2, statHeaders, [][]string{statRow})
 		if len(neigh.Endpoints) > 0 {
-			fmt.Println("    endpoints:")
-			for _, ep := range neigh.Endpoints {
-				flags := endpointFlags(p, ep)
-				resolved := ep.Resolved
-				if resolved == "" {
-					resolved = p.warn("unresolved")
-				}
-				fmt.Printf("      - %s resolved %s metric %s%s\n", ep.Address, resolved, metricText(p, ep.Metric), flags)
-			}
+			fmt.Println("    " + p.section("endpoints:"))
+			printEndpoints(p, neigh.Endpoints, best, opts.showFull)
 		}
 		if opts.showRoutes && len(neigh.Routes) > 0 {
-			fmt.Println("    advertised routes:")
-			for _, route := range neigh.Routes {
-				printNeighRoute(p, route, opts.showFull)
-			}
+			fmt.Println("    " + p.section("advertised routes:"))
+			printNeighRoutes(p, neigh.Routes, opts.showFull)
+		} else {
+			fmt.Println("    " + p.section("advertised prefixes:"))
+			printCondensedNeighRoutes(p, neigh.Routes, 3)
 		}
 		if opts.showRoutes && len(neigh.Advertised) > 0 {
-			fmt.Println("    local advertisements for peer:")
-			for _, adv := range neigh.Advertised {
-				fmt.Printf("      - %s metric %d expires %s%s\n", adv.Prefix, adv.Metric, formatExpiry(adv.ExpiryUnix), passiveHoldSuffix(p, adv.PassiveHold))
-			}
+			fmt.Println("    " + p.section("local advertisements for peer:"))
+			printAdvertisements(p, neigh.Advertised, true)
 		}
+		fmt.Println()
 	}
 
+	fmt.Println(p.header("routes"))
+	printSelectedRoutes(p, s.GetRoutes().Selected, opts.showFull)
 	if opts.showRoutes {
-		fmt.Println()
-		fmt.Println(p.header("routes"))
-		printSelectedRoutes(p, s.GetRoutes().Selected, opts.showFull)
-		printTableRoutes(p, "forward", s.GetRoutes().Forward)
-		printTableRoutes(p, "exit", s.GetRoutes().Exit)
+		printTableRoutes(p, "forward table", s.GetRoutes().Forward)
+		printTableRoutes(p, "exit table", s.GetRoutes().Exit)
 	}
+	fmt.Println()
 
 	if opts.showFull {
-		fmt.Println()
-		fmt.Println(p.header("local seqnos"))
-		if len(node.Seqnos) == 0 {
-			fmt.Println("  " + p.muted("none"))
-		}
-		for _, seq := range node.Seqnos {
-			fmt.Printf("  %s seqno %d\n", seq.Prefix, seq.Seqno)
-		}
-
-		fmt.Println()
 		fmt.Println(p.header("feasibility distances"))
 		if len(s.FeasibilityDistances) == 0 {
 			fmt.Println("  " + p.muted("none"))
 		}
-		for _, fd := range s.FeasibilityDistances {
-			src := fd.GetSource()
-			val := fd.GetFd()
-			fmt.Printf("  router %s prefix %s seqno %d metric %s\n", src.NodeId, src.Prefix, val.Seqno, metricText(p, val.Metric))
-		}
+		printFeasibilityDistances(p, s.FeasibilityDistances)
 	}
 }
 
-func printSelectedRoutes(p statusPalette, routes []*protocol.SelRoute, full bool) {
-	fmt.Println("  " + p.key("selected"))
+func printSelectedRoutes(p paletteValues, routes []*protocol.SelRoute, full bool) {
+	fmt.Println("  " + p.key("selected routes"))
 	if len(routes) == 0 {
 		fmt.Println("    " + p.muted("none"))
+		return
 	}
+	headers := []string{"prefix", "nh", "router", "seqno", "metric"}
+	rows := make([][]string, 0, len(routes))
 	for _, route := range routes {
 		pub := route.GetPubRoute()
 		src := pub.GetSource()
 		fd := pub.GetFd()
-		extra := ""
+		row := []string{src.Prefix, route.Nh, src.NodeId, fmt.Sprint(fd.Seqno), metricText(p, fd.Metric)}
 		if full {
-			extra = fmt.Sprintf(" expires %s", formatExpiry(route.ExpireAtUnix))
-			if len(route.RetractedBy) > 0 {
-				extra += " retracted_by=" + strings.Join(route.RetractedBy, ",")
+			if len(headers) == 5 {
+				headers = append(headers, "expires", "retracted by")
 			}
+			retractedBy := ""
+			if len(route.RetractedBy) > 0 {
+				retractedBy = strings.Join(route.RetractedBy, ",")
+			}
+			row = append(row, formatExpiry(route.ExpireAtUnix), retractedBy)
 		}
-		fmt.Printf("    %s via %s source %s seqno %d metric %s%s\n", src.Prefix, route.Nh, src.NodeId, fd.Seqno, metricText(p, fd.Metric), extra)
+		rows = append(rows, row)
 	}
+	printTable(p, 2, headers, rows)
 }
 
-func printTableRoutes(p statusPalette, name string, routes []*protocol.RouteTableEntry) {
+func printTableRoutes(p paletteValues, name string, routes []*protocol.RouteTableEntry) {
 	fmt.Println("  " + p.key(name))
 	if len(routes) == 0 {
 		fmt.Println("    " + p.muted("none"))
+		return
 	}
+	rows := make([][]string, 0, len(routes))
 	for _, route := range routes {
+		action := route.Nh
 		if route.Blackhole {
-			fmt.Printf("    %s %s\n", route.Prefix, p.bad("blackhole"))
-		} else {
-			fmt.Printf("    %s via %s\n", route.Prefix, route.Nh)
+			action = p.bad("blackhole")
 		}
+		rows = append(rows, []string{route.Prefix, action})
 	}
+	printTable(p, 2, []string{"prefix", "nh"}, rows)
 }
 
-func printNeighRoute(p statusPalette, route *protocol.NeighRoute, full bool) {
-	pub := route.GetPubRoute()
-	src := pub.GetSource()
-	fd := pub.GetFd()
-	extra := ""
-	if full {
-		extra = fmt.Sprintf(" expires %s", formatExpiry(route.ExpireAtUnix))
-	}
-	fmt.Printf("      - %s source %s seqno %d metric %s%s\n", src.Prefix, src.NodeId, fd.Seqno, metricText(p, fd.Metric), extra)
-}
-
-func endpointFlags(p statusPalette, ep *protocol.EndpointInfo) string {
+func endpointFlags(p paletteValues, ep *protocol.EndpointInfo, best *protocol.EndpointInfo) string {
 	flags := make([]string, 0)
 	if ep.Active {
 		flags = append(flags, p.good("active"))
 	} else {
 		flags = append(flags, p.warn("inactive"))
 	}
-	if ep.IsBest {
+	if best != nil && ep == best {
 		flags = append(flags, p.good("best"))
 	}
 	if ep.RemoteInit {
@@ -240,62 +207,101 @@ func endpointFlags(p statusPalette, ep *protocol.EndpointInfo) string {
 	if len(flags) == 0 {
 		return ""
 	}
-	return " [" + strings.Join(flags, ",") + "]"
+	return "[" + strings.Join(flags, ",") + "]"
 }
 
-func passiveHoldSuffix(p statusPalette, passiveHold bool) string {
-	if !passiveHold {
-		return ""
+func bestEndpoint(endpoints []*protocol.EndpointInfo) *protocol.EndpointInfo {
+	var best *protocol.EndpointInfo
+	for _, ep := range endpoints {
+		if !ep.Active {
+			continue
+		}
+		if best == nil || ep.Metric < best.Metric || (ep.Metric == best.Metric && ep.Address < best.Address) {
+			best = ep
+		}
 	}
-	return " " + p.warn("[passive-hold]")
+	return best
 }
 
-func metricText(p statusPalette, metric uint32) string {
-	if metric >= state.INFM {
-		return p.bad("INF")
+func printEndpoints(p paletteValues, endpoints []*protocol.EndpointInfo, best *protocol.EndpointInfo, full bool) {
+	headers := []string{"address", "resolved", "metric", "state"}
+	if full {
+		headers = append(headers, "rtt", "stable rtt")
 	}
-	return fmt.Sprintf("%d", metric)
+	rows := make([][]string, 0, len(endpoints))
+	for _, ep := range endpoints {
+		resolved := p.warn("unresolved")
+		if ep.Resolved != nil {
+			resolved = *ep.Resolved
+		}
+		row := []string{ep.Address, resolved, metricText(p, ep.Metric), endpointFlags(p, ep, best)}
+		if full {
+			row = append(row, formatDurationNs(ep.FilteredRttNs), formatDurationNs(ep.StabilizedRttNs))
+		}
+		rows = append(rows, row)
+	}
+	printTable(p, 3, headers, rows)
 }
 
-func formatExpiry(unix int64) string {
-	if unix <= 0 {
-		return "never"
+func printNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, full bool) {
+	headers := []string{"prefix", "router", "seqno", "metric"}
+	if full {
+		headers = append(headers, "expires")
 	}
-	expiry := time.Unix(unix, 0)
-	rem := time.Until(expiry)
-	if rem > 24*time.Hour || expiry.Year() > time.Now().Year()+10 {
-		return "never"
+	rows := make([][]string, 0, len(routes))
+	for _, route := range routes {
+		pub := route.GetPubRoute()
+		src := pub.GetSource()
+		fd := pub.GetFd()
+		row := []string{src.Prefix, src.NodeId, fmt.Sprint(fd.Seqno), metricText(p, fd.Metric)}
+		if full {
+			row = append(row, formatExpiry(route.ExpireAtUnix))
+		}
+		rows = append(rows, row)
 	}
-	if rem < 0 {
-		return "expired"
-	}
-	return rem.Truncate(time.Second).String()
+	printTable(p, 3, headers, rows)
 }
 
-func formatHandshake(unixNano int64) string {
-	if unixNano == 0 {
-		return "never"
+func printCondensedNeighRoutes(p paletteValues, routes []*protocol.NeighRoute, indent int) {
+	prefixes := make([]string, 0, len(routes))
+	for _, route := range routes {
+		prefixes = append(prefixes, route.PubRoute.GetSource().Prefix)
 	}
-	return time.Since(time.Unix(0, unixNano)).Truncate(time.Second).String() + " ago"
+	printCommaList(p, indent, prefixes)
 }
 
-func formatBytes(v uint64) string {
-	const unit = 1024
-	if v < unit {
-		return fmt.Sprintf("%d B", v)
+func printAdvertisements(p paletteValues, advertisements []*protocol.Advertisement, nested bool) {
+	indent := 1
+	if nested {
+		indent = 3
 	}
-	div, exp := uint64(unit), 0
-	for n := v / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
+	rows := make([][]string, 0, len(advertisements))
+	for _, adv := range advertisements {
+		hold := ""
+		if adv.PassiveHold {
+			hold = p.warn("passive-hold")
+		}
+		rows = append(rows, []string{adv.Prefix, adv.NodeId, metricText(p, adv.Metric), formatExpiry(adv.ExpiryUnix), hold})
 	}
-	return fmt.Sprintf("%.2f %ciB", float64(v)/float64(div), "KMGTPE"[exp])
+	printTable(p, indent, []string{"prefix", "router", "metric", "expires", "state"}, rows)
 }
 
-func printJSON(resp *protocol.IpcResponse) {
-	m := protojson.MarshalOptions{Indent: "  ", EmitUnpopulated: true}
-	data, _ := m.Marshal(resp)
-	fmt.Println(string(data))
+func printSeqnos(p paletteValues, seqnos []*protocol.SeqnoEntry) {
+	rows := make([][]string, 0, len(seqnos))
+	for _, seq := range seqnos {
+		rows = append(rows, []string{seq.Prefix, fmt.Sprint(seq.Seqno)})
+	}
+	printTable(p, 1, []string{"prefix", "seqno"}, rows)
+}
+
+func printFeasibilityDistances(p paletteValues, distances []*protocol.FeasibilityDistance) {
+	rows := make([][]string, 0, len(distances))
+	for _, dist := range distances {
+		src := dist.GetSource()
+		fd := dist.GetFd()
+		rows = append(rows, []string{src.Prefix, src.NodeId, fmt.Sprint(fd.Seqno), metricText(p, fd.Metric)})
+	}
+	printTable(p, 1, []string{"prefix", "router", "seqno", "metric"}, rows)
 }
 
 func init() {

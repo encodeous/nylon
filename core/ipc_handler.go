@@ -165,14 +165,9 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) 
 	for _, id := range ids {
 		cfg := n.GetNode(id)
 		neigh := n.RouterState.GetNeighbour(id)
-		bestMetric := uint32(state.INF)
 		eps := make([]*protocol.EndpointInfo, 0)
 		routes := make([]*protocol.NeighRoute, 0)
 		if neigh != nil {
-			best := neigh.BestEndpoint()
-			if best != nil {
-				bestMetric = best.Metric()
-			}
 			eps = buildEndpoints(neigh)
 			routes = buildNeighRoutes(neigh)
 		}
@@ -181,7 +176,6 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) 
 			PeerId:        string(id),
 			PublicKey:     keyString(cfg.PubKey),
 			PassiveClient: n.IsClient(id),
-			BestMetric:    bestMetric,
 			Endpoints:     eps,
 			Routes:        routes,
 			Advertised:    advertisementsForNode(n, id),
@@ -192,13 +186,12 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) 
 }
 
 func buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
-	best := neigh.BestEndpoint()
 	eps := make([]*protocol.EndpointInfo, 0, len(neigh.Eps))
 	for _, ep := range neigh.Eps {
 		nep := ep.AsNylonEndpoint()
-		resolved := ""
+		var resolved *string
 		if ap, err := nep.DynEP.Get(); err == nil {
-			resolved = ap.String()
+			resolved = stringPtr(ap.String())
 		}
 		eps = append(eps, &protocol.EndpointInfo{
 			Address:         nep.DynEP.Value,
@@ -206,18 +199,11 @@ func buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
 			Active:          ep.IsActive(),
 			RemoteInit:      ep.IsRemote(),
 			Metric:          ep.Metric(),
-			IsBest:          best != nil && ep == best,
 			FilteredRttNs:   int64(nep.FilteredPing()),
 			StabilizedRttNs: int64(nep.StabilizedPing()),
 		})
 	}
 	slices.SortFunc(eps, func(a, b *protocol.EndpointInfo) int {
-		if a.IsBest != b.IsBest {
-			if a.IsBest {
-				return -1
-			}
-			return 1
-		}
 		if cmpMetric := cmp.Compare(a.Metric, b.Metric); cmpMetric != 0 {
 			return cmpMetric
 		}
@@ -312,18 +298,12 @@ func wireGuardPeerStats(n *Nylon) map[state.NyPublicKey]device.PeerStatus {
 }
 
 func wireGuardPeerStatsProto(stat device.PeerStatus) *protocol.WireGuardPeerStats {
-	latest := stat.LatestHandshakeTime()
-	latestUnix := int64(0)
-	if !latest.IsZero() {
-		latestUnix = latest.Unix()
-	}
 	return &protocol.WireGuardPeerStats{
-		LatestHandshakeUnix:         latestUnix,
-		LatestHandshakeUnixNano:     stat.LatestHandshakeUnixNano,
+		LatestHandshakeUnix:         stat.LatestHandshakeTime().UnixNano(),
 		TxBytes:                     stat.TxBytes,
 		RxBytes:                     stat.RxBytes,
 		PersistentKeepaliveInterval: stat.PersistentKeepaliveInterval,
-		Endpoint:                    stat.Endpoint,
+		Endpoint:                    &stat.Endpoint,
 	}
 }
 
@@ -375,6 +355,10 @@ func keyString(key state.NyPublicKey) string {
 		return ""
 	}
 	return string(text)
+}
+
+func stringPtr(v string) *string {
+	return &v
 }
 
 func comparePubRoute(a, b *protocol.PubRoute) int {
@@ -431,40 +415,37 @@ func handleIPCProbe(n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse 
 }
 
 func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcResponse {
-	if req.File != "" {
-		data, err := os.ReadFile(req.File)
-		if err != nil {
-			return errResponse(fmt.Sprintf("read file: %v", err))
-		}
-		var cfg state.CentralCfg
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return errResponse(fmt.Sprintf("parse config: %v", err))
-		}
-		result, err := applyCentralConfigSync(n, cfg)
-		msg := ""
-		if err != nil {
-			msg = err.Error()
-		}
-		var protoResult protocol.ReloadResult
-		switch result {
-		case ApplyNoop:
-			protoResult = protocol.ReloadResult_NOOP
-		case ApplyApplied:
-			protoResult = protocol.ReloadResult_APPLIED
-		case ApplyRejected:
-			protoResult = protocol.ReloadResult_REJECTED
-		case ApplyRestartRequired:
-			protoResult = protocol.ReloadResult_RESTART_REQUIRED
-		}
-		return &protocol.IpcResponse{
-			Ok: result != ApplyRejected,
-			Response: &protocol.IpcResponse_Reload{Reload: &protocol.ReloadResponse{
-				Result:  protoResult,
-				Message: msg,
-			}},
-		}
+	data, err := os.ReadFile(n.ConfigPath)
+	if err != nil {
+		return errResponse(fmt.Sprintf("read file: %v", err))
 	}
-	return errResponse("specify --file")
+	var cfg state.CentralCfg
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return errResponse(fmt.Sprintf("parse config: %v", err))
+	}
+	result, err := applyCentralConfigSync(n, cfg)
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	var protoResult protocol.ReloadResult
+	switch result {
+	case ApplyNoop:
+		protoResult = protocol.ReloadResult_NOOP
+	case ApplyApplied:
+		protoResult = protocol.ReloadResult_APPLIED
+	case ApplyRejected:
+		protoResult = protocol.ReloadResult_REJECTED
+	case ApplyRestartRequired:
+		protoResult = protocol.ReloadResult_RESTART_REQUIRED
+	}
+	return &protocol.IpcResponse{
+		Ok: result != ApplyRejected,
+		Response: &protocol.IpcResponse_Reload{Reload: &protocol.ReloadResponse{
+			Result:  protoResult,
+			Message: msg,
+		}},
+	}
 }
 
 func applyCentralConfigSync(n *Nylon, cfg state.CentralCfg) (ApplyResult, error) {

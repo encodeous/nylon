@@ -155,7 +155,6 @@ func (x *ProbeRequest) GetPeerId() string {
 
 type ReloadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	File          string                 `protobuf:"bytes,1,opt,name=file,proto3" json:"file,omitempty"` // path to local config file
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -188,13 +187,6 @@ func (x *ReloadRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ReloadRequest.ProtoReflect.Descriptor instead.
 func (*ReloadRequest) Descriptor() ([]byte, []int) {
 	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *ReloadRequest) GetFile() string {
-	if x != nil {
-		return x.File
-	}
-	return ""
 }
 
 type TraceRequest struct {
@@ -588,11 +580,10 @@ func (x *Advertisement) GetPassiveHold() bool {
 type EndpointInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Address         string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Resolved        string                 `protobuf:"bytes,2,opt,name=resolved,proto3" json:"resolved,omitempty"`
+	Resolved        *string                `protobuf:"bytes,2,opt,name=resolved,proto3,oneof" json:"resolved,omitempty"`
 	Active          bool                   `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
 	RemoteInit      bool                   `protobuf:"varint,4,opt,name=remote_init,json=remoteInit,proto3" json:"remote_init,omitempty"`
 	Metric          uint32                 `protobuf:"varint,5,opt,name=metric,proto3" json:"metric,omitempty"`
-	IsBest          bool                   `protobuf:"varint,6,opt,name=is_best,json=isBest,proto3" json:"is_best,omitempty"`
 	FilteredRttNs   int64                  `protobuf:"varint,7,opt,name=filtered_rtt_ns,json=filteredRttNs,proto3" json:"filtered_rtt_ns,omitempty"`
 	StabilizedRttNs int64                  `protobuf:"varint,8,opt,name=stabilized_rtt_ns,json=stabilizedRttNs,proto3" json:"stabilized_rtt_ns,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -637,8 +628,8 @@ func (x *EndpointInfo) GetAddress() string {
 }
 
 func (x *EndpointInfo) GetResolved() string {
-	if x != nil {
-		return x.Resolved
+	if x != nil && x.Resolved != nil {
+		return *x.Resolved
 	}
 	return ""
 }
@@ -664,13 +655,6 @@ func (x *EndpointInfo) GetMetric() uint32 {
 	return 0
 }
 
-func (x *EndpointInfo) GetIsBest() bool {
-	if x != nil {
-		return x.IsBest
-	}
-	return false
-}
-
 func (x *EndpointInfo) GetFilteredRttNs() int64 {
 	if x != nil {
 		return x.FilteredRttNs
@@ -688,11 +672,10 @@ func (x *EndpointInfo) GetStabilizedRttNs() int64 {
 type WireGuardPeerStats struct {
 	state                       protoimpl.MessageState `protogen:"open.v1"`
 	LatestHandshakeUnix         int64                  `protobuf:"varint,1,opt,name=latest_handshake_unix,json=latestHandshakeUnix,proto3" json:"latest_handshake_unix,omitempty"`
-	LatestHandshakeUnixNano     int64                  `protobuf:"varint,2,opt,name=latest_handshake_unix_nano,json=latestHandshakeUnixNano,proto3" json:"latest_handshake_unix_nano,omitempty"`
-	TxBytes                     uint64                 `protobuf:"varint,3,opt,name=tx_bytes,json=txBytes,proto3" json:"tx_bytes,omitempty"`
-	RxBytes                     uint64                 `protobuf:"varint,4,opt,name=rx_bytes,json=rxBytes,proto3" json:"rx_bytes,omitempty"`
-	PersistentKeepaliveInterval uint32                 `protobuf:"varint,5,opt,name=persistent_keepalive_interval,json=persistentKeepaliveInterval,proto3" json:"persistent_keepalive_interval,omitempty"`
-	Endpoint                    string                 `protobuf:"bytes,6,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	TxBytes                     uint64                 `protobuf:"varint,2,opt,name=tx_bytes,json=txBytes,proto3" json:"tx_bytes,omitempty"`
+	RxBytes                     uint64                 `protobuf:"varint,3,opt,name=rx_bytes,json=rxBytes,proto3" json:"rx_bytes,omitempty"`
+	PersistentKeepaliveInterval uint32                 `protobuf:"varint,4,opt,name=persistent_keepalive_interval,json=persistentKeepaliveInterval,proto3" json:"persistent_keepalive_interval,omitempty"`
+	Endpoint                    *string                `protobuf:"bytes,5,opt,name=endpoint,proto3,oneof" json:"endpoint,omitempty"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -734,13 +717,6 @@ func (x *WireGuardPeerStats) GetLatestHandshakeUnix() int64 {
 	return 0
 }
 
-func (x *WireGuardPeerStats) GetLatestHandshakeUnixNano() int64 {
-	if x != nil {
-		return x.LatestHandshakeUnixNano
-	}
-	return 0
-}
-
 func (x *WireGuardPeerStats) GetTxBytes() uint64 {
 	if x != nil {
 		return x.TxBytes
@@ -763,8 +739,8 @@ func (x *WireGuardPeerStats) GetPersistentKeepaliveInterval() uint32 {
 }
 
 func (x *WireGuardPeerStats) GetEndpoint() string {
-	if x != nil {
-		return x.Endpoint
+	if x != nil && x.Endpoint != nil {
+		return *x.Endpoint
 	}
 	return ""
 }
@@ -774,11 +750,10 @@ type NeighbourInfo struct {
 	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
 	PublicKey     string                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
 	PassiveClient bool                   `protobuf:"varint,3,opt,name=passive_client,json=passiveClient,proto3" json:"passive_client,omitempty"`
-	BestMetric    uint32                 `protobuf:"varint,4,opt,name=best_metric,json=bestMetric,proto3" json:"best_metric,omitempty"`
-	Endpoints     []*EndpointInfo        `protobuf:"bytes,5,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
-	Routes        []*NeighRoute          `protobuf:"bytes,6,rep,name=routes,proto3" json:"routes,omitempty"`
-	Advertised    []*Advertisement       `protobuf:"bytes,7,rep,name=advertised,proto3" json:"advertised,omitempty"`
-	Wireguard     *WireGuardPeerStats    `protobuf:"bytes,8,opt,name=wireguard,proto3" json:"wireguard,omitempty"`
+	Endpoints     []*EndpointInfo        `protobuf:"bytes,4,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	Routes        []*NeighRoute          `protobuf:"bytes,5,rep,name=routes,proto3" json:"routes,omitempty"`
+	Advertised    []*Advertisement       `protobuf:"bytes,6,rep,name=advertised,proto3" json:"advertised,omitempty"`
+	Wireguard     *WireGuardPeerStats    `protobuf:"bytes,7,opt,name=wireguard,proto3" json:"wireguard,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -832,13 +807,6 @@ func (x *NeighbourInfo) GetPassiveClient() bool {
 		return x.PassiveClient
 	}
 	return false
-}
-
-func (x *NeighbourInfo) GetBestMetric() uint32 {
-	if x != nil {
-		return x.BestMetric
-	}
-	return 0
 }
 
 func (x *NeighbourInfo) GetEndpoints() []*EndpointInfo {
@@ -1648,15 +1616,15 @@ type IpcRequest_Status struct {
 }
 
 type IpcRequest_Probe struct {
-	Probe *ProbeRequest `protobuf:"bytes,5,opt,name=probe,proto3,oneof"`
+	Probe *ProbeRequest `protobuf:"bytes,2,opt,name=probe,proto3,oneof"`
 }
 
 type IpcRequest_Reload struct {
-	Reload *ReloadRequest `protobuf:"bytes,6,opt,name=reload,proto3,oneof"`
+	Reload *ReloadRequest `protobuf:"bytes,3,opt,name=reload,proto3,oneof"`
 }
 
 type IpcRequest_Trace struct {
-	Trace *TraceRequest `protobuf:"bytes,7,opt,name=trace,proto3,oneof"`
+	Trace *TraceRequest `protobuf:"bytes,4,opt,name=trace,proto3,oneof"`
 }
 
 func (*IpcRequest_Status) isIpcRequest_Request() {}
@@ -1778,15 +1746,15 @@ type IpcResponse_Status struct {
 }
 
 type IpcResponse_Probe struct {
-	Probe *ProbeResponse `protobuf:"bytes,7,opt,name=probe,proto3,oneof"`
+	Probe *ProbeResponse `protobuf:"bytes,4,opt,name=probe,proto3,oneof"`
 }
 
 type IpcResponse_Reload struct {
-	Reload *ReloadResponse `protobuf:"bytes,8,opt,name=reload,proto3,oneof"`
+	Reload *ReloadResponse `protobuf:"bytes,5,opt,name=reload,proto3,oneof"`
 }
 
 type IpcResponse_Trace struct {
-	Trace *TraceEvent `protobuf:"bytes,9,opt,name=trace,proto3,oneof"`
+	Trace *TraceEvent `protobuf:"bytes,6,opt,name=trace,proto3,oneof"`
 }
 
 func (*IpcResponse_Status) isIpcResponse_Response() {}
@@ -1804,9 +1772,8 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\x18protocol/nylon_ipc.proto\x12\x05proto\"\x0f\n" +
 	"\rStatusRequest\"'\n" +
 	"\fProbeRequest\x12\x17\n" +
-	"\apeer_id\x18\x01 \x01(\tR\x06peerId\"#\n" +
-	"\rReloadRequest\x12\x12\n" +
-	"\x04file\x18\x01 \x01(\tR\x04file\"\x0e\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\"\x0f\n" +
+	"\rReloadRequest\"\x0e\n" +
 	"\fTraceRequest\"9\n" +
 	"\x06Source\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x16\n" +
@@ -1832,37 +1799,35 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\x06metric\x18\x03 \x01(\rR\x06metric\x12\x1f\n" +
 	"\vexpiry_unix\x18\x04 \x01(\x03R\n" +
 	"expiryUnix\x12!\n" +
-	"\fpassive_hold\x18\x05 \x01(\bR\vpassiveHold\"\x82\x02\n" +
+	"\fpassive_hold\x18\x05 \x01(\bR\vpassiveHold\"\xfb\x01\n" +
 	"\fEndpointInfo\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1a\n" +
-	"\bresolved\x18\x02 \x01(\tR\bresolved\x12\x16\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1f\n" +
+	"\bresolved\x18\x02 \x01(\tH\x00R\bresolved\x88\x01\x01\x12\x16\n" +
 	"\x06active\x18\x03 \x01(\bR\x06active\x12\x1f\n" +
 	"\vremote_init\x18\x04 \x01(\bR\n" +
 	"remoteInit\x12\x16\n" +
-	"\x06metric\x18\x05 \x01(\rR\x06metric\x12\x17\n" +
-	"\ais_best\x18\x06 \x01(\bR\x06isBest\x12&\n" +
+	"\x06metric\x18\x05 \x01(\rR\x06metric\x12&\n" +
 	"\x0ffiltered_rtt_ns\x18\a \x01(\x03R\rfilteredRttNs\x12*\n" +
-	"\x11stabilized_rtt_ns\x18\b \x01(\x03R\x0fstabilizedRttNs\"\x9b\x02\n" +
+	"\x11stabilized_rtt_ns\x18\b \x01(\x03R\x0fstabilizedRttNsB\v\n" +
+	"\t_resolved\"\xf0\x01\n" +
 	"\x12WireGuardPeerStats\x122\n" +
-	"\x15latest_handshake_unix\x18\x01 \x01(\x03R\x13latestHandshakeUnix\x12;\n" +
-	"\x1alatest_handshake_unix_nano\x18\x02 \x01(\x03R\x17latestHandshakeUnixNano\x12\x19\n" +
-	"\btx_bytes\x18\x03 \x01(\x04R\atxBytes\x12\x19\n" +
-	"\brx_bytes\x18\x04 \x01(\x04R\arxBytes\x12B\n" +
-	"\x1dpersistent_keepalive_interval\x18\x05 \x01(\rR\x1bpersistentKeepaliveInterval\x12\x1a\n" +
-	"\bendpoint\x18\x06 \x01(\tR\bendpoint\"\xdc\x02\n" +
+	"\x15latest_handshake_unix\x18\x01 \x01(\x03R\x13latestHandshakeUnix\x12\x19\n" +
+	"\btx_bytes\x18\x02 \x01(\x04R\atxBytes\x12\x19\n" +
+	"\brx_bytes\x18\x03 \x01(\x04R\arxBytes\x12B\n" +
+	"\x1dpersistent_keepalive_interval\x18\x04 \x01(\rR\x1bpersistentKeepaliveInterval\x12\x1f\n" +
+	"\bendpoint\x18\x05 \x01(\tH\x00R\bendpoint\x88\x01\x01B\v\n" +
+	"\t_endpoint\"\xbb\x02\n" +
 	"\rNeighbourInfo\x12\x17\n" +
 	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x02 \x01(\tR\tpublicKey\x12%\n" +
-	"\x0epassive_client\x18\x03 \x01(\bR\rpassiveClient\x12\x1f\n" +
-	"\vbest_metric\x18\x04 \x01(\rR\n" +
-	"bestMetric\x121\n" +
-	"\tendpoints\x18\x05 \x03(\v2\x13.proto.EndpointInfoR\tendpoints\x12)\n" +
-	"\x06routes\x18\x06 \x03(\v2\x11.proto.NeighRouteR\x06routes\x124\n" +
+	"\x0epassive_client\x18\x03 \x01(\bR\rpassiveClient\x121\n" +
+	"\tendpoints\x18\x04 \x03(\v2\x13.proto.EndpointInfoR\tendpoints\x12)\n" +
+	"\x06routes\x18\x05 \x03(\v2\x11.proto.NeighRouteR\x06routes\x124\n" +
 	"\n" +
-	"advertised\x18\a \x03(\v2\x14.proto.AdvertisementR\n" +
+	"advertised\x18\x06 \x03(\v2\x14.proto.AdvertisementR\n" +
 	"advertised\x127\n" +
-	"\twireguard\x18\b \x01(\v2\x19.proto.WireGuardPeerStatsR\twireguard\"W\n" +
+	"\twireguard\x18\a \x01(\v2\x19.proto.WireGuardPeerStatsR\twireguard\"W\n" +
 	"\x0fRouteTableEntry\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x0e\n" +
 	"\x02nh\x18\x02 \x01(\tR\x02nh\x12\x1c\n" +
@@ -1922,17 +1887,17 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\n" +
 	"IpcRequest\x12.\n" +
 	"\x06status\x18\x01 \x01(\v2\x14.proto.StatusRequestH\x00R\x06status\x12+\n" +
-	"\x05probe\x18\x05 \x01(\v2\x13.proto.ProbeRequestH\x00R\x05probe\x12.\n" +
-	"\x06reload\x18\x06 \x01(\v2\x14.proto.ReloadRequestH\x00R\x06reload\x12+\n" +
-	"\x05trace\x18\a \x01(\v2\x13.proto.TraceRequestH\x00R\x05traceB\t\n" +
+	"\x05probe\x18\x02 \x01(\v2\x13.proto.ProbeRequestH\x00R\x05probe\x12.\n" +
+	"\x06reload\x18\x03 \x01(\v2\x14.proto.ReloadRequestH\x00R\x06reload\x12+\n" +
+	"\x05trace\x18\x04 \x01(\v2\x13.proto.TraceRequestH\x00R\x05traceB\t\n" +
 	"\arequest\"\xfa\x01\n" +
 	"\vIpcResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12/\n" +
 	"\x06status\x18\x03 \x01(\v2\x15.proto.StatusResponseH\x00R\x06status\x12,\n" +
-	"\x05probe\x18\a \x01(\v2\x14.proto.ProbeResponseH\x00R\x05probe\x12/\n" +
-	"\x06reload\x18\b \x01(\v2\x15.proto.ReloadResponseH\x00R\x06reload\x12)\n" +
-	"\x05trace\x18\t \x01(\v2\x11.proto.TraceEventH\x00R\x05traceB\n" +
+	"\x05probe\x18\x04 \x01(\v2\x14.proto.ProbeResponseH\x00R\x05probe\x12/\n" +
+	"\x06reload\x18\x05 \x01(\v2\x15.proto.ReloadResponseH\x00R\x06reload\x12)\n" +
+	"\x05trace\x18\x06 \x01(\v2\x11.proto.TraceEventH\x00R\x05traceB\n" +
 	"\n" +
 	"\bresponse*I\n" +
 	"\fReloadResult\x12\b\n" +
@@ -2027,6 +1992,8 @@ func file_protocol_nylon_ipc_proto_init() {
 	if File_protocol_nylon_ipc_proto != nil {
 		return
 	}
+	file_protocol_nylon_ipc_proto_msgTypes[10].OneofWrappers = []any{}
+	file_protocol_nylon_ipc_proto_msgTypes[11].OneofWrappers = []any{}
 	file_protocol_nylon_ipc_proto_msgTypes[24].OneofWrappers = []any{
 		(*IpcRequest_Status)(nil),
 		(*IpcRequest_Probe)(nil),

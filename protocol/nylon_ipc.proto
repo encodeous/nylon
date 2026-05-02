@@ -16,9 +16,7 @@ message ProbeRequest {
   string peer_id = 1;
 }
 
-message ReloadRequest {
-  string file = 1; // path to local config file
-}
+message ReloadRequest {}
 
 message TraceRequest {}
 
@@ -59,33 +57,30 @@ message Advertisement {
 
 message EndpointInfo {
   string address = 1;
-  string resolved = 2;
+  optional string resolved = 2;
   bool active = 3;
   bool remote_init = 4;
   uint32 metric = 5;
-  bool is_best = 6;
   int64 filtered_rtt_ns = 7;
   int64 stabilized_rtt_ns = 8;
 }
 
 message WireGuardPeerStats {
   int64 latest_handshake_unix = 1;
-  int64 latest_handshake_unix_nano = 2;
-  uint64 tx_bytes = 3;
-  uint64 rx_bytes = 4;
-  uint32 persistent_keepalive_interval = 5;
-  string endpoint = 6;
+  uint64 tx_bytes = 2;
+  uint64 rx_bytes = 3;
+  uint32 persistent_keepalive_interval = 4;
+  optional string endpoint = 5;
 }
 
 message NeighbourInfo {
   string peer_id = 1;
   string public_key = 2;
   bool passive_client = 3;
-  uint32 best_metric = 4;
-  repeated EndpointInfo endpoints = 5;
-  repeated NeighRoute routes = 6;
-  repeated Advertisement advertised = 7;
-  WireGuardPeerStats wireguard = 8;
+  repeated EndpointInfo endpoints = 4;
+  repeated NeighRoute routes = 5;
+  repeated Advertisement advertised = 6;
+  WireGuardPeerStats wireguard = 7;
 }
 
 message RouteTableEntry {
@@ -160,9 +155,9 @@ message TraceEvent {
 message IpcRequest {
   oneof request {
     StatusRequest status = 1;
-    ProbeRequest probe = 5;
-    ReloadRequest reload = 6;
-    TraceRequest trace = 7;
+    ProbeRequest probe = 2;
+    ReloadRequest reload = 3;
+    TraceRequest trace = 4;
   }
 }
 
@@ -171,8 +166,8 @@ message IpcResponse {
   string error = 2;
   oneof response {
     StatusResponse status = 3;
-    ProbeResponse probe = 7;
-    ReloadResponse reload = 8;
-    TraceEvent trace = 9;
+    ProbeResponse probe = 4;
+    ReloadResponse reload = 5;
+    TraceEvent trace = 6;
   }
 }
