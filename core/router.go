@@ -6,6 +6,7 @@ import (
 
 	"github.com/encodeous/nylon/polyamide/device"
 	"github.com/gaissmai/bart"
+	"go4.org/netipx"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/encodeous/nylon/log"
@@ -198,20 +199,27 @@ func (n *Nylon) InitRouter() error {
 // ComputeSysRouteTable computes: computed = prefixes - (((n.CentralCfg.ExcludeIPs U selected self prefixes) - n.LocalCfg.UnexcludeIPs) U n.LocalCfg.ExcludeIPs)
 func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 	prefixes := make([]netip.Prefix, 0)
-	selectedSelf := make(map[netip.Prefix]struct{})
+	selectedSelf := make([]netip.Prefix, 0)
 	for entry, v := range n.RouterState.Routes {
 		prefixes = append(prefixes, entry)
 		if v.Nh == n.LocalCfg.Id {
-			selectedSelf[entry] = struct{}{}
+			selectedSelf = append(selectedSelf, entry)
 		}
 	}
 
-	defaultExcludes := n.CentralCfg.ExcludeIPs
-	for p := range selectedSelf {
-		defaultExcludes = append(defaultExcludes, p)
-	}
-	exclude := append(state.SubtractPrefix(defaultExcludes, n.LocalCfg.UnexcludeIPs), n.LocalCfg.ExcludeIPs...)
-	return state.SubtractPrefix(prefixes, exclude)
+	excludes := netipx.IPSetBuilder{}
+	excludes.AddSet(state.MakeSet(n.CentralCfg.ExcludeIPs))
+	excludes.AddSet(state.MakeSet(selectedSelf))
+	excludes.RemoveSet(state.MakeSet(n.LocalCfg.UnexcludeIPs))
+	excludes.AddSet(state.MakeSet(n.LocalCfg.ExcludeIPs))
+
+	final := netipx.IPSetBuilder{}
+	final.AddSet(state.MakeSet(prefixes))
+	res, _ := excludes.IPSet()
+	final.RemoveSet(res)
+
+	res, _ = final.IPSet()
+	return res.Prefixes()
 }
 
 func (n *Nylon) updatePassiveClient(prefix state.PrefixHealthWrapper, node state.NodeId, passiveHold bool) {
