@@ -1,9 +1,14 @@
 <div align="center">
     <img src="docs/assets/banner.svg" width=500 height=250 alt="nylon - a self-healing mesh network built on WireGuard">
-</div>
 
 [![Join our Discord](https://img.shields.io/discord/1499576745916104795?logo=discord&style=for-the-badge)](https://discord.gg/987gqqPGqr)
 [![Docs](https://img.shields.io/badge/docs-nylon.jq.ax-blue?style=for-the-badge)](https://nylon.jq.ax)
+
+</div>
+
+---
+
+# nylon
 
 Nylon is a [Resilient Overlay Network](https://dl.acm.org/doi/10.1145/502034.502048) built from WireGuard, designed to be performant, secure, reliable, and easy to use.
 
