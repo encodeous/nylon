@@ -12,35 +12,17 @@ hero:
       link: https://github.com/encodeous/nylon
       icon: github
       variant: minimal
+    - text: Discord
+      link: https://discord.gg/987gqqPGqr
+      icon: discord
+      variant: minimal
 ---
 
-import { Card, CardGrid, Steps } from '@astrojs/starlight/components';
+import { Card, CardGrid } from '@astrojs/starlight/components';
 
 Nylon is a **Resilient Overlay Network (RON)** built on **WireGuard** and the **Babel** routing protocol. It provides an intelligent, self-healing mesh that ensures your servers and devices stay connected, even when *some* paths are blocked or unstable.
 
-:::note[Is nylon for you?]
-
-Nylon isn't trying to be a "one-click" consumer VPN/ZTNA. Instead, you might be interested in nylon if:
-
-<Steps>
-    1. You want a tool that does one thing, and does it well: building a performant, secure, and reliable mesh network.
-    2. You have many computers across different locations and want them to stay connected with minimal maintenance.
-    3. You don't mind writing a bit of YAML to configure your network
-    4. You want to understand how your network works, and have the flexibility to customize it as needed.
-    5. You know/are able/want to setup cloud machines, or open one port on your network (to enable secure public access).
-    6. You are unwilling to use a proprietary SaaS solution, and want a fully FOSS stack that you can run on your own infrastructure.
-</Steps>
-
-*If you are looking for a zero-config, managed experience for non-technical family members, Tailscale is likely a better fit.* (At least in the current state of nylon.)
-
-If you want to get your hands a little dirty (but not too much)... Then, welcome to nylon!
-
-
-
-:::
-
 ## Why Nylon?
-
 
 <CardGrid stagger>
 	<Card title="Dynamic Routing" icon="random">
@@ -57,44 +39,62 @@ If you want to get your hands a little dirty (but not too much)... Then, welcome
 	</Card>
 </CardGrid>
 
-## Use Cases
+:::note[Is nylon for you?]
 
-- **Distributed Mesh**: Build low-latency anycast networks for geographically distributed edge nodes that adapt to changing conditions.
-- **Home Lab Networking**: Connect your home devices, servers, and cloud resources into a single, resilient, and performant network that can adjust to network changes.
-- **Sovereign Networks**: Build a fully independent mesh that works entirely in isolated or air-gapped environments. Since nylon has no "phone-home" requirement to a central coordination server, your network stays up even if the public internet is unreachable.
-- **Optimized Routing**: Connect to the local node with the best latency when at the office, and connect to the cloud node when at home, without needing to change any configuration on your client.
+Nylon tries [to do one thing, and do it well](https://en.wikipedia.org/wiki/Unix_philosophy): mesh networking. You might be interested in nylon if:
 
-## Comparison
+- You have many computers across different locations and want them to stay connected with minimal maintenance.
+- You don't mind writing a bit of YAML to configure your network.
+- You want a fully FOSS stack you can run on your own infrastructure.
 
-How does nylon stack up against other popular mesh networking solutions?
+*If you are looking for a zero-config, managed experience, and plenty of addon features for non-technical users, Tailscale is likely a better fit. [See how nylon compares to Tailscale, Nebula, and DIY setups →](/why-nylon)*
 
-| Feature | **nylon** | **Tailscale** | **Nebula** | **DIY (WireGuard + Babel/BGP)** |
-| :--- | :--- | :--- | :--- | :--- |
-| **Routing Model** | **Intelligent, Optimized Multi-hop** | P2P + Relays | Peer-to-Peer Mesh | Dynamic Multi-hop |
-| **Failure Points / Connectivity** | **Decentralized; heals around outages.** | Down if Coordination/SSO is down. | Fails on strict NAT; no multi-hop. | Based on routing daemon |
-| **Core Protocol** | WireGuard (Polyamide) | WireGuard | Noise-based (Custom) | WireGuard |
-| **Coordination** | **Decentralized (In-band, same port)**, manual key distribution | Centralized (SaaS/Headscale) | Decentralized (Lighthouse) | Manual (Out-of-band, via routing daemon) |
-| **NAT Traversal** | Public nylon node(s) or port forward | **STUN/ICE/DERP** | Public nodes (lighthouses) | Manual (port forward, or public node) |
-| **Configuration** | Single Central Config (YAML) | Web Dashboard / SSO | Certificates & CA | Complex (Tunnels + Daemons + Network NS) |
-| **Compatibility** | **Any WireGuard Client (via Passive Nodes)** | Tailscale Client only | Nebula Client only | Manual Configuration |
-| **Platforms** | Linux, macOS, iOS/Android/Windows (via WireGuard) | Linux, macOS, iOS, Android, Windows | Linux, macOS, iOS, Android, Windows | Mostly Linux |
-| **License / FOSS** | Apache 2.0 | Proprietary (SaaS) / BSD-3 (Client) | MIT (Fully Open) | Various |
-
-:::tip[Nylon vs. DIY]
-If you've ever tried to build a dynamic network using **WireGuard + Babel (or BGP)**, you know how powerful it can be, but also how difficult it can be to maintain.
-
-[The typical setup](https://forum.mikrotik.com/t/best-approach-to-mesh-y-vpn-with-ospf/175811) involves running separate WireGuard interfaces for every peering arrangement, along with a routing daemon like Babel or BGP to manage the dynamic routing. This gives you a powerful, self-healing network that can adapt to outages and changing conditions, but it's also pretty combersome to set up and maintain.
-
-**Nylon is essentially that powerful DIY stack, but refined into a single, opinionated binary.** It automates the tedious parts, giving you the resilience of a professional routing setup with the ease of a modern VPN.
 :::
 
-:::tip[Nylon vs. Tailscale/Nebula]
-Unlike Tailscale or Nebula, which focus on establishing direct P2P tunnels, **nylon** is designed as a fully dynamic mesh network. This means:
+## Example
 
-<Steps>
+This is a conceptual illustration of how nylon routes traffic. Here is a network of 5 nodes, where the numbers on the edges represent the routing metric (nylon uses latency).
 
-    1. **No reliance on central coordination**: nylon nodes discover each other and exchange routing information directly, without needing a central server for metadata and key exchange. You can still centrally configure your network using the central configuration.
-    2. **Automatic & optimized multi-hop routing**: If a direct path between two nodes is blocked (e.g., due to strict NATs), or an indirect path is more optimal, nylon automatically routes traffic through intermediate nodes. This ensures connectivity even in challenging network conditions.
-    3. **Native WireGuard compatibility**: By using the Passive Nodes feature, you can connect standard WireGuard clients (iOS, Android, etc.) to your nylon mesh. These clients can roam between different gateways without losing connectivity, and benefit from the dynamic routing capabilities of nylon without needing any custom software.
-</Steps>
+:::note
+Nylon does not require a fully connected network. Nodes forward packets on behalf of their neighbours, so routing works as long as any path exists between two nodes. Forwarding can be disabled per-node in config.
 :::
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice --- |1| bob
+```
+
+From `alice`, nylon selects the path of least metric to each destination (highlighted):
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice --- |1| bob
+    linkStyle 0 stroke:#4caf50,stroke-width:2px
+    linkStyle 1 stroke:#4caf50,stroke-width:2px
+    linkStyle 2 stroke:#4caf50,stroke-width:2px
+    linkStyle 4 stroke:#4caf50,stroke-width:2px
+```
+
+If the `alice - bob` link goes down, the network automatically reconfigures around the failure:
+
+```mermaid
+graph LR
+    vps --- |2| charlie
+    vps --- |2| alice
+    eve --- |1| bob
+    vps --- |5| eve
+    alice --- |1| bob
+    linkStyle 0 stroke:#4caf50,stroke-width:2px
+    linkStyle 1 stroke:#4caf50,stroke-width:2px
+    linkStyle 2 stroke:#4caf50,stroke-width:2px
+    linkStyle 3 stroke:#4caf50,stroke-width:2px
+    linkStyle 4 stroke:#e53935,stroke-width:2px,stroke-dasharray:5
+```
