@@ -1,0 +1,47 @@
+---
+title: Why Nylon?
+description: How nylon compares to other mesh networking solutions, and when it's the right tool.
+tableOfContents: false
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+## Use Cases
+
+- **Distributed Mesh**: Build low-latency anycast networks for geographically distributed edge nodes that adapt to changing conditions.
+- **Home Lab Networking**: Connect your home devices, servers, and cloud resources into a single, resilient, and performant network that can adjust to network changes.
+- **Sovereign Networks**: Build a fully independent mesh that works entirely in isolated or air-gapped environments. Since nylon has no "phone-home" requirement to a central coordination server, your network stays up even if the public internet is unreachable.
+- **Optimized Routing**: Connect to the local node with the best latency when at the office, and connect to the cloud node when at home, without needing to change any configuration on your client.
+
+## Comparison
+
+How does nylon stack up against other popular mesh networking solutions?
+
+| Feature               | **nylon**                                                       | **Tailscale**                       | **Nebula**                          | **DIY**                                  |
+| :-------------------- | :-------------------------------------------------------------- | :---------------------------------- | :---------------------------------- | :--------------------------------------- |
+| **Routing Model**     | **Intelligent, Optimized Multi-hop**                            | Peer-to-Peer + Relays               | Peer-to-Peer Mesh                   | Dynamic Multi-hop                        |
+| **Points of Failure** | **Decentralized; heals around outages.**                        | Down if Coordination/SSO is down.   | Fails on strict NAT                 | Based on routing daemon                  |
+| **Encryption**        | Link-level (between nodes)                                      | End-to-end                          | End-to-end                          | Link-level (between routers)             |
+| **Core Protocol**     | WireGuard (Polyamide)                                           | WireGuard                           | Noise-based (Custom)                | WireGuard                                |
+| **Coordination**      | **Decentralized (In-band, same port)**, manual key distribution | Centralized (SaaS/Headscale)        | Decentralized (Lighthouse)          | Manual (Out-of-band, via routing daemon) |
+| **NAT Traversal**     | Public nylon node(s) or port forward                            | **STUN/ICE/DERP**                   | Public nodes (lighthouses)          | Manual (port forward, or public node)    |
+| **Configuration**     | Single Central Config (YAML)                                    | Web Dashboard / SSO                 | Certificates & CA                   | Complex (Tunnels + Daemons + Network NS) |
+| **Compatibility**     | **Any WireGuard Client (via Passive Nodes)**                    | Tailscale Client only               | Nebula Client only                  | Manual Configuration                     |
+| **Platforms**         | Linux, macOS, iOS/Android/Windows (via WireGuard)               | Linux, macOS, iOS, Android, Windows | Linux, macOS, iOS, Android, Windows | Mostly Linux                             |
+| **License / FOSS**    | Apache 2.0                                                      | Proprietary (SaaS) / BSD-3 (Client) | MIT (Fully Open)                    | Various                                  |
+
+:::tip[Nylon vs. DIY]
+If you've ever tried to build a dynamic network using **WireGuard + Babel (or BGP)**, you know how powerful it can be, but also how difficult it can be to maintain.
+
+[The typical setup](https://forum.mikrotik.com/t/best-approach-to-mesh-y-vpn-with-ospf/175811) involves running separate WireGuard interfaces for every peering arrangement, along with a routing daemon like Babel or BGP to manage the dynamic routing. This gives you a powerful, self-healing network that can adapt to outages and changing conditions, but it's also pretty cumbersome to set up and maintain.
+
+**Nylon is essentially that powerful DIY stack, but refined into a single, opinionated binary.** It automates the tedious parts, giving you the resilience of a professional routing setup with the ease of a modern VPN.
+:::
+
+:::tip[Nylon vs. Tailscale/Nebula]
+Unlike Tailscale or Nebula, which focus on establishing direct P2P tunnels, **nylon** is designed as a fully dynamic mesh network. This means:
+
+1. **No reliance on central coordination**: nylon nodes discover each other and exchange routing information directly, without needing a central server for metadata and key exchange. You can still centrally configure your network using the central configuration.
+2. **Automatic & optimized multi-hop routing**: If a direct path between two nodes is blocked (e.g., due to strict NATs), or an indirect path is more optimal, nylon automatically routes traffic through intermediate nodes. This ensures connectivity even in challenging network conditions.
+3. **Native WireGuard compatibility**: By using the Passive Nodes feature, you can connect standard WireGuard clients (iOS, Android, etc.) to your nylon mesh. These clients can roam between different gateways without losing connectivity, and benefit from the dynamic routing capabilities of nylon without needing any custom software.
+   :::

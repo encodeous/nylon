@@ -7,7 +7,7 @@ sidebar:
 
 import { Steps } from '@astrojs/starlight/components';
 
-One of nylon's key features is compatibility with standard WireGuard clients (iOS, Android, Windows, etc.). These are called **Passive Nodes**.
+One of nylon's key features is compatibility with standard WireGuard clients (iOS, Android, Windows, etc.). These are called **Passive Nodes/Clients**.
 
 ## How it Works
 
@@ -26,9 +26,11 @@ graph LR
     subgraph "Passive Clients"
         P1[WireGuard iOS Client]
         P2[WireGuard Android Client]
+        P3[WireGuard Windows Client]
     end
     P1 <--> N1
     P2 <--> N2
+    P3 <--> N2
 ```
 
 <Steps>
@@ -42,7 +44,7 @@ graph LR
    Add the passive node to your `central.yaml`. Passive nodes should **not** have endpoints.
 
    ```yaml title="central.yaml"
-   nodes:
+   clients:
      - id: node-1 # this node should already exist on the network
        pubkey: <GATEWAY_NODE_PUBLIC_KEY>
        ...

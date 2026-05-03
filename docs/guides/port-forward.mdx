@@ -60,7 +60,7 @@ If you've ever used BitTorrent, this is the same as being **"connectable."** Jus
    Once the port is forwarded and your DNS is set up, tell the rest of the network how to reach this node by adding an `endpoint` to your `central.yaml`.
 
    ```yaml title="central.yaml"
-   nodes:
+   routers:
      - id: home-server
        pubkey: <HOME_SERVER_PUBLIC_KEY>
        endpoints:
@@ -96,7 +96,7 @@ If you use a custom port, you should configure it in your `node.yaml` (for local
   </TabItem>
   <TabItem label="central.yaml">
     ```yaml
-    nodes:
+    routers:
       - id: my-node
         ...
         endpoints:
