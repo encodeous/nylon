@@ -3,6 +3,7 @@ package core
 import (
 	"math/rand/v2"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -16,7 +17,7 @@ type EpPing struct {
 	TimeSent time.Time
 }
 
-func (n *Nylon) Probe(node state.NodeId, ep *state.NylonEndpoint) error {
+func (n *Nylon) Probe(node state.NodeId, ep *state.NylonEndpoint, waitErr bool) error {
 	token := rand.Uint64()
 	ping := &protocol.Ny{
 		Type: &protocol.Ny_ProbeOp{
@@ -31,14 +32,27 @@ func (n *Nylon) Probe(node state.NodeId, ep *state.NylonEndpoint) error {
 	if err != nil {
 		return err
 	}
-	err = n.SendNylon(ping, nep, peer)
-	if err != nil {
-		return err
-	}
 
-	n.PingBuf.Set(token, EpPing{
-		TimeSent: time.Now(),
-	}, ttlcache.DefaultTTL)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	var sendErr error
+	go func() {
+		defer wg.Done()
+		sendErr = n.SendNylon(ping, nep, peer)
+		if sendErr != nil {
+			return
+		}
+
+		n.PingBuf.Set(token, EpPing{
+			TimeSent: time.Now(),
+		}, ttlcache.DefaultTTL)
+	}()
+
+	if waitErr {
+		wg.Wait()
+		return sendErr
+	}
 	return nil
 }
 
@@ -69,7 +83,7 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 	}
 }
 
-func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
+func handleProbePing(n *Nylon, node state.NodeId, wgEndpoint conn.Endpoint) {
 	if node == n.LocalCfg.Id {
 		return
 	}
@@ -78,11 +92,11 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 		for _, dep := range neigh.Eps {
 			dep := dep.AsNylonEndpoint()
 			ap, err := dep.DynEP.Get()
-			if err == nil && ap == ep.DstIPPort() && neigh.Id == node {
+			if err == nil && ap == wgEndpoint.DstIPPort() && neigh.Id == node {
 				// we have a link
 
 				// refresh wireguard ep
-				dep.WgEndpoint = ep
+				dep.WgEndpoint = wgEndpoint
 
 				if !dep.IsActive() {
 					n.UpdateNeighbour(node)
@@ -99,7 +113,7 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 	// create a new link if we dont have a link
 	for _, neigh := range n.RouterState.Neighbours {
 		if neigh.Id == node {
-			newEp := state.NewEndpoint(state.NewDynamicEndpoint(ep.DstIPPort().String()), true, ep)
+			newEp := state.NewEndpoint(state.NewDynamicEndpoint(wgEndpoint.DstIPPort().String()), true, wgEndpoint)
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
@@ -112,8 +126,8 @@ func handleProbePing(n *Nylon, node state.NodeId, ep conn.Endpoint) {
 func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint) {
 	// check if link exists
 	for _, neigh := range n.RouterState.Neighbours {
-		for _, dpLink := range neigh.Eps {
-			dpLink := dpLink.AsNylonEndpoint()
+		for _, dep := range neigh.Eps {
+			dpLink := dep.AsNylonEndpoint()
 			ap, err := dpLink.DynEP.Get()
 			if err == nil && ap == ep.DstIPPort() && neigh.Id == node {
 				linkHealth, ok := n.PingBuf.GetAndDelete(token)
@@ -144,12 +158,10 @@ func (n *Nylon) probeLinks(active bool) error {
 	for _, neigh := range n.RouterState.Neighbours {
 		for _, ep := range neigh.Eps {
 			if ep.IsActive() == active {
-				go func() {
-					err := n.Probe(neigh.Id, ep.AsNylonEndpoint())
-					if err != nil {
-						n.Log.Debug("probe failed", "err", err.Error())
-					}
-				}()
+				err := n.Probe(neigh.Id, ep.AsNylonEndpoint(), false)
+				if err != nil {
+					n.Log.Debug("probe failed", "err", err.Error())
+				}
 			}
 		}
 	}
@@ -184,12 +196,10 @@ func (n *Nylon) probeNew() error {
 				// add the link to the neighbour
 				dpl := state.NewEndpoint(ep, false, nil)
 				neigh.Eps = append(neigh.Eps, dpl)
-				go func() {
-					err := n.Probe(peer, dpl)
-					if err != nil {
-						//n.Log.Debug("discovery probe failed", "err", err.Error())
-					}
-				}()
+				err := n.Probe(peer, dpl, false)
+				if err != nil {
+					//n.Log.Debug("discovery probe failed", "err", err.Error())
+				}
 			}
 		}
 	}

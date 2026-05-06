@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"go4.org/netipx"
 )
 
@@ -63,6 +64,18 @@ type LocalCfg struct {
 	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
 	PostUp           []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
 	PostDown         []string              `yaml:"post_down,omitempty"`          // a list of commands executed in order after the nylon interface is brought down
+}
+
+func (c *CentralCfg) Clone() (error, *CentralCfg) {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return err, nil
+	}
+	var dst CentralCfg
+	if err = yaml.Unmarshal(data, &dst); err != nil {
+		return err, nil
+	}
+	return nil, &dst
 }
 
 // GetPrefixes returns all unique prefixes from all nodes

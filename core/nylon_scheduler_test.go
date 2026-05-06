@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -18,7 +19,7 @@ func TestDispatch(t *testing.T) {
 		Cancel:          cancel,
 	}
 
-	var called bool
+	var called atomic.Bool
 
 	go func() {
 		select {
@@ -32,13 +33,13 @@ func TestDispatch(t *testing.T) {
 	}()
 
 	n.Dispatch(func() error {
-		called = true
+		called.Store(true)
 		return nil
 	})
 
 	time.Sleep(150 * time.Millisecond)
 
-	if !called {
+	if !called.Load() {
 		t.Fatal("Dispatch function was not executed")
 	}
 }

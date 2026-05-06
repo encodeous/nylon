@@ -14,6 +14,7 @@ import (
 	"runtime/pprof"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/encodeous/nylon/core"
@@ -106,10 +107,12 @@ type VirtualHarness struct {
 	Cancel           context.CancelCauseFunc
 	Local            []state.LocalCfg
 	Net              *InMemoryNetwork
-	Nylons           []*core.Nylon
+	Nylons           []atomic.Pointer[core.Nylon]
 	Links            []*VirtualLink
+	linksMu          sync.RWMutex
 	Endpoints        map[string]state.NodeId
 	UntrackedRouting bool
+	LogLevel         *slog.Level
 }
 
 func (v *VirtualHarness) IndexOf(id state.NodeId) int {
@@ -151,7 +154,9 @@ func (v *VirtualHarness) AddLink(from, to string) *VirtualLink {
 		V1: bindtest.ChannelEndpoint2(netip.MustParseAddrPort(from)),
 		V2: bindtest.ChannelEndpoint2(netip.MustParseAddrPort(to)),
 	}
+	v.linksMu.Lock()
 	v.Links = append(v.Links, link)
+	v.linksMu.Unlock()
 	return link
 }
 
@@ -159,7 +164,7 @@ func (v *VirtualHarness) Start() chan error {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	v.Context = ctx
 	v.Cancel = cancel
-	v.Nylons = make([]*core.Nylon, len(v.Central.Routers))
+	v.Nylons = make([]atomic.Pointer[core.Nylon], len(v.Central.Routers))
 	errChan := make(chan error, 128) // a large number so we dont get blocked
 	vn := &InMemoryNetwork{}
 	v.Net = vn
@@ -181,16 +186,25 @@ func (v *VirtualHarness) Start() chan error {
 		idx := v.IndexOf(n)
 		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, state.NewDynamicEndpoint(e))
 	}
+	if v.LogLevel == nil {
+		v.LogLevel = new(slog.LevelDebug)
+	}
 	startDelay := 0 * time.Millisecond
 	for idx, rt := range v.Central.Routers {
 		sd := startDelay
 		go func() {
 			time.Sleep(sd)
 			labels := pprof.Labels("nylon node", string(rt.Id))
+			n, err := core.NewNylon(v.Central, v.Local[idx], *v.LogLevel, "", map[string]any{
+				"vnet": vn,
+			})
+			if err != nil {
+				errChan <- err
+				return
+			}
+			v.Nylons[idx].Store(n)
 			pprof.Do(context.Background(), labels, func(_ context.Context) {
-				cErr := core.Start(v.Central, v.Local[idx], slog.LevelDebug, "", map[string]any{
-					"vnet": vn,
-				}, &v.Nylons[idx])
+				cErr := n.Start()
 				if cErr != nil {
 					errChan <- cErr
 					return
@@ -203,7 +217,7 @@ func (v *VirtualHarness) Start() chan error {
 	for {
 		started := true
 		for idx, _ := range v.Central.Routers {
-			if v.Nylons[idx] == nil {
+			if v.Nylons[idx].Load() == nil {
 				started = false
 				break
 			}
@@ -228,7 +242,7 @@ func (v *VirtualHarness) Stop() {
 	println("Stopping VirtualHarness")
 	v.Cancel(fmt.Errorf("stopping harness"))
 	for idx, _ := range v.Central.Routers {
-		core.Stop(v.Nylons[idx])
+		v.Nylons[idx].Load().Stop()
 	}
 	v.Net.Stop()
 	println("Stopped VirtualHarness")
@@ -252,14 +266,14 @@ type InMemoryNetwork struct {
 	SelfHandler    PacketFilter // packet filter for handling packets destined for the current node
 	TransitHandler PacketFilter // packet filter for handling packets passing through the current node
 	EpOutMapping   OutMapping
-	ready          bool
+	ready          atomic.Bool
 	readyCond      *sync.Cond
 }
 
 func (i *InMemoryNetwork) WaitForReady() {
 	i.readyCond.L.Lock()
 	defer i.readyCond.L.Unlock()
-	for !i.ready {
+	for !i.ready.Load() {
 		i.readyCond.Wait()
 	}
 }
@@ -267,7 +281,7 @@ func (i *InMemoryNetwork) WaitForReady() {
 func (i *InMemoryNetwork) Ready() {
 	i.Lock()
 	defer i.Unlock()
-	i.ready = true
+	i.ready.Store(true)
 	i.readyCond.Broadcast()
 }
 
@@ -313,13 +327,19 @@ func (i *InMemoryNetwork) virtualRouteTable(node state.NodeId, src, dst netip.Ad
 
 func (i *InMemoryNetwork) virtualInternet(pkt []byte, len int, from, to bindtest.ChannelEndpoint2) {
 	// simulate network conditions
+	i.cfg.linksMu.RLock()
 	idx := slices.IndexFunc(i.cfg.Links, func(link *VirtualLink) bool {
 		return link.Edge.V1 == from && link.Edge.V2 == to
 	})
-	if idx == -1 {
+	var link *VirtualLink
+	if idx != -1 {
+		link = i.cfg.Links[idx]
+	}
+	i.cfg.linksMu.RUnlock()
+	if link == nil {
 		return // no connection, dropped packet
 	}
-	i.cfg.Links[idx].simulate(pkt, len, from, to, i)
+	link.simulate(pkt, len, from, to, i)
 }
 
 func (i *InMemoryNetwork) Bind(node state.NodeId) conn.Bind {
