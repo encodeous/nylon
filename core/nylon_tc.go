@@ -53,7 +53,7 @@ func (n *Nylon) InstallTC() {
 		})
 		// forward only outgoing packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
+			entry, ok := n.router.ForwardTable.Load().Lookup(packet.GetDst())
 			if ok && !packet.Incoming() {
 				if entry.Blackhole {
 					return device.TcDrop, nil
@@ -69,7 +69,7 @@ func (n *Nylon) InstallTC() {
 	} else {
 		// forward packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.ForwardTable.Lookup(packet.GetDst())
+			entry, ok := n.router.ForwardTable.Load().Lookup(packet.GetDst())
 			if ok {
 				if entry.Blackhole {
 					return device.TcDrop, nil
@@ -107,7 +107,7 @@ func (n *Nylon) InstallTC() {
 
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		entry, ok := n.router.ExitTable.Lookup(packet.GetDst())
+		entry, ok := n.router.ExitTable.Load().Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == n.LocalCfg.Id {
 			if state.DBG_trace_tc {
@@ -160,6 +160,7 @@ func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint conn.End
 }
 
 func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *device.Peer) {
+	// we need to be careful here, since this function is called on the dataplane
 	bundle := &protocol.TransportBundle{}
 	err := proto.Unmarshal(packet, bundle)
 	if err != nil {
@@ -168,8 +169,12 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 		return
 	}
 
-	neigh := n.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
-	if neigh == nil {
+	nt := n.PeerMap.Load()
+	if nt == nil {
+		return // not loaded yet
+	}
+	neigh, ok := (*nt)[state.NyPublicKey(peer.GetPublicKey())]
+	if !ok {
 		// this should not be possible
 		panic("impossible state, peer added, but not a node in the network")
 	}
@@ -185,18 +190,19 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 		switch pkt.Type.(type) {
 		case *protocol.Ny_SeqnoRequestOp:
 			n.Dispatch(func() error {
-				return n.routerHandleSeqnoRequest(*neigh, pkt.GetSeqnoRequestOp())
+				return n.routerHandleSeqnoRequest(neigh, pkt.GetSeqnoRequestOp())
 			})
 		case *protocol.Ny_RouteOp:
 			n.Dispatch(func() error {
-				return n.routerHandleRouteUpdate(*neigh, pkt.GetRouteOp())
+				return n.routerHandleRouteUpdate(neigh, pkt.GetRouteOp())
 			})
 		case *protocol.Ny_AckRetractOp:
 			n.Dispatch(func() error {
-				return n.routerHandleAckRetract(*neigh, pkt.GetAckRetractOp())
+				return n.routerHandleAckRetract(neigh, pkt.GetAckRetractOp())
 			})
 		case *protocol.Ny_ProbeOp:
-			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, *neigh)
+			// we don't want to wait for dispatch before responding to this packet
+			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, neigh)
 		}
 	}
 }

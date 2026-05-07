@@ -3,11 +3,12 @@
 package integration
 
 import (
-	"github.com/encodeous/nylon/state"
-	"go.uber.org/goleak"
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/encodeous/nylon/state"
+	"go.uber.org/goleak"
 )
 
 func TestInProcessRouting(t *testing.T) {

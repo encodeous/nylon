@@ -59,18 +59,37 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 		}
 		return device.ErrIPCStatusHandled
 	}
-	var resp *protocol.IpcResponse
-	switch req.Request.(type) {
-	case *protocol.IpcRequest_Status:
-		resp = handleStatus(n, req.GetStatus())
-	case *protocol.IpcRequest_Probe:
-		resp = handleIPCProbe(n, req.GetProbe())
-	case *protocol.IpcRequest_Reload:
-		resp = handleIPCReload(n, req.GetReload())
-	case *protocol.IpcRequest_Trace:
+
+	// trace is blocking, so we dont dispatch
+	if _, ok := req.Request.(*protocol.IpcRequest_Trace); ok {
 		return handleTrace(n, rw)
-	default:
-		resp = errResponse("unknown method")
+	}
+
+	done := make(chan *protocol.IpcResponse, 1)
+	n.Dispatch(func() error {
+		var resp *protocol.IpcResponse
+		switch req.Request.(type) {
+		case *protocol.IpcRequest_Status:
+			resp = handleStatus(n, req.GetStatus())
+		case *protocol.IpcRequest_Probe:
+			resp = handleIPCProbe(n, req.GetProbe())
+		case *protocol.IpcRequest_Reload:
+			resp = handleIPCReload(n, req.GetReload())
+		default:
+			resp = errResponse("unknown method")
+		}
+		done <- resp
+		return nil
+	})
+
+	var resp *protocol.IpcResponse
+	select {
+	case resp = <-done:
+	case <-n.Context.Done():
+		resp = errResponse("nylon shutting down")
+	case <-time.After(1 * time.Second):
+		// nylon is too busy to handle IPC requests
+		resp = errResponse("timed out waiting for dispatch")
 	}
 	if err := writeResponse(rw, resp); err != nil {
 		return err
@@ -231,7 +250,7 @@ func buildRouteTables(n *Nylon) *protocol.RouteTables {
 	slices.SortFunc(tables.Selected, func(a, b *protocol.SelRoute) int {
 		return comparePubRoute(a.PubRoute, b.PubRoute)
 	})
-	for prefix, route := range n.router.ForwardTable.All() {
+	for prefix, route := range n.router.ForwardTable.Load().All() {
 		tables.Forward = append(tables.Forward, &protocol.RouteTableEntry{
 			Prefix:    prefix.String(),
 			Nh:        string(route.Nh),
@@ -239,7 +258,7 @@ func buildRouteTables(n *Nylon) *protocol.RouteTables {
 		})
 	}
 	sortRouteTableEntries(tables.Forward)
-	for prefix, route := range n.router.ExitTable.All() {
+	for prefix, route := range n.router.ExitTable.Load().All() {
 		tables.Exit = append(tables.Exit, &protocol.RouteTableEntry{
 			Prefix:    prefix.String(),
 			Nh:        string(route.Nh),
@@ -401,7 +420,7 @@ func handleIPCProbe(n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse 
 	for _, ep := range neigh.Eps {
 		nep := ep.AsNylonEndpoint()
 		addr := nep.DynEP.Value
-		err := n.Probe(neigh.Id, nep)
+		err := n.Probe(neigh.Id, nep, true)
 		r := &protocol.EndpointProbeResult{Address: addr, Success: err == nil}
 		if err != nil {
 			r.Error = err.Error()
@@ -420,10 +439,12 @@ func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcRespons
 		return errResponse(fmt.Sprintf("read file: %v", err))
 	}
 	var cfg state.CentralCfg
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err = yaml.Unmarshal(data, &cfg); err != nil {
 		return errResponse(fmt.Sprintf("parse config: %v", err))
 	}
-	result, err := applyCentralConfigSync(n, cfg)
+	// We're running on the dispatch goroutine, so call ApplyCentralConfig
+	// directly rather than re-dispatching (which would deadlock).
+	result, err := n.ApplyCentralConfig(&cfg)
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -445,28 +466,6 @@ func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcRespons
 			Result:  protoResult,
 			Message: msg,
 		}},
-	}
-}
-
-func applyCentralConfigSync(n *Nylon, cfg state.CentralCfg) (ApplyResult, error) {
-	type result struct {
-		applyResult ApplyResult
-		err         error
-	}
-	done := make(chan result, 1)
-	n.Dispatch(func() error {
-		applyResult, err := n.ApplyCentralConfig(cfg)
-		done <- result{applyResult: applyResult, err: err}
-		return nil
-	})
-
-	select {
-	case r := <-done:
-		return r.applyResult, r.err
-	case <-n.Context.Done():
-		return ApplyRejected, context.Cause(n.Context)
-	case <-time.After(30 * time.Second):
-		return ApplyRejected, fmt.Errorf("timed out waiting for config reload")
 	}
 }
 
