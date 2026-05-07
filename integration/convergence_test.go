@@ -14,6 +14,10 @@ import (
 
 func TestOptimalConvergence(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	origProbeDelay, origRouteUpdateDelay, origMinConfWindow := state.ProbeDelay, state.RouteUpdateDelay, state.MinimumConfidenceWindow
+	defer func() {
+		state.ProbeDelay, state.RouteUpdateDelay, state.MinimumConfidenceWindow = origProbeDelay, origRouteUpdateDelay, origMinConfWindow
+	}()
 	state.ProbeDelay /= 3 // 3x faster
 	state.RouteUpdateDelay /= 3
 	state.MinimumConfidenceWindow /= 5

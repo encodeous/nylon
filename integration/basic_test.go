@@ -87,6 +87,8 @@ func TestSimplePing(t *testing.T) {
 
 func TestSimpleRoutedPing(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	origProbeDelay, origRouteUpdateDelay := state.ProbeDelay, state.RouteUpdateDelay
+	defer func() { state.ProbeDelay, state.RouteUpdateDelay = origProbeDelay, origRouteUpdateDelay }()
 	state.ProbeDelay /= 3 // 3x faster
 	state.RouteUpdateDelay /= 3
 
