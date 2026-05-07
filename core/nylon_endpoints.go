@@ -103,7 +103,7 @@ func handleProbePing(n *Nylon, node state.NodeId, wgEndpoint conn.Endpoint) {
 				}
 				dep.Renew()
 
-				if state.DBG_log_probe {
+				if n.DBG_log_probe {
 					n.Log.Debug("probe from", "addr", ap.String())
 				}
 				return
@@ -113,7 +113,7 @@ func handleProbePing(n *Nylon, node state.NodeId, wgEndpoint conn.Endpoint) {
 	// create a new link if we dont have a link
 	for _, neigh := range n.RouterState.Neighbours {
 		if neigh.Id == node {
-			newEp := state.NewEndpoint(state.NewDynamicEndpoint(wgEndpoint.DstIPPort().String()), true, wgEndpoint)
+			newEp := state.NewEndpoint(state.NewDynamicEndpoint(wgEndpoint.DstIPPort().String()), true, wgEndpoint, &n.RouterTunables)
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
@@ -135,7 +135,7 @@ func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint
 					health := linkHealth.Value()
 					latency := time.Since(health.TimeSent)
 					// we have a link
-					if state.DBG_log_probe {
+					if n.DBG_log_probe {
 						n.Log.Debug("probe back", "peer", node, "ping", latency)
 					}
 					dpLink.Renew()
@@ -194,7 +194,7 @@ func (n *Nylon) probeNew() error {
 			})
 			if idx == -1 {
 				// add the link to the neighbour
-				dpl := state.NewEndpoint(ep, false, nil)
+				dpl := state.NewEndpoint(ep, false, nil, &n.RouterTunables)
 				neigh.Eps = append(neigh.Eps, dpl)
 				err := n.Probe(peer, dpl, false)
 				if err != nil {

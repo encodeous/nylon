@@ -28,15 +28,17 @@ func nodeToPrefix(nodeId string) netip.Prefix {
 }
 
 func TestRouterBasicComputeRoutes(t *testing.T) {
+	tunables := ConfigureConstants()
 	h := &RouterHarness{}
 	aPrefix := nodeToPrefix("a")
 	rs := state.RouterState{
-		Id:         "a",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("b", "c", "d"),
-		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("a"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "a",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("b", "c", "d"),
+		Advertised:     map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("a"), Expiry: maxTime}},
 	}
 	ComputeRoutes(&rs, h)
 	// we should have only routes to ourselves
@@ -51,7 +53,7 @@ func TestRouterBasicComputeRoutes(t *testing.T) {
 }
 
 func TestRouterNet1A_BasicRetraction(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//          B
 	//       1 /|
@@ -64,12 +66,13 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 	h := &RouterHarness{}
 	aPrefix := nodeToPrefix("A")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("S", "B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{aPrefix: {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	sr := AddLink(rs, NewMockEndpoint("S", 1))
@@ -147,7 +150,7 @@ func TestRouterNet1A_BasicRetraction(t *testing.T) {
 }
 
 func TestRouterNet2S_SolveStarvation(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being S:
 	//    A
 	// 1 /|        D(A) = 1
@@ -159,12 +162,13 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "S",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("A", "B"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("S"): {NodeId: state.NodeId("S"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "S",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("A", "B"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("S"): {NodeId: state.NodeId("S"), Expiry: maxTime}},
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
@@ -248,7 +252,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 }
 
 func TestRouterNet3A_HandleRetraction(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//       2
 	//    B ---- D
@@ -261,12 +265,13 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -326,7 +331,7 @@ func TestRouterNet3A_HandleRetraction(t *testing.T) {
 }
 
 func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	// Note, X is a service that both S and D advertise
 
@@ -337,12 +342,13 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("S", "B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -410,7 +416,7 @@ func TestRouterNet4A_OverlappingServiceHoldLoop(t *testing.T) {
 }
 
 func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	// Note, X is a service that both S and D advertise
 
@@ -421,12 +427,13 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("S", "B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("S", "B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	SA := AddLink(rs, NewMockEndpoint("S", 1))
@@ -506,7 +513,7 @@ func TestRouterNet4A_OverlappingServiceMetricIncrease(t *testing.T) {
 }
 
 func TestRouter_SeqnoRequestNotForwardedBackToRequester(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	// A has a stale selected route to S through requester B. In A's neighbour
 	// table, B is still the only feasible route for S, while C has an older
@@ -527,12 +534,13 @@ func TestRouter_SeqnoRequestNotForwardedBackToRequester(t *testing.T) {
 	h := &RouterHarness{}
 	sPrefix := nodeToPrefix("S")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -552,7 +560,7 @@ func TestRouter_SeqnoRequestNotForwardedBackToRequester(t *testing.T) {
 }
 
 func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//       2
 	//    B ---- D
@@ -565,12 +573,13 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -634,7 +643,7 @@ func TestRouterNet5A_SelectedUnfeasibleUpdate(t *testing.T) {
 }
 
 func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// Topology:
 	// A --(1)-- C
 	// A --(1)-- B --(10)-- C
@@ -644,12 +653,13 @@ func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
 	h := &RouterHarness{}
 	cPrefix := nodeToPrefix("C")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AC := AddLink(rs, NewMockEndpoint("C", 1))
@@ -687,7 +697,7 @@ func TestRouter_BackupRouteOverridesHeldRoute(t *testing.T) {
 }
 
 func TestRouter_RetractedByClearedWhenHeldRouteRecovers(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// Topology:
 	// A --(1)-- C
 	// A --(1)-- B --(10)-- C
@@ -697,12 +707,13 @@ func TestRouter_RetractedByClearedWhenHeldRouteRecovers(t *testing.T) {
 	h := &RouterHarness{}
 	cPrefix := nodeToPrefix("C")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C", "D"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C", "D"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AC := AddLink(rs, NewMockEndpoint("C", 1))
@@ -732,17 +743,18 @@ func TestRouter_RetractedByClearedWhenHeldRouteRecovers(t *testing.T) {
 }
 
 func TestRouter_AckRetractIgnoredForFiniteRoute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 
 	h := &RouterHarness{}
 	cPrefix := nodeToPrefix("C")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("C", 1))
@@ -759,8 +771,8 @@ func TestRouter_AckRetractIgnoredForFiniteRoute(t *testing.T) {
 }
 
 func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
-	ConfigureConstants()
-	state.HopCost = 5
+	tunables := ConfigureConstants()
+	tunables.HopCost = 5
 	// Topology:
 	// A --(5, then 20)-- C
 	// A --(5)-- B --(10, then 20)-- C
@@ -771,12 +783,13 @@ func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
 	h := &RouterHarness{}
 	cPrefix := nodeToPrefix("C")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AC := AddLink(rs, NewMockEndpoint("C", 5))
@@ -801,7 +814,7 @@ func TestRouter_UnfeasibleUpdatePreferenceUsesTotalMetric(t *testing.T) {
 }
 
 func TestRouter_KeepsSelectedRouteOnEqualMetric(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A has two equal-cost paths to S. Once A selects B, a later recompute
 	// should not switch to C only because C appears later in the neighbour list.
 	//
@@ -816,12 +829,13 @@ func TestRouter_KeepsSelectedRouteOnEqualMetric(t *testing.T) {
 	h := &RouterHarness{}
 	sPrefix := nodeToPrefix("S")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -841,7 +855,7 @@ func TestRouter_KeepsSelectedRouteOnEqualMetric(t *testing.T) {
 }
 
 func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A has a covering aggregate through B and a more specific route through C.
 	// When C disappears, the specific route must become an exact blackhole while
 	// it is held; deleting only the specific route would allow the aggregate to
@@ -857,12 +871,13 @@ func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
 	aggregate := netip.MustParsePrefix("10.0.0.0/24")
 	specific := nodeToPrefix("C")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -884,7 +899,7 @@ func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
 }
 
 func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A selected B's route to P with source S. B then changes the source for
 	// the same prefix to T, but that update is unfeasible. Since the source no
 	// longer matches the selected route, A must not ignore the update as if the
@@ -911,12 +926,13 @@ func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T
 	oldSrc := state.Source{NodeId: "S", Prefix: prefix}
 	newSrc := state.Source{NodeId: "T", Prefix: prefix}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -934,7 +950,7 @@ func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T
 }
 
 func TestRouter_DoesNotSelectInactiveEndpointRoute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A has learned a route to S from B, but its only endpoint to B is inactive.
 	// An inactive endpoint should be treated as no usable link, so A must not
 	// select or install the route.
@@ -950,12 +966,13 @@ func TestRouter_DoesNotSelectInactiveEndpointRoute(t *testing.T) {
 	h := &RouterHarness{}
 	sPrefix := nodeToPrefix("S")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	ep := NewMockEndpoint("B", 1)
@@ -970,7 +987,7 @@ func TestRouter_DoesNotSelectInactiveEndpointRoute(t *testing.T) {
 }
 
 func TestRouter_SeqnoRequestSkipsInactiveForwardingNeighbour(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A receives a seqno request from B for S. C and D both have neighbour-table
 	// routes for S, but C's endpoint is inactive. A must skip C and forward the
 	// request to the reachable neighbour D.
@@ -986,12 +1003,13 @@ func TestRouter_SeqnoRequestSkipsInactiveForwardingNeighbour(t *testing.T) {
 	h := &RouterHarness{}
 	sPrefix := nodeToPrefix("S")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C", "D"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C", "D"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -1013,7 +1031,7 @@ func TestRouter_SeqnoRequestSkipsInactiveForwardingNeighbour(t *testing.T) {
 }
 
 func TestRouter_FullTableUpdateDoesNotUpdateFeasibilityForRetraction(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A is holding a retraction for S and must continue advertising that INF
 	// route. Sending the retraction should not update A's feasibility distance:
 	// FD updates are for finite updates, not retractions.
@@ -1032,8 +1050,9 @@ func TestRouter_FullTableUpdateDoesNotUpdateFeasibilityForRetraction(t *testing.
 	prefix := nodeToPrefix("S")
 	src := state.Source{NodeId: "S", Prefix: prefix}
 	rs := &state.RouterState{
-		Id:        "A",
-		SelfSeqno: make(map[netip.Prefix]uint16),
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
 		Routes: map[netip.Prefix]state.SelRoute{
 			prefix: {
 				PubRoute: MakePubRoute("S", prefix, 1, state.INF),
@@ -1055,7 +1074,7 @@ func TestRouter_FullTableUpdateDoesNotUpdateFeasibilityForRetraction(t *testing.
 }
 
 func TestRouter_SolveStarvationIgnoresRetractedNeighbourRoute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A has lost its feasible route to S. The only remaining neighbour-table
 	// entry is B's retraction, so it must not satisfy the "has a feasible
 	// route" check that suppresses starvation seqno requests.
@@ -1070,12 +1089,13 @@ func TestRouter_SolveStarvationIgnoresRetractedNeighbourRoute(t *testing.T) {
 	prefix := nodeToPrefix("S")
 	src := state.Source{NodeId: "S", Prefix: prefix}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    map[state.Source]state.FD{src: {Seqno: 0, Metric: 1}},
-		Neighbours: MakeNeighbours("B"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        map[state.Source]state.FD{src: {Seqno: 0, Metric: 1}},
+		Neighbours:     MakeNeighbours("B"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -1086,11 +1106,11 @@ func TestRouter_SolveStarvationIgnoresRetractedNeighbourRoute(t *testing.T) {
 
 	SolveStarvation(rs, h)
 
-	h.GetActions().AssertContains(t, BroadcastRequestSeqno(src, 1, state.SeqnoRequestHopCount))
+	h.GetActions().AssertContains(t, BroadcastRequestSeqno(src, 1, tunables.SeqnoRequestHopCount))
 }
 
 func TestRouter_SeqnoRequestDoesNotForwardToRetractedRoute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// B asks A for a newer seqno for S. A has a held selected route for S and
 	// two other neighbour entries: C has only a retraction, while D has a real
 	// finite route. A must not forward the request to C just because INF passes
@@ -1108,8 +1128,9 @@ func TestRouter_SeqnoRequestDoesNotForwardToRetractedRoute(t *testing.T) {
 	prefix := nodeToPrefix("S")
 	src := state.Source{NodeId: "S", Prefix: prefix}
 	rs := &state.RouterState{
-		Id:        "A",
-		SelfSeqno: make(map[netip.Prefix]uint16),
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
 		Routes: map[netip.Prefix]state.SelRoute{
 			prefix: {
 				PubRoute: MakePubRoute("S", prefix, 0, state.INF),
@@ -1141,8 +1162,8 @@ func TestRouter_SeqnoRequestDoesNotForwardToRetractedRoute(t *testing.T) {
 }
 
 func TestRouter_UnfeasibleEqualMetricUpdateDoesNotRequestSeqno(t *testing.T) {
-	ConfigureConstants()
-	state.HopCost = 5
+	tunables := ConfigureConstants()
+	tunables.HopCost = 5
 	// A selected C's route to S at total metric 10. The A-C link later worsens,
 	// so the selected route's current total metric is 25. B then sends an
 	// unfeasible update that would also total 25 if accepted. Equal cost is not
@@ -1155,12 +1176,13 @@ func TestRouter_UnfeasibleEqualMetricUpdateDoesNotRequestSeqno(t *testing.T) {
 	prefix := nodeToPrefix("S")
 	src := state.Source{NodeId: "S", Prefix: prefix}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AC := AddLink(rs, NewMockEndpoint("C", 5))
@@ -1181,11 +1203,11 @@ func TestRouter_UnfeasibleEqualMetricUpdateDoesNotRequestSeqno(t *testing.T) {
 
 	h.NeighUpdate(rs, "B", "S", prefix, 0, 15)
 
-	h.GetActions().AssertNotContains(t, RequestSeqno("B", src, 1, state.SeqnoRequestHopCount))
+	h.GetActions().AssertNotContains(t, RequestSeqno("B", src, 1, tunables.SeqnoRequestHopCount))
 }
 
 func TestRouter_BroadcastUsesConfiguredNeighbours(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// broadcast must fan out over RouterState.Neighbours. The IO map
 	// is only a pending-output cache; if it starts empty, broadcasting over IO
 	// silently drops the update/request.
@@ -1193,13 +1215,15 @@ func TestRouter_BroadcastUsesConfiguredNeighbours(t *testing.T) {
 	prefix := nodeToPrefix("S")
 	src := state.Source{NodeId: "S", Prefix: prefix}
 	n := &Nylon{
+		RouterTunables: *tunables,
 		RouterState: &state.RouterState{
-			Id:         "A",
-			SelfSeqno:  make(map[netip.Prefix]uint16),
-			Routes:     make(map[netip.Prefix]state.SelRoute),
-			Sources:    make(map[state.Source]state.FD),
-			Neighbours: MakeNeighbours("B", "C"),
-			Advertised: make(map[netip.Prefix]state.Advertisement),
+			RouterTunables: tunables,
+			Id:             "A",
+			SelfSeqno:      make(map[netip.Prefix]uint16),
+			Routes:         make(map[netip.Prefix]state.SelRoute),
+			Sources:        make(map[state.Source]state.FD),
+			Neighbours:     MakeNeighbours("B", "C"),
+			Advertised:     make(map[netip.Prefix]state.Advertisement),
 		},
 	}
 	n.router.IO = make(map[state.NodeId]*IOPending)
@@ -1223,7 +1247,7 @@ func TestRouter_BroadcastUsesConfiguredNeighbours(t *testing.T) {
 }
 
 func TestRouter_HeldRouteDoesNotReinstallBlackholeOnNoopRecompute(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// A holds S as an INF route after losing C. The first transition to held
 	// state installs an exact-prefix blackhole; a later recompute with no state
 	// change should not reinstall that same blackhole again.
@@ -1237,12 +1261,13 @@ func TestRouter_HeldRouteDoesNotReinstallBlackholeOnNoopRecompute(t *testing.T) 
 	h := &RouterHarness{}
 	prefix := nodeToPrefix("S")
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -1264,8 +1289,8 @@ func TestRouter_HeldRouteDoesNotReinstallBlackholeOnNoopRecompute(t *testing.T) 
 }
 
 func TestRouter5A_GCRoutes(t *testing.T) {
-	ConfigureConstants()
-	state.RouteExpiryTime = -1 // for testing, we want routes to expire immediately
+	tunables := ConfigureConstants()
+	tunables.RouteExpiryTime = -1 // for testing, we want routes to expire immediately
 	// This test is for the following network with our router being A:
 	//       3
 	//    B ---- D
@@ -1278,12 +1303,13 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	_ = AddLink(rs, NewMockEndpoint("B", 1))
@@ -1330,7 +1356,7 @@ func TestRouter5A_GCRoutes(t *testing.T) {
 }
 
 func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
-	ConfigureConstants()
+	tunables := ConfigureConstants()
 	// This test is for the following network with our router being A:
 	//       3
 	//    B ---- D
@@ -1343,12 +1369,13 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 
 	h := &RouterHarness{}
 	rs := &state.RouterState{
-		Id:         "A",
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: MakeNeighbours("B", "C"),
-		Advertised: map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "C"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
 	}
 
 	AB := AddLink(rs, NewMockEndpoint("B", 1))

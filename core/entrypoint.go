@@ -12,8 +12,8 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-func setupDebugging() {
-	if state.DBG_trace {
+func setupDebugging(opts state.NylonOptions) {
+	if opts.DBG_trace {
 		f, err := os.Create("trace.out")
 		if err != nil {
 			log.Fatal(err)
@@ -25,7 +25,7 @@ func setupDebugging() {
 		}
 		log.Println("Started tracing")
 	}
-	if state.DBG_debug {
+	if opts.DBG_debug {
 		go func() {
 			log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 		}()
@@ -96,8 +96,8 @@ func readNodeConfig(nodePath string) (*state.LocalCfg, error) {
 }
 
 // Bootstrap provides startup logic in a real environment
-func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
-	setupDebugging()
+func Bootstrap(centralPath, nodePath, logPath string, verbose bool, opts state.NylonOptions) {
+	setupDebugging(opts)
 	level := slog.LevelInfo
 	if verbose {
 		level = slog.LevelDebug
@@ -124,7 +124,7 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 	if err != nil {
 		panic(err)
 	}
-	n, err := NewNylon(*centralCfg, *nodeCfg, level, centralPath, nil)
+	n, err := NewNylon(*centralCfg, *nodeCfg, level, centralPath, nil, opts, nil)
 	if err != nil {
 		panic(err)
 	}

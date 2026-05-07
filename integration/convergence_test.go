@@ -14,15 +14,13 @@ import (
 
 func TestOptimalConvergence(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	origProbeDelay, origRouteUpdateDelay, origMinConfWindow := state.ProbeDelay, state.RouteUpdateDelay, state.MinimumConfidenceWindow
-	defer func() {
-		state.ProbeDelay, state.RouteUpdateDelay, state.MinimumConfidenceWindow = origProbeDelay, origRouteUpdateDelay, origMinConfWindow
-	}()
-	state.ProbeDelay /= 3 // 3x faster
-	state.RouteUpdateDelay /= 3
-	state.MinimumConfidenceWindow /= 5
+	tunables := state.DefaultRouterTunables()
+	tunables.ProbeDelay /= 3 // 3x faster
+	tunables.RouteUpdateDelay /= 3
+	tunables.MinimumConfidenceWindow /= 5
 
 	vh := &VirtualHarness{}
+	vh.Tunables = &tunables
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
 	b1 := "192.168.1.2:1234"

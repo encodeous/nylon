@@ -9,7 +9,7 @@ import (
 func (n *Nylon) initPassiveClient() error {
 	n.RepeatTask(func() error {
 		return scanPassivePeers(n)
-	}, state.ProbeDelay)
+	}, n.ProbeDelay)
 	return nil
 }
 
@@ -39,7 +39,7 @@ func scanPassivePeers(n *Nylon) error {
 
 			// TODO: we could make this expire after a longer period of time, like 24h. However, this would require our passive client to wait for the full route propagation time after 24 hours. (Might cause unexpected interruptions)
 
-			recentlyUpdated := time.Since(peer.LastReceivedPacket()) < state.ClientDeadThreshold
+			recentlyUpdated := time.Since(peer.LastReceivedPacket()) < n.ClientDeadThreshold
 			if n.IsClient(*nid) {
 				// we have a passive client
 				for _, newPrefix := range ncfg.Prefixes {

@@ -20,7 +20,7 @@ const (
 func (n *Nylon) InstallTC() {
 	t := n.Trace
 
-	if state.DBG_trace_tc {
+	if n.DBG_trace_tc {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 			if packet.Validate() { // make sure it's an IP packet
 				peer := packet.FromPeer
@@ -59,7 +59,7 @@ func (n *Nylon) InstallTC() {
 					return device.TcDrop, nil
 				}
 				packet.ToPeer = entry.Peer
-				if state.DBG_trace_tc {
+				if n.DBG_trace_tc {
 					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
 				}
 				return device.TcForward, nil
@@ -75,7 +75,7 @@ func (n *Nylon) InstallTC() {
 					return device.TcDrop, nil
 				}
 				packet.ToPeer = entry.Peer
-				if state.DBG_trace_tc {
+				if n.DBG_trace_tc {
 					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
 				}
 				return device.TcForward, nil
@@ -93,7 +93,7 @@ func (n *Nylon) InstallTC() {
 					packet.DecrementTTL()
 				}
 				if ttl == 0 {
-					if state.DBG_trace_tc {
+					if n.DBG_trace_tc {
 						t.Submit(fmt.Sprintf("TTL Expired: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
 					}
 					return device.TcBounce, nil
@@ -110,7 +110,7 @@ func (n *Nylon) InstallTC() {
 		entry, ok := n.router.ExitTable.Load().Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == n.LocalCfg.Id {
-			if state.DBG_trace_tc {
+			if n.DBG_trace_tc {
 				t.Submit(fmt.Sprintf("Exit: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
 			}
 			//dev.Log.Verbosef("BounceCur packet: %v -> %v", packet.GetSrc(), packet.GetDst())
