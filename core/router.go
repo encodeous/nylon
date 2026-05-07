@@ -26,7 +26,7 @@ func (n *Nylon) GetNeighIO(neigh state.NodeId) *IOPending {
 	if !ok {
 		nio = &IOPending{
 			SeqnoReq:   make(map[state.Source]state.Pair[uint16, uint8]),
-			SeqnoDedup: ttlcache.New[state.Source, uint16](ttlcache.WithTTL[state.Source, uint16](state.SeqnoDedupTTL), ttlcache.WithDisableTouchOnHit[state.Source, uint16]()),
+			SeqnoDedup: ttlcache.New[state.Source, uint16](ttlcache.WithTTL[state.Source, uint16](n.SeqnoDedupTTL), ttlcache.WithDisableTouchOnHit[state.Source, uint16]()),
 			Acks:       make(map[netip.Prefix]struct{}),
 			Updates:    make(map[netip.Prefix]*protocol.Ny_Update),
 		}
@@ -172,12 +172,13 @@ func (n *Nylon) InitRouter() error {
 	n.router.ForwardTable.Store(new(bart.Table[RouteTableEntry]{}))
 	n.router.ExitTable.Store(new(bart.Table[RouteTableEntry]{}))
 	n.RouterState = &state.RouterState{
-		Id:         n.LocalCfg.Id,
-		SelfSeqno:  make(map[netip.Prefix]uint16),
-		Routes:     make(map[netip.Prefix]state.SelRoute),
-		Sources:    make(map[state.Source]state.FD),
-		Neighbours: make([]*state.Neighbour, 0),
-		Advertised: make(map[netip.Prefix]state.Advertisement),
+		RouterTunables: &n.RouterTunables,
+		Id:             n.LocalCfg.Id,
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     make([]*state.Neighbour, 0),
+		Advertised:     make(map[netip.Prefix]state.Advertisement),
 	}
 	maxTime := time.Unix(1<<63-62135596801, 999999999)
 	for _, prefix := range n.GetRouter(n.LocalCfg.Id).Prefixes {
@@ -194,15 +195,15 @@ func (n *Nylon) InitRouter() error {
 	n.RepeatTask(func() error {
 		FullTableUpdate(n.RouterState, n)
 		return nil
-	}, state.RouteUpdateDelay)
+	}, n.RouteUpdateDelay)
 	n.RepeatTask(func() error {
 		SolveStarvation(n.RouterState, n)
 		return nil
-	}, state.StarvationDelay)
+	}, n.StarvationDelay)
 
 	n.RepeatTask(func() error {
 		return n.flushIO()
-	}, state.NeighbourIOFlushDelay)
+	}, n.NeighbourIOFlushDelay)
 	return nil
 }
 
@@ -250,7 +251,7 @@ func (n *Nylon) updatePassiveClient(prefix state.PrefixHealthWrapper, node state
 	// passive nodes may only have static prefixes, so we don't call prefix.Start()
 	n.RouterState.Advertised[prefix.GetPrefix()] = state.Advertisement{
 		NodeId:        node,
-		Expiry:        time.Now().Add(state.ClientKeepaliveInterval),
+		Expiry:        time.Now().Add(n.ClientKeepaliveInterval),
 		IsPassiveHold: passiveHold,
 		MetricFn:      prefix.GetMetric,
 		ExpiryFn: func() {
@@ -382,7 +383,7 @@ func (n *Nylon) flushIO() error {
 							HopCount: uint32(nio.SeqnoReq[seqR].V2),
 						},
 					}}
-					if tLength+proto.Size(req) >= state.SafeMTU {
+					if tLength+proto.Size(req) >= n.SafeMTU {
 						goto send
 					}
 					delete(nio.SeqnoReq, seqR)
@@ -394,7 +395,7 @@ func (n *Nylon) flushIO() error {
 					req := &protocol.Ny{Type: &protocol.Ny_RouteOp{
 						RouteOp: update,
 					}}
-					if tLength+proto.Size(req) >= state.SafeMTU {
+					if tLength+proto.Size(req) >= n.SafeMTU {
 						goto send
 					}
 					delete(nio.Updates, id)

@@ -90,7 +90,7 @@ func checkForConfigUpdates(n *Nylon) error {
 					return err
 				}
 				if config.Timestamp <= currentTimestamp {
-					if state.DBG_log_repo_updates {
+					if n.DBG_log_repo_updates {
 						n.Log.Debug(fmt.Sprintf("found old update bundle at %s, skipping", repo))
 					}
 					return nil

@@ -113,6 +113,7 @@ type VirtualHarness struct {
 	Endpoints        map[string]state.NodeId
 	UntrackedRouting bool
 	LogLevel         *slog.Level
+	Tunables         *state.RouterTunables
 }
 
 func (v *VirtualHarness) IndexOf(id state.NodeId) int {
@@ -197,7 +198,7 @@ func (v *VirtualHarness) Start() chan error {
 			labels := pprof.Labels("nylon node", string(rt.Id))
 			n, err := core.NewNylon(v.Central, v.Local[idx], *v.LogLevel, "", map[string]any{
 				"vnet": vn,
-			})
+			}, state.NylonOptions{DBG_log_wireguard: true}, v.Tunables)
 			if err != nil {
 				errChan <- err
 				return

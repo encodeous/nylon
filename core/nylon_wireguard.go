@@ -92,7 +92,7 @@ listen_port=%d
 	// init wireguard related tasks
 	n.RepeatTask(func() error {
 		return n.UpdateWireGuard()
-	}, state.ProbeDelay)
+	}, n.ProbeDelay)
 
 	return nil
 }

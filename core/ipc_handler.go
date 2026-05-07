@@ -129,7 +129,7 @@ func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
 				PublicKey:       keyString(n.LocalCfg.Key.Pubkey()),
 				ListenPort:      listenPort,
 				ConfigTimestamp: n.CentralCfg.Timestamp,
-				TraceEnabled:    state.DBG_trace_tc,
+				TraceEnabled:    n.DBG_trace_tc,
 				Advertised:      buildAdvertisements(n),
 				Seqnos:          buildSeqnos(n),
 				Stats: &protocol.NodeStats{
@@ -470,7 +470,7 @@ func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcRespons
 }
 
 func handleTrace(n *Nylon, rw *bufio.ReadWriter) error {
-	if !state.DBG_trace_tc {
+	if !n.DBG_trace_tc {
 		if err := writeResponse(rw, errResponse("tracing not enabled; restart with --dbg-trace-tc")); err != nil {
 			return err
 		}

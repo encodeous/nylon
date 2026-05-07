@@ -16,9 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func ConfigureConstants() {
-	state.HopCost = 0
-	state.RouteExpiryTime = 10 * time.Hour
+func ConfigureConstants() *state.RouterTunables {
+	t := state.DefaultRouterTunables()
+	t.HopCost = 0
+	t.RouteExpiryTime = 10 * time.Hour
+	return &t
 }
 
 type MockEndpoint struct {

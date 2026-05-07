@@ -118,8 +118,8 @@ func RunGC(s *state.RouterState, r Router) {
 				} else {
 					// route expired, set metric to INF
 					route.Metric = state.INF
-					route.ExpireAt = time.Now().Add(state.RouteExpiryTime) // reset expiry time
-					neigh.Routes[prefix] = route                           // update the route
+					route.ExpireAt = time.Now().Add(s.RouteExpiryTime) // reset expiry time
+					neigh.Routes[prefix] = route                       // update the route
 					r.RouterEvent(log.EventRouteExpired, "expired and marked", "neigh", neigh.Id, "prefix", prefix)
 				}
 			}
@@ -317,7 +317,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		// create the route
 		n.Routes[adv.Prefix] = state.NeighRoute{
 			PubRoute: adv,
-			ExpireAt: time.Now().Add(state.RouteExpiryTime),
+			ExpireAt: time.Now().Add(s.RouteExpiryTime),
 		}
 	} else {
 		// 		If such an entry exists:
@@ -336,7 +336,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 			}
 			bestEp := n.BestEndpoint()
 			if bestEp != nil {
-				dummy.Metric = AddMetric(dummy.Metric, AddMetric(bestEp.Metric(), state.HopCost))
+				dummy.Metric = AddMetric(dummy.Metric, AddMetric(bestEp.Metric(), s.HopCost))
 			} else {
 				dummy.Metric = state.INF
 			}
@@ -348,7 +348,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 				//   receives an unfeasible update for a route that is currently selected.
 				//   The requested sequence number is computed from the source table as in
 				//   Section 3.8.2.1.
-				r.RequestSeqno(neighId, adv.Source, s.Sources[adv.Source].Seqno+1, state.SeqnoRequestHopCount)
+				r.RequestSeqno(neighId, adv.Source, s.Sources[adv.Source].Seqno+1, s.SeqnoRequestHopCount)
 				return // ignore the unfeasible update, we are conservative with retractions here
 			} else if isMoreOptimal {
 				//   Additionally, since metric computation does not necessarily coincide
@@ -357,7 +357,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 				//   lead to the received route becoming selected were it feasible. In that
 				//   case, the node SHOULD send a unicast seqno request to the neighbour
 				//   that advertised the preferable update.
-				r.RequestSeqno(neighId, adv.Source, s.Sources[adv.Source].Seqno+1, state.SeqnoRequestHopCount)
+				r.RequestSeqno(neighId, adv.Source, s.Sources[adv.Source].Seqno+1, s.SeqnoRequestHopCount)
 			}
 		}
 
@@ -375,7 +375,7 @@ func HandleNeighbourUpdate(s *state.RouterState, r Router, neighId state.NodeId,
 		nr.PubRoute = adv
 
 		if adv.Metric != state.INF {
-			nr.ExpireAt = time.Now().Add(state.RouteExpiryTime)
+			nr.ExpireAt = time.Now().Add(s.RouteExpiryTime)
 		}
 		n.Routes[adv.Prefix] = nr
 	}
@@ -465,7 +465,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				},
 			},
 			Nh:       adv.NodeId, // next hop is self or directly connected client
-			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(state.RouteExpiryTime), adv.Expiry}, time.Time.Compare),
+			ExpireAt: slices.MinFunc([]time.Time{time.Now().Add(s.RouteExpiryTime), adv.Expiry}, time.Time.Compare),
 		}
 	}
 
@@ -504,7 +504,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 
 		if bestEp != nil {
 			CAB = bestEp.Metric()
-			CAB = AddMetric(CAB, state.HopCost) // to prevent 0 cost metric
+			CAB = AddMetric(CAB, s.HopCost) // to prevent 0 cost metric
 		}
 
 		// enumerate through neighbour advertisements
@@ -584,7 +584,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		if !exists ||
 			oldRoute.Source.NodeId != newRoute.Source.NodeId ||
 			oldRoute.FD.Seqno != newRoute.FD.Seqno ||
-			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(state.LargeChangeThreshold) && newRoute.Metric != state.INF {
+			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(s.LargeChangeThreshold) && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
 			r.RouterEvent(log.EventMajorRouteChange, "major change", "prefix", prefix, "old", oldRoute, "new", newRoute)
@@ -658,7 +658,7 @@ func SolveStarvation(router *state.RouterState, r Router) {
 
 	for src, feasible := range isFeasible {
 		if !feasible && src.NodeId != router.Id {
-			r.BroadcastRequestSeqno(src, router.Sources[src].Seqno+1, state.SeqnoRequestHopCount)
+			r.BroadcastRequestSeqno(src, router.Sources[src].Seqno+1, router.SeqnoRequestHopCount)
 			r.RouterEvent(log.EventSeqnoRequested, "requested seqno", "src", src, "seqno", router.Sources[src].Seqno+1)
 		}
 	}

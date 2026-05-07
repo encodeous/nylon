@@ -35,7 +35,7 @@ func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, rea
 	// setup WireGuard
 	dev = device.NewDevice(tdev, bind, &device.Logger{
 		Verbosef: func(format string, args ...any) {
-			if state.DBG_log_wireguard {
+			if n.DBG_log_wireguard {
 				wgLog.Debug(fmt.Sprintf(format, args...))
 			}
 		},

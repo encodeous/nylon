@@ -70,7 +70,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 			continue
 		}
 		// configure existing neighbours
-		reconcileConfiguredEndpoints(neigh, cfg.Endpoints)
+		reconcileConfiguredEndpoints(neigh, cfg.Endpoints, &n.RouterTunables)
 		neighs = append(neighs, neigh)
 		delete(desired, neigh.Id)
 	}
@@ -89,7 +89,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 			Eps:    make([]state.Endpoint, 0, len(cfg.Endpoints)),
 		}
 		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil))
+			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil, &n.RouterTunables))
 		}
 		neighs = append(neighs, stNeigh)
 	}
@@ -107,7 +107,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 	return nil
 }
 
-func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.DynamicEndpoint) {
+func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.DynamicEndpoint, t *state.RouterTunables) {
 	desiredByValue := make(map[string]*state.DynamicEndpoint, len(desired))
 	for _, ep := range desired {
 		desiredByValue[ep.Value] = ep
@@ -131,7 +131,7 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 		if _, ok := seen[ep.Value]; ok {
 			continue
 		}
-		eps = append(eps, state.NewEndpoint(ep, false, nil))
+		eps = append(eps, state.NewEndpoint(ep, false, nil, t))
 	}
 	neigh.Eps = eps
 }
@@ -164,7 +164,7 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 	for prefix, desired := range desiredLocal {
 		if _, ok := currentLocal[prefix]; !ok {
 			n.Log.Debug("starting prefix healthcheck", "prefix", prefix)
-			desired.Start(n.Log)
+			desired.Start(n.Log, &n.RouterTunables)
 		}
 		n.RouterState.Advertised[prefix] = state.Advertisement{
 			NodeId:   n.LocalCfg.Id,
@@ -180,7 +180,7 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 func (n *Nylon) startAdvertisedPrefixHealth() {
 	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
 		n.Log.Debug("starting prefix healthcheck", "prefix", ph.GetPrefix())
-		ph.Start(n.Log)
+		ph.Start(n.Log, &n.RouterTunables)
 	}
 }
 
