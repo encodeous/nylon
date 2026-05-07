@@ -153,6 +153,7 @@ func (ep *DynamicEndpoint) MarshalYAML() (interface{}, error) {
 }
 
 type NylonEndpoint struct {
+	sync.RWMutex  // this mutex is for rtt smoothing and metric calculation
 	history       []time.Duration
 	histSort      []time.Duration
 	dirty         bool
@@ -198,12 +199,20 @@ func (n *Neighbour) BestEndpoint() Endpoint {
 	return best
 }
 
-func (u *NylonEndpoint) IsActive() bool {
+func (u *NylonEndpoint) isActiveUnlocked() bool {
 	return time.Since(u.lastHeardBack) <= LinkDeadThreshold
 }
 
+func (u *NylonEndpoint) IsActive() bool {
+	u.RLock()
+	defer u.RUnlock()
+	return u.isActiveUnlocked()
+}
+
 func (u *NylonEndpoint) Renew() {
-	if !u.IsActive() {
+	u.Lock()
+	defer u.Unlock()
+	if !u.isActiveUnlocked() {
 		u.history = u.history[:0]
 		u.expRTT = math.Inf(1)
 		u.dirty = true
@@ -226,6 +235,8 @@ func NewEndpoint(endpoint *DynamicEndpoint, remoteInit bool, wgEndpoint conn.End
 }
 
 func (u *NylonEndpoint) calcR() (time.Duration, time.Duration, time.Duration) {
+	u.Lock()
+	defer u.Unlock()
 	if len(u.history) < MinimumConfidenceWindow {
 		return time.Second * 1, time.Second * 1, time.Second * 1
 	}
@@ -265,6 +276,8 @@ func (u *NylonEndpoint) StabilizedPing() time.Duration {
 }
 
 func (u *NylonEndpoint) UpdatePing(ping time.Duration) {
+	u.Lock()
+	defer u.Unlock()
 	// sometimes our system clock is not fast enough, so ping is 0
 	if ping == 0 {
 		ping = time.Microsecond * 100
@@ -276,7 +289,7 @@ func (u *NylonEndpoint) UpdatePing(ping time.Duration) {
 		u.expRTT = f
 	}
 	u.expRTT = alpha*f + (1-alpha)*u.expRTT
-	u.history = append(u.history, u.FilteredPing())
+	u.history = append(u.history, time.Duration(int64(u.expRTT)))
 	if len(u.history) > WindowSamples {
 		u.history = u.history[1:]
 	}

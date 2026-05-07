@@ -99,32 +99,42 @@ func (n *Nylon) UpdateNeighbour(neigh state.NodeId) {
 
 func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 	nh := route.Nh
+	nf := n.router.ForwardTable.Load().Clone()
+	ne := n.router.ExitTable.Load().Clone()
 	if route.Metric == state.INF {
-		n.router.ForwardTable.Insert(prefix, RouteTableEntry{
+		nf.Insert(prefix, RouteTableEntry{
 			Nh:        nh,
 			Blackhole: true,
 		})
-		n.router.ExitTable.Delete(prefix)
+		ne.Delete(prefix)
+		n.router.ForwardTable.Store(nf)
+		n.router.ExitTable.Store(ne)
 		return
 	}
 	peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(nh).PubKey))
-	n.router.ForwardTable.Insert(prefix, RouteTableEntry{
+	nf.Insert(prefix, RouteTableEntry{
 		Nh:   nh,
 		Peer: peer,
 	})
 	if route.Nh == n.LocalCfg.Id {
-		n.router.ExitTable.Insert(prefix, RouteTableEntry{
+		ne.Insert(prefix, RouteTableEntry{
 			Nh:   nh,
 			Peer: peer,
 		})
 	} else {
-		n.router.ExitTable.Delete(prefix)
+		ne.Delete(prefix)
 	}
+	n.router.ForwardTable.Store(nf)
+	n.router.ExitTable.Store(ne)
 }
 
 func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
-	n.router.ForwardTable.Delete(prefix)
-	n.router.ExitTable.Delete(prefix)
+	nf := n.router.ForwardTable.Load().Clone()
+	ne := n.router.ExitTable.Load().Clone()
+	nf.Delete(prefix)
+	ne.Delete(prefix)
+	n.router.ForwardTable.Store(nf)
+	n.router.ExitTable.Store(ne)
 }
 
 type IOPending struct {
@@ -159,8 +169,8 @@ func (n *Nylon) InitRouter() error {
 	n.router.log = n.Log.With("module", log.ScopeRouter)
 	n.router.log.Debug("init router")
 	n.router.IO = make(map[state.NodeId]*IOPending)
-	n.router.ForwardTable = bart.Table[RouteTableEntry]{}
-	n.router.ExitTable = bart.Table[RouteTableEntry]{}
+	n.router.ForwardTable.Store(new(bart.Table[RouteTableEntry]{}))
+	n.router.ExitTable.Store(new(bart.Table[RouteTableEntry]{}))
 	n.RouterState = &state.RouterState{
 		Id:         n.LocalCfg.Id,
 		SelfSeqno:  make(map[netip.Prefix]uint16),

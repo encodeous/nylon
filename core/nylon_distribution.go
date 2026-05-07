@@ -100,7 +100,7 @@ func checkForConfigUpdates(n *Nylon) error {
 						return nil
 					}
 					n.Log.Info("Found a new config update in repo", "repo", repo)
-					result, err := n.ApplyCentralConfig(*config)
+					result, err := n.ApplyCentralConfig(config)
 					if err != nil {
 						n.Log.Error("failed to apply central config update", "repo", repo, "result", result, "err", err)
 						return nil

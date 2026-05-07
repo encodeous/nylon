@@ -1,26 +1,15 @@
 package core
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"path"
-	"reflect"
-	"runtime"
 	"runtime/trace"
-	"syscall"
-	"time"
 
-	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/state"
-	"github.com/encodeous/tint"
 	"github.com/goccy/go-yaml"
-	slogmulti "github.com/samber/slog-multi"
 )
 
 func setupDebugging() {
@@ -135,146 +124,12 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool) {
 	if err != nil {
 		panic(err)
 	}
-	err = Start(*centralCfg, *nodeCfg, level, centralPath, nil, nil)
+	n, err := NewNylon(*centralCfg, *nodeCfg, level, centralPath, nil)
 	if err != nil {
 		panic(err)
 	}
-}
-
-func Start(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, initNylon **Nylon) error {
-	ctx, cancel := context.WithCancelCause(context.Background())
-
-	dispatch := make(chan func() error, 128)
-
-	handlers := make([]slog.Handler, 0)
-	if state.DBG_log_json {
-		handlers = append(handlers,
-			slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-				Level: logLevel,
-			}),
-		)
-	} else {
-		handlers = append(handlers,
-			tint.NewHandler(os.Stderr, &tint.Options{
-				Level:        logLevel,
-				AddSource:    false,
-				CustomPrefix: string(ncfg.Id),
-				ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-					if attr.Key == "time" {
-						return slog.Attr{}
-					}
-					return attr
-				},
-			}))
-	}
-
-	if ncfg.LogPath != "" {
-		err := os.MkdirAll(path.Dir(ncfg.LogPath), 0700)
-		if err != nil {
-			return err
-		}
-		f, err := os.OpenFile(ncfg.LogPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0700)
-		if err != nil {
-			return err
-		}
-		handlers = append(handlers, slog.NewTextHandler(f, &slog.HandlerOptions{Level: logLevel}))
-	}
-
-	logger := slog.New(
-		slogmulti.Fanout(handlers...))
-
-	if ncfg.InterfaceName == "" {
-		ncfg.InterfaceName = "nylon"
-	}
-
-	n := &Nylon{
-		Trace: &NylonTrace{},
-		ConfigState: state.ConfigState{
-			CentralCfg: ccfg,
-			LocalCfg:   ncfg,
-		},
-		Context:         ctx,
-		Cancel:          cancel,
-		DispatchChannel: dispatch,
-		Log:             logger,
-		ConfigPath:      configPath,
-		AuxConfig:       aux,
-	}
-
-	n.Log.Info("init modules")
-
-	err := n.Init()
+	err = n.Start()
 	if err != nil {
-		return err
+		panic(err)
 	}
-	if initNylon != nil {
-		*initNylon = n
-	}
-	n.Log.Info("init modules complete")
-
-	n.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		select {
-		case _ = <-c:
-			n.Cancel(errors.New("received shutdown signal"))
-		case <-ctx.Done():
-			return
-		}
-	}()
-
-	err = MainLoop(n, dispatch)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func MainLoop(n *Nylon, dispatch <-chan func() error) error {
-	n.Log.Debug("started main loop")
-	for {
-		select {
-		case fun := <-dispatch:
-			if fun == nil {
-				goto endLoop
-			}
-			//n.Log.Debug("start")
-			start := time.Now()
-			err := fun()
-			if err != nil {
-				n.Log.Error("error occurred during dispatch: ", "error", err)
-				n.Cancel(err)
-			}
-			elapsed := time.Since(start)
-			perf.DispatchLatency.Add(float64(elapsed.Microseconds()))
-			if elapsed > time.Millisecond*4 {
-				n.Log.Warn("dispatch took a long time!", "fun", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name(), "elapsed", elapsed, "len", len(dispatch))
-			}
-			//n.Log.Debug("done", "elapsed", elapsed)
-		case <-n.Context.Done():
-			goto endLoop
-		}
-	}
-endLoop:
-	n.Log.Info("stopped main loop", "reason", context.Cause(n.Context).Error())
-	Stop(n)
-	return nil
-}
-
-func Stop(n *Nylon) {
-	n.cleanupOnce.Do(func() {
-		n.Cancel(context.Canceled)
-		if n.DispatchChannel != nil {
-			close(n.DispatchChannel)
-			n.DispatchChannel = nil
-		}
-		n.Log.Info("cleaning up modules")
-		err := n.Cleanup()
-		if err != nil {
-			n.Log.Error("error occurred during Stop: ", "error", err)
-		}
-		n.Log.Info("stopped")
-	})
 }

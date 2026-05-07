@@ -51,7 +51,7 @@ func TestApplyCentralConfigRemovesNeighbourFromLiveNode(t *testing.T) {
 		"b, c",
 	}
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	a.Dispatch(func() error {
 		beforeC := a.RouterState.GetNeighbour("c")
 		if beforeC == nil || len(beforeC.Eps) == 0 {
@@ -60,7 +60,7 @@ func TestApplyCentralConfigRemovesNeighbourFromLiveNode(t *testing.T) {
 			return nil
 		}
 		keptEndpoint := beforeC.Eps[0]
-		result, err := a.ApplyCentralConfig(next)
+		result, err := a.ApplyCentralConfig(&next)
 		afterC := a.RouterState.GetNeighbour("c")
 
 		apply = applyResult{
@@ -118,7 +118,7 @@ func TestApplyCentralConfigLocalNodeRemovedRequiresRestart(t *testing.T) {
 	errs := vh.Start()
 	defer vh.Stop()
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	next := vh.Central
 	next.Timestamp++
 	next.Routers = next.Routers[1:]
@@ -130,7 +130,7 @@ func TestApplyCentralConfigLocalNodeRemovedRequiresRestart(t *testing.T) {
 	var centralUnchanged bool
 	var bStillNeighbour bool
 	a.Dispatch(func() error {
-		result, err = a.ApplyCentralConfig(next)
+		result, err = a.ApplyCentralConfig(&next)
 		centralUnchanged = a.CentralCfg.Timestamp == vh.Central.Timestamp
 		bStillNeighbour = a.RouterState.GetNeighbour("b") != nil
 		close(done)

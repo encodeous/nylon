@@ -63,49 +63,37 @@ func ipcCall(t *testing.T, n *core.Nylon, req *protocol.IpcRequest) *protocol.Ip
 
 func TestIPCStatus(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	vh, errs := setupTwoNodeHarness(t)
+	vh, _ := setupTwoNodeHarness(t)
 	defer vh.Stop()
 
 	// Wait for links to come up
 	time.Sleep(3 * time.Second)
 
-	a := vh.Nylons[vh.IndexOf("a")]
-	done := make(chan *protocol.IpcResponse, 1)
-	a.Dispatch(func() error {
-		resp := ipcCall(t, a, &protocol.IpcRequest{
-			Request: &protocol.IpcRequest_Status{Status: &protocol.StatusRequest{}},
-		})
-		done <- resp
-		return nil
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	resp := ipcCall(t, a, &protocol.IpcRequest{
+		Request: &protocol.IpcRequest_Status{Status: &protocol.StatusRequest{}},
 	})
 
-	select {
-	case resp := <-done:
-		assert.True(t, resp.Ok)
-		s := resp.GetStatus()
-		require.NotNil(t, s.GetNode())
-		assert.Equal(t, "a", s.GetNode().NodeId)
-		assert.NotEmpty(t, s.GetNode().PublicKey)
-		assert.Equal(t, int32(1), s.GetNode().GetStats().NeighbourCount)
-		assert.GreaterOrEqual(t, s.GetNode().GetStats().SelectedRouteCount, int32(1))
-		assert.GreaterOrEqual(t, s.GetNode().GetStats().AdvertisedPrefixCount, int32(1))
+	assert.True(t, resp.Ok)
+	s := resp.GetStatus()
+	require.NotNil(t, s.GetNode())
+	assert.Equal(t, "a", s.GetNode().NodeId)
+	assert.NotEmpty(t, s.GetNode().PublicKey)
+	assert.Equal(t, int32(1), s.GetNode().GetStats().NeighbourCount)
+	assert.GreaterOrEqual(t, s.GetNode().GetStats().SelectedRouteCount, int32(1))
+	assert.GreaterOrEqual(t, s.GetNode().GetStats().AdvertisedPrefixCount, int32(1))
 
-		require.Len(t, s.GetNeighbours(), 1)
-		peer := s.GetNeighbours()[0]
-		assert.Equal(t, "b", peer.PeerId)
-		assert.NotEmpty(t, peer.PublicKey)
-		require.NotEmpty(t, peer.GetEndpoints())
-		assert.GreaterOrEqual(t, len(peer.GetEndpoints()), 2)
-		assert.NotEmpty(t, peer.GetEndpoints()[0].Address)
+	require.Len(t, s.GetNeighbours(), 1)
+	peer := s.GetNeighbours()[0]
+	assert.Equal(t, "b", peer.PeerId)
+	assert.NotEmpty(t, peer.PublicKey)
+	require.NotEmpty(t, peer.GetEndpoints())
+	assert.GreaterOrEqual(t, len(peer.GetEndpoints()), 2)
+	assert.NotEmpty(t, peer.GetEndpoints()[0].Address)
 
-		assert.GreaterOrEqual(t, len(s.GetRoutes().GetSelected()), 1)
-		assert.GreaterOrEqual(t, len(s.GetRoutes().GetForward()), 1)
-		assert.GreaterOrEqual(t, len(s.GetFeasibilityDistances()), 1)
-	case err := <-errs:
-		t.Fatal(err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout")
-	}
+	assert.GreaterOrEqual(t, len(s.GetRoutes().GetSelected()), 1)
+	assert.GreaterOrEqual(t, len(s.GetRoutes().GetForward()), 1)
+	assert.GreaterOrEqual(t, len(s.GetFeasibilityDistances()), 1)
 }
 
 func TestIPCReloadConfig(t *testing.T) {
@@ -121,7 +109,7 @@ func TestIPCReloadConfig(t *testing.T) {
 	tmpFile := t.TempDir() + "/central.yaml"
 	require.NoError(t, os.WriteFile(tmpFile, cfgData, 0600))
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	a.ConfigPath = tmpFile
 	done := make(chan *protocol.IpcResponse, 1)
 	go func() {
@@ -145,30 +133,18 @@ func TestIPCReloadConfig(t *testing.T) {
 
 func TestIPCProbeNonNeighbour(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	vh, errs := setupTwoNodeHarness(t)
+	vh, _ := setupTwoNodeHarness(t)
 	defer vh.Stop()
 
 	time.Sleep(1 * time.Second)
 
-	a := vh.Nylons[vh.IndexOf("a")]
-	done := make(chan *protocol.IpcResponse, 1)
-	a.Dispatch(func() error {
-		resp := ipcCall(t, a, &protocol.IpcRequest{
-			Request: &protocol.IpcRequest_Probe{Probe: &protocol.ProbeRequest{PeerId: "nonexistent"}},
-		})
-		done <- resp
-		return nil
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	resp := ipcCall(t, a, &protocol.IpcRequest{
+		Request: &protocol.IpcRequest_Probe{Probe: &protocol.ProbeRequest{PeerId: "nonexistent"}},
 	})
 
-	select {
-	case resp := <-done:
-		assert.False(t, resp.Ok)
-		assert.Contains(t, resp.Error, "not a neighbour")
-	case err := <-errs:
-		t.Fatal(err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout")
-	}
+	assert.False(t, resp.Ok)
+	assert.Contains(t, resp.Error, "not a neighbour")
 }
 
 func TestIPCTraceDisabled(t *testing.T) {
@@ -178,7 +154,7 @@ func TestIPCTraceDisabled(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	done := make(chan *protocol.IpcResponse, 1)
 	a.Dispatch(func() error {
 		// Trace should fail since DBG_trace_tc is false by default
@@ -207,7 +183,7 @@ func TestIPCMalformedRequest(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	done := make(chan bool, 1)
 	a.Dispatch(func() error {
 		// Send garbage
@@ -243,7 +219,7 @@ func TestIPCSocketResponseHasNoUAPIErrnoTrailer(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	a := vh.Nylons[vh.IndexOf("a")]
+	a := vh.Nylons[vh.IndexOf("a")].Load()
 	client, server := net.Pipe()
 	defer client.Close()
 	go a.Device.IpcHandle(server)

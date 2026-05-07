@@ -19,9 +19,13 @@ const (
 	ApplyRestartRequired ApplyResult = "restart_required"
 )
 
-func (n *Nylon) ApplyCentralConfig(next state.CentralCfg) (ApplyResult, error) {
-	state.ExpandCentralConfig(&next)
-	if err := state.CentralConfigValidator(&next); err != nil {
+func (n *Nylon) ApplyCentralConfig(cfg *state.CentralCfg) (ApplyResult, error) {
+	err, next := cfg.Clone()
+	if err != nil {
+		return ApplyRejected, err
+	}
+	state.ExpandCentralConfig(next)
+	if err := state.CentralConfigValidator(next); err != nil {
 		return ApplyRejected, err
 	}
 	if !next.IsRouter(n.LocalCfg.Id) {
@@ -35,7 +39,7 @@ func (n *Nylon) ApplyCentralConfig(next state.CentralCfg) (ApplyResult, error) {
 		return ApplyRejected, err
 	}
 	n.reconcileAdvertisedPrefixes(next)
-	n.CentralCfg = next
+	n.CentralCfg = *next
 
 	if err := n.SyncWireGuard(); err != nil {
 		return ApplyRejected, err
@@ -48,7 +52,7 @@ func (n *Nylon) ApplyCentralConfig(next state.CentralCfg) (ApplyResult, error) {
 	return ApplyApplied, nil
 }
 
-func (n *Nylon) reconcileRouterState(next state.CentralCfg) error {
+func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 	desired := make(map[state.NodeId]state.RouterCfg)
 	for _, peer := range next.GetPeers(n.LocalCfg.Id) {
 		if !next.IsRouter(peer) {
@@ -61,14 +65,17 @@ func (n *Nylon) reconcileRouterState(next state.CentralCfg) error {
 	for _, neigh := range n.RouterState.Neighbours {
 		cfg, ok := desired[neigh.Id]
 		if !ok {
+			// remove old neighbours
 			delete(n.router.IO, neigh.Id)
 			continue
 		}
+		// configure existing neighbours
 		reconcileConfiguredEndpoints(neigh, cfg.Endpoints)
 		neighs = append(neighs, neigh)
 		delete(desired, neigh.Id)
 	}
 
+	// create new neighbours
 	ids := make([]state.NodeId, 0, len(desired))
 	for id := range desired {
 		ids = append(ids, id)
@@ -87,6 +94,16 @@ func (n *Nylon) reconcileRouterState(next state.CentralCfg) error {
 		neighs = append(neighs, stNeigh)
 	}
 	n.RouterState.Neighbours = neighs
+
+	// rebuild pubkey to peer's id mapping
+	pubkeyMap := make(map[state.NyPublicKey]state.NodeId)
+	for _, x := range next.Routers {
+		pubkeyMap[x.PubKey] = x.Id
+	}
+	for _, x := range next.Clients {
+		pubkeyMap[x.PubKey] = x.Id
+	}
+	n.PeerMap.Store(new(pubkeyMap))
 	return nil
 }
 
@@ -104,8 +121,8 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 			eps = append(eps, ep)
 			continue
 		}
+		// only keep if desired
 		if desiredEp, ok := desiredByValue[nep.DynEP.Value]; ok {
-			nep.DynEP = desiredEp
 			eps = append(eps, ep)
 			seen[desiredEp.Value] = struct{}{}
 		}
@@ -119,7 +136,7 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 	neigh.Eps = eps
 }
 
-func (n *Nylon) reconcileAdvertisedPrefixes(next state.CentralCfg) {
+func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 	cur := n.GetRouter(n.LocalCfg.Id)
 	nextRouter := next.GetRouter(n.LocalCfg.Id)
 
@@ -146,7 +163,7 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next state.CentralCfg) {
 
 	for prefix, desired := range desiredLocal {
 		if _, ok := currentLocal[prefix]; !ok {
-			n.Log.Info("starting prefix healthcheck", "prefix", prefix)
+			n.Log.Debug("starting prefix healthcheck", "prefix", prefix)
 			desired.Start(n.Log)
 		}
 		n.RouterState.Advertised[prefix] = state.Advertisement{
@@ -162,7 +179,7 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next state.CentralCfg) {
 
 func (n *Nylon) startAdvertisedPrefixHealth() {
 	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
-		n.Log.Info("starting prefix healthcheck", "prefix", ph.GetPrefix())
+		n.Log.Debug("starting prefix healthcheck", "prefix", ph.GetPrefix())
 		ph.Start(n.Log)
 	}
 }
