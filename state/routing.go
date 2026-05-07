@@ -36,6 +36,7 @@ type Advertisement struct {
 	ExpiryFn      func()
 }
 type RouterState struct {
+	*RouterTunables
 	Id         NodeId
 	SelfSeqno  map[netip.Prefix]uint16
 	Routes     map[netip.Prefix]SelRoute

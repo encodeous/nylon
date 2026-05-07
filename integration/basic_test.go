@@ -11,11 +11,6 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) {
-	state.DBG_log_wireguard = true
-	m.Run()
-}
-
 func TestStartStop(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
@@ -87,10 +82,12 @@ func TestSimplePing(t *testing.T) {
 
 func TestSimpleRoutedPing(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	state.ProbeDelay /= 3 // 3x faster
-	state.RouteUpdateDelay /= 3
+	tunables := state.DefaultRouterTunables()
+	tunables.ProbeDelay /= 3 // 3x faster
+	tunables.RouteUpdateDelay /= 3
 
 	vh := &VirtualHarness{}
+	vh.Tunables = &tunables
 	a1 := "192.168.1.1:1234"
 	vh.NewNode("a", "10.0.0.1/32")
 	b1 := "192.168.1.2:1234"

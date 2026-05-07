@@ -15,7 +15,7 @@ import (
 type PrefixHealth interface {
 	GetMetric() uint32 // Metric does not block, and returns the advertised metric for this prefix
 	GetPrefix() netip.Prefix
-	Start(log *slog.Logger) // Start begins any background monitoring required for this prefix
+	Start(log *slog.Logger, t *RouterTunables) // Start begins any background monitoring required for this prefix
 	Stop()
 }
 
@@ -35,7 +35,7 @@ func (s *StaticPrefixHealth) GetMetric() uint32 {
 func (s *StaticPrefixHealth) GetPrefix() netip.Prefix {
 	return s.Prefix
 }
-func (s *StaticPrefixHealth) Start(log *slog.Logger) {
+func (s *StaticPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	// do nothing
 }
 
@@ -86,15 +86,15 @@ func (p *PingPrefixHealth) GetMetric() uint32 {
 func (p *PingPrefixHealth) GetPrefix() netip.Prefix {
 	return p.Prefix
 }
-func (p *PingPrefixHealth) Start(log *slog.Logger) {
+func (p *PingPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	if p.running.Swap(true) {
 		return
 	}
 	if p.Delay == nil {
-		p.Delay = &HealthCheckDelay
+		p.Delay = &t.HealthCheckDelay
 	}
 	if p.MaxFailures == nil {
-		p.MaxFailures = &HealthCheckMaxFailures
+		p.MaxFailures = &t.HealthCheckMaxFailures
 	}
 	go func() {
 		ticker := time.NewTicker(*p.Delay)
@@ -168,13 +168,13 @@ func (h *HTTPPrefixHealth) GetMetric() uint32 {
 func (h *HTTPPrefixHealth) GetPrefix() netip.Prefix {
 	return h.Prefix
 }
-func (h *HTTPPrefixHealth) Start(log *slog.Logger) {
+func (h *HTTPPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	if h.running.Swap(true) {
 		return
 	}
 	h.lastMetric = INF
 	if h.Delay == nil {
-		h.Delay = &HealthCheckDelay
+		h.Delay = &t.HealthCheckDelay
 	}
 	go func() {
 		ticker := time.NewTicker(*h.Delay)

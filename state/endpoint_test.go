@@ -52,7 +52,8 @@ type DataSource struct {
 
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
-	dep := NewEndpoint(NewDynamicEndpoint("127.0.0.1:0"), false, nil)
+	tunables := DefaultRouterTunables()
+	dep := NewEndpoint(NewDynamicEndpoint("127.0.0.1:0"), false, nil, &tunables)
 
 	truth := DataSource{
 		Name: "Truth",
@@ -79,11 +80,11 @@ func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn str
 		Data: []time.Duration{},
 	}
 
-	samples := int(dura / ProbeDelay)
+	samples := int(dura / tunables.ProbeDelay)
 	for i := 0; i < samples; i++ {
 		nping := time.Duration(ping(i) * float64(time.Millisecond))
 		dep.UpdatePing(nping)
-		if i > MinimumConfidenceWindow {
+		if i > tunables.MinimumConfidenceWindow {
 			truth.Data = append(truth.Data, nping)
 			high.Data = append(high.Data, dep.HighRange())
 			low.Data = append(low.Data, dep.LowRange())

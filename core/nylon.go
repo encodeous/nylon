@@ -29,6 +29,10 @@ import (
 type Nylon struct {
 	Trace *NylonTrace
 
+	// tunables and options
+	state.RouterTunables
+	state.NylonOptions
+
 	// state
 	state.ConfigState
 	RouterState   *state.RouterState
@@ -73,13 +77,20 @@ type AppliedSystemState struct {
 	Peers   map[state.NodeId]state.NyPublicKey
 }
 
-func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any) (*Nylon, error) {
+func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, opts state.NylonOptions, tunables *state.RouterTunables) (*Nylon, error) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	dispatch := make(chan func() error, 128)
 
+	var rt state.RouterTunables
+	if tunables != nil {
+		rt = *tunables
+	} else {
+		rt = state.DefaultRouterTunables()
+	}
+
 	handlers := make([]slog.Handler, 0)
-	if state.DBG_log_json {
+	if opts.DBG_log_json {
 		handlers = append(handlers,
 			slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 				Level: logLevel,
@@ -120,7 +131,9 @@ func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, c
 	}
 
 	n := &Nylon{
-		Trace: &NylonTrace{},
+		Trace:          &NylonTrace{},
+		RouterTunables: rt,
+		NylonOptions:   opts,
 		ConfigState: state.ConfigState{
 			CentralCfg: ccfg,
 			LocalCfg:   ncfg,
@@ -172,7 +185,7 @@ func (n *Nylon) Init() error {
 
 	n.RepeatTask(func() error {
 		return nylonGc(n)
-	}, state.GcDelay)
+	}, n.GcDelay)
 
 	// wireguard configuration
 	err = n.initWireGuard()
@@ -183,14 +196,14 @@ func (n *Nylon) Init() error {
 	// endpoint probing
 	n.RepeatTask(func() error {
 		return n.probeLinks(true)
-	}, state.ProbeDelay)
+	}, n.ProbeDelay)
 	n.RepeatTask(func() error {
 		// refresh dynamic endpoints
 		for _, neigh := range n.RouterState.Neighbours {
 			for _, ep := range neigh.Eps {
 				if nep, ok := ep.(*state.NylonEndpoint); ok {
 					go func() {
-						_, err := nep.DynEP.Refresh()
+						_, err := nep.DynEP.Refresh(n.EndpointResolveExpiry)
 						if err != nil {
 							n.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
 						}
@@ -199,13 +212,13 @@ func (n *Nylon) Init() error {
 			}
 		}
 		return nil
-	}, state.EndpointResolveDelay)
+	}, n.EndpointResolveDelay)
 	n.RepeatTask(func() error {
 		return n.probeLinks(false)
-	}, state.ProbeRecoveryDelay)
+	}, n.ProbeRecoveryDelay)
 	n.RepeatTask(func() error {
 		return n.probeNew()
-	}, state.ProbeDiscoveryDelay)
+	}, n.ProbeDiscoveryDelay)
 
 	n.startAdvertisedPrefixHealth()
 
@@ -219,7 +232,7 @@ func (n *Nylon) Init() error {
 		for _, repo := range n.CentralCfg.Dist.Repos {
 			n.Log.Info("config source", "repo", repo)
 		}
-		n.RepeatTask(func() error { return checkForConfigUpdates(n) }, state.CentralUpdateDelay)
+		n.RepeatTask(func() error { return checkForConfigUpdates(n) }, n.CentralUpdateDelay)
 	}
 	return nil
 }
