@@ -111,7 +111,7 @@ func checkForConfigUpdates(n *Nylon) error {
 							n.Log.Error("Error marshalling new config", "err", err.Error())
 							return nil
 						}
-						err = os.WriteFile(n.ConfigPath, bytes, 0700)
+						err = os.WriteFile(n.ConfigPath, bytes, 0600)
 						if err != nil {
 							n.Log.Error("Error writing new config", "err", err.Error())
 						}

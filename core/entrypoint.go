@@ -67,7 +67,7 @@ func readCentralConfig(centralPath, nodePath string) (*state.CentralCfg, error) 
 		if err != nil {
 			return nil, err
 		}
-		err = os.WriteFile(centralPath, bytes, 0700)
+		err = os.WriteFile(centralPath, bytes, 0600)
 		if err != nil {
 			return nil, err
 		}
