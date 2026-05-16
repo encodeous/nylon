@@ -1,0 +1,147 @@
+---
+title: Configuration Reference
+description: Annotated reference for central.yaml and node.yaml.
+sidebar:
+  order: 1
+---
+
+## node.yaml
+
+Each node has its own `node.yaml` with local settings. Generate a keypair with `nylon key` — stdout is the private key, stderr is the public key.
+
+```yaml title="node.yaml"
+key: 0NcrMcaS1tORCTA88L5ZPE+H6yUMV4e5vRp6iypnPW8= # private key (from `nylon key`)
+id: alice # must match this node's id in central.yaml
+port: 57175 # UDP port nylon listens on
+
+# --- Optional fields below ---
+
+use_system_routing: false # if true, all peer packets exit via the TUN interface
+no_net_configure: false # if true, nylon won't touch system routes or interfaces
+log_path: "" # write logs to this file (empty = stderr only)
+interface_name: "" # override the interface name (default: "nylon", or utunX on macOS)
+dns_resolvers: [] # DNS servers for nylon's own lookups, e.g. ["1.1.1.1:53"]
+
+# Bootstrap: fetch central.yaml from a remote bundle on first start
+dist:
+  url: https://static.example.com/network1.nybundle
+  key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY= # distribution public key
+
+# Split tunneling (per-node overrides)
+exclude_ips: # add to the central exclude list
+  - 192.168.0.0/24
+unexclude_ips: [] # subtract from the central exclude list
+
+# Lifecycle hooks (run in order)
+pre_up: []
+pre_down: []
+post_up:
+  - iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -d 192.168.0.0/24 -j MASQUERADE
+post_down: []
+```
+
+---
+
+## central.yaml
+
+The central config defines the entire network topology. It is shared across all nodes (either copied manually or via config distribution).
+
+```yaml title="central.yaml"
+# --- Config Distribution (optional) ---
+dist:
+  # The distribution key is used to verify and decrypt sealed bundles.
+  # Despite being called "public", treat it as a shared secret — it can decrypt your topology.
+  key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
+  # Nylon polls these URLs every 10 seconds for config updates
+  repos:
+    - file:central.nybundle          # local file
+    - https://static.example.com/network1.nybundle # remote URL (HTTP GET)
+
+# --- Routers ---
+# Active nylon nodes that participate in routing and can forward traffic.
+routers:
+  - id: alice
+    pubkey: xmfAovAKN4AY5ocK5s+/VsG9I27KrQ13Vzb0HOsLKAs==
+    addresses: [10.0.0.1] # nylon interface addresses (auto-advertised as /32 or /128)
+    endpoints:
+      - "alice.example.com:57175" # domain name (re-resolved periodically)
+      - "192.168.1.2:57175"       # LAN IP
+    prefixes:
+      # Static: always advertised at the given metric
+      - type: static
+        prefix: 192.168.0.0/24
+        metric: 0 # optional, default 0
+
+      # Ping: advertised with RTT as metric, withdrawn after max_failures consecutive failures
+      - type: ping
+        prefix: 10.1.0.0/24
+        addr: 10.1.0.8           # address to ping
+        delay: 10s               # interval between pings (default: 15s)
+        max_failures: 3          # failures before withdrawal (default: 3)
+        bind_if: en10            # optional: bind to a specific interface
+        # metric: 0              # optional: override RTT with a static metric
+
+      # HTTP: advertised with request duration as metric, withdrawn on non-200 response
+      - type: http
+        prefix: 10.2.0.0/24
+        url: http://example.com/healthz
+        delay: 15s               # interval between probes (default: 15s)
+        # metric: 5              # optional: override request duration with a static metric
+
+  - id: bob
+    pubkey: 4GfHHSyVpXc+wkbjyIIONERa6Xf5EafB0nVGZLf2r2o=
+    addresses: [10.0.0.2, 10.1.0.2] # multiple addresses are fine
+    endpoints:
+      - "192.168.1.1:57175"
+      - "nylon.example.org" # port defaults to the node's configured port
+
+  - id: eve
+    pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
+    addresses: [10.0.0.3]
+    # no endpoints — eve can only connect outward to nodes that have endpoints
+
+  - id: public
+    pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
+    addresses: [10.0.0.4]
+    endpoints:
+      - "123.123.123.123:57175" # multiple endpoints; nylon picks the best one dynamically
+      - "123.123.123.124:57175"
+
+# --- Clients ---
+# Passive WireGuard clients that don't run nylon. Only static prefixes allowed.
+clients:
+  - id: client1
+    pubkey: SBI+yvF30Ba4xo0GKTtKHSSfbXAnRNFTBwydJyJp6Rk=
+    addresses: [10.0.0.7]
+    prefixes:
+      - type: static
+        prefix: 192.168.1.0/24 # also add this to AllowedIPs in the WireGuard client config
+
+# --- Split Tunnel ---
+# Excluded prefixes are NOT routed through nylon (network-wide default).
+# Per-node overrides are in node.yaml (exclude_ips / unexclude_ips).
+exclude_ips:
+  - 192.168.0.0/24
+
+# --- Graph ---
+# Defines which nodes will peer with each other. Only nodes connected in the graph
+# will attempt to establish WireGuard tunnels.
+graph:
+  # Groups: a shorthand for sets of nodes (nodes within a group are NOT auto-connected)
+  - Group1 = alice, bob
+  - Group1, Group1           # connect every node in Group1 to every other node in Group1
+  - Group2 = Group1, client1 # groups can contain other groups
+  - client1, eve, alice      # all three fully interconnected
+
+# Updated automatically by `nylon seal`; used as a version number for config distribution.
+timestamp: 1740832962209309000
+```
+
+---
+
+## Naming Rules
+
+Node and group IDs must:
+- Match `^[0-9a-z._/-]+$`
+- Be at most 100 characters
+- Be unique across all routers and clients
