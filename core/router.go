@@ -403,6 +403,21 @@ func (n *Nylon) flushIO() error {
 					tLength += proto.Size(req)
 				}
 
+				for prefix := range nio.Acks {
+					prefixBytes, _ := prefix.MarshalBinary()
+					req := &protocol.Ny{Type: &protocol.Ny_AckRetractOp{
+						AckRetractOp: &protocol.Ny_AckRetract{
+							Prefix: prefixBytes,
+						},
+					}}
+					if tLength+proto.Size(req) >= n.SafeMTU {
+						goto send
+					}
+					delete(nio.Acks, prefix)
+					bundle.Packets = append(bundle.Packets, req)
+					tLength += proto.Size(req)
+				}
+
 				if tLength == 0 {
 					break
 				}
