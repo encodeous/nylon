@@ -136,6 +136,9 @@ func RunGC(s *state.RouterState, r Router) {
 		}
 	}
 
+	// Re-run route selection before source gc, just to be conservative
+	ComputeRoutes(s, r)
+
 	// if no route table contains a source, remove it from the source table
 	for src := range s.Sources {
 		found := false
@@ -159,9 +162,6 @@ func RunGC(s *state.RouterState, r Router) {
 			delete(s.Sources, src)
 		}
 	}
-
-	// Re-run route selection
-	ComputeRoutes(s, r)
 }
 
 func retract(s *state.RouterState, r Router, prefix netip.Prefix) {
