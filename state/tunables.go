@@ -40,6 +40,8 @@ type RouterTunables struct {
 
 	EndpointResolveExpiry time.Duration
 	EndpointResolveDelay  time.Duration
+
+	MaxConfigSize int64
 }
 
 // NylonOptions contains runtime flags set at startup (typically from CLI flags).
@@ -87,6 +89,8 @@ func DefaultRouterTunables() RouterTunables {
 
 		EndpointResolveExpiry: time.Minute * 1,
 		EndpointResolveDelay:  time.Second * 15,
+
+		MaxConfigSize: 1 << 20, // 1 MB
 	}
 }
 
