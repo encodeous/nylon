@@ -10,12 +10,15 @@
 
 # nylon
 
-Nylon is a [Resilient Overlay Network](https://dl.acm.org/doi/10.1145/502034.502048) built from WireGuard, designed to be performant, secure, reliable, and easy to use.
+Nylon is a self-healing WireGuard mesh that routes around failures. If a link goes down, nylon reroutes traffic through the next-best path in seconds. No manual intervention, no central coordination servers, just like how a real network should be :)
+
+Under the hood, nylon implements the [Babel routing protocol (RFC 8966)](https://datatracker.ietf.org/doc/html/rfc8966) on top of a [modified wireguard-go](https://github.com/encodeous/nylon/tree/main/polyamide), using measured latency as the routing metric. Routes generally converge in under 10 seconds after a topology change.
 
 ### Main Features
-- **Dynamic Routing**: nylon does not require all nodes to be reachable from each other, unlike mesh-based VPN projects (e.g Tailscale, Nebula, ZeroTier and Innernet)
-- **Ease of Deployment**: nylon runs on a single UDP port (`57175`), is distributed by a single statically-linked binary, and is configured by a single configuration file.
-- **WireGuard Backwards Compatibility**: connect existing WireGuard clients to a nylon network with no extra software. Useful for mobile clients.
+- **Multi-hop Routing**: traffic flows through the lowest-latency path across your mesh. Unlike Tailscale, Nebula, or ZeroTier, nodes don't need to be directly reachable from each other. Nylon forwards through intermediate hops automatically.
+- **No Coordination Server**: no SaaS dependency, no single control-plane. Nodes exchange routes directly over the same WireGuard tunnel that carries your data.
+- **Single Binary, Single Port**: one statically-linked binary, one UDP port (`57175`), one YAML config. That's it.
+- **WireGuard Client Compatibility**: connect stock WireGuard clients (iOS, Android, Windows) to the mesh with zero extra software. Mobile clients roam between gateways seamlessly.
 
 ## Getting Started
 
@@ -24,11 +27,13 @@ Download the latest release binary from the [releases page](https://github.com/e
 Sample systemd service and launchctl plist files can be found under the `examples` directory.
 
 > [!NOTE]
-> - I daily-drive the Linux and macOS versions, but the Windows client currently has issues. I recommend using [WireGuard for Windows](https://www.wireguard.com/install/) and connecting to a Linux/macOS machine as a passive client.
-> - Nylon is early stage software, so expect (some) bugs, breaking changes, and unaudited code.
->   - That said, nylon does not modify WireGuard's cryptographic code
->   - All nylon packets are sent within the WireGuard tunnel.
-> - Feel free to report bugs and suggest features via GitHub issues. For security concerns, [contact me directly](https://jiaqi.ch/).
+> **Stability:** I daily-drive nylon on Linux and macOS. The routing protocol has an [extensive test suite](https://github.com/encodeous/nylon/blob/main/core/router_test.go) and integration tests with simulated network conditions. The config format may still change between releases.
+>
+> **Security:** Nylon does not modify WireGuard's cryptographic code. All nylon control traffic (route updates, probes) is sent inside the encrypted WireGuard tunnel. For security concerns, [contact me directly](https://jiaqi.ch/).
+>
+> **Windows:** The Windows TUN interface has known issues. For now, I recommend connecting Windows machines as [passive WireGuard clients](/guides/wg-clients) via a Linux/macOS gateway.
+>
+> Bugs and feature requests welcome via [GitHub issues](https://github.com/encodeous/nylon/issues).
 
 ---
 

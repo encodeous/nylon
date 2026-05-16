@@ -13,22 +13,24 @@ import { Steps } from "@astrojs/starlight/components";
 - **Sovereign Networks**: Build a fully independent mesh that works entirely in isolated or air-gapped environments. Since nylon has no "phone-home" requirement to a central coordination server, your network stays up even if the public internet is unreachable.
 - **Optimized Routing**: Connect to the local node with the best latency when at the office, and connect to the cloud node when at home, without needing to change any configuration on your client.
 
+## What makes nylon different?
+
+Tailscale, Nebula, and ZeroTier establish **direct peer-to-peer tunnels**. If two nodes can't reach each other directly, traffic is either relayed through a central server (Tailscale DERP) or it simply doesn't work (Nebula behind strict NAT). None of them route traffic intelligently through intermediate nodes based on measured latency.
+
+**Nylon does latency-aware multi-hop routing with no coordination server.** If the current path is slow or down, nylon automatically routes through the next-best route (if available). This is the same approach that makes the internet itself resilient! Except nylon does it within your private WireGuard mesh.
+
 ## Comparison
 
-How does nylon stack up against other popular mesh networking solutions?
-
-| Feature               | **nylon**                                                       | **Tailscale**                       | **Nebula**                          | **DIY**                                  |
-| :-------------------- | :-------------------------------------------------------------- | :---------------------------------- | :---------------------------------- | :--------------------------------------- |
-| **Routing Model**     | **Intelligent, Optimized Multi-hop**                            | Peer-to-Peer + Relays               | Peer-to-Peer Mesh                   | Dynamic Multi-hop                        |
-| **Points of Failure** | **Decentralized; heals around outages.**                        | Down if Coordination/SSO is down.   | Fails on strict NAT                 | Based on routing daemon                  |
-| **Encryption**        | Link-level (between nodes)                                      | End-to-end                          | End-to-end                          | Link-level (between routers)             |
-| **Core Protocol**     | WireGuard ([Polyamide](https://github.com/encodeous/nylon/tree/main/polyamide)) | WireGuard                           | Noise-based (Custom)                | WireGuard                                |
-| **Coordination**      | **Decentralized (In-band, same port)**, manual key distribution | Centralized (SaaS/Headscale)        | Decentralized (Lighthouse)          | Manual (Out-of-band, via routing daemon) |
-| **NAT Traversal**     | Public nylon node(s) or port forward                            | **STUN/ICE/DERP**                   | Public nodes (lighthouses)          | Manual (port forward, or public node)    |
-| **Configuration**     | Single Central Config (YAML)                                    | Web Dashboard / SSO                 | Certificates & CA                   | Complex (Tunnels + Daemons + Network NS) |
-| **Compatibility**     | **Any WireGuard Client (via Passive Nodes)**                    | Tailscale Client only               | Nebula Client only                  | Manual Configuration                     |
-| **Platforms**         | Linux, macOS, iOS/Android/Windows (via WireGuard)               | Linux, macOS, iOS, Android, Windows | Linux, macOS, iOS, Android, Windows | Mostly Linux                             |
-| **License / FOSS**    | Apache 2.0                                                      | Proprietary (SaaS) / BSD-3 (Client) | MIT (Fully Open)                    | Various                                  |
+| Feature               | **nylon**                                  | **Tailscale**                     | **Nebula**               | **DIY WireGuard+Babel**               |
+| :-------------------- | :----------------------------------------- | :-------------------------------- | :----------------------- | :------------------------------------ |
+| **Multi-hop Routing** | **Yes. latency-optimized, automatic**      | No (relay only, no optimization)  | No                       | Yes (manual setup)                    |
+| **Self-healing**      | **Yes. reroutes in \<10s**                 | Relies on coordination server     | No automatic failover    | Yes (depends on daemon)               |
+| **Coordination**      | **None required (fully in-band)**          | Centralized (SaaS/Headscale)      | Lighthouse servers       | Manual (out-of-band daemons)          |
+| **WireGuard Clients** | **Stock iOS/Android/Windows clients work** | Tailscale client only             | Nebula client only       | Manual configuration                  |
+| **NAT Traversal**     | Port forward or public relay node          | **STUN/ICE/DERP (best-in-class)** | Public lighthouse nodes  | Manual                                |
+| **Configuration**     | Central YAML file                          | Web Dashboard / SSO               | Certificates & CA        | Multiple configs + network namespaces |
+| **Encryption**        | WireGuard (link-level between hops)        | WireGuard (end-to-end)            | Noise-based (end-to-end) | WireGuard (link-level)                |
+| **License**           | Apache 2.0                                 | Proprietary SaaS / BSD-3 client   | MIT                      | Various                               |
 
 :::tip[Nylon vs. DIY]
 If you've ever tried to build a dynamic network using **WireGuard + Babel (or BGP)**, you know how powerful it can be, but also how difficult it can be to maintain.

@@ -7,7 +7,7 @@ sidebar:
 
 ## node.yaml
 
-Each node has its own `node.yaml` with local settings. Generate a keypair with `nylon key` — stdout is the private key, stderr is the public key.
+Each node has its own `node.yaml` with local settings. Generate a keypair with `nylon key`. Stdout is the private key, stderr is the public key.
 
 ```yaml title="node.yaml"
 key: 0NcrMcaS1tORCTA88L5ZPE+H6yUMV4e5vRp6iypnPW8= # private key (from `nylon key`)
@@ -50,7 +50,7 @@ The central config defines the entire network topology. It is shared across all 
 # --- Config Distribution (optional) ---
 dist:
   # The distribution key is used to verify and decrypt sealed bundles.
-  # Despite being called "public", treat it as a shared secret — it can decrypt your topology.
+  # Despite being called "public", treat it as a shared secret. It can decrypt your topology.
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
   # Nylon polls these URLs every 10 seconds for config updates
   repos:
@@ -98,7 +98,7 @@ routers:
   - id: eve
     pubkey: 2mXTTD+FYdtJm/v1vSHz8qimvCucjW9vY+nLYacXJFE=
     addresses: [10.0.0.3]
-    # no endpoints — eve can only connect outward to nodes that have endpoints
+    # no endpoints. eve can only connect outward to nodes that have endpoints
 
   - id: public
     pubkey: dJcUE1qnXCQ5x8pMhFb/MZab7YrBaaHcrgfbmQI0MW4=
@@ -120,12 +120,28 @@ clients:
 # --- Split Tunnel ---
 # Excluded prefixes are NOT routed through nylon (network-wide default).
 # Per-node overrides are in node.yaml (exclude_ips / unexclude_ips).
+#
+# How the three layers combine (applied per-node):
+# 1. Start with all prefixes from the routing table
+# 2. Subtract: central exclude_ips (below) + prefixes where this node is the next-hop
+# 3. Add back: node unexclude_ips
+# 4. Subtract: node exclude_ips
+#
+# Example: central excludes 10.0.0.0/8. Node "alice" sets
+# unexclude_ips: [10.1.0.0/16] -- re-includes 10.1.x.x
+# exclude_ips: [10.1.99.0/24] -- but not 10.1.99.x
+# Result for alice: 10.1.0.0/16 is routed through nylon, except 10.1.99.0/24.
+# All other 10.x.x.x traffic bypasses nylon.
 exclude_ips:
   - 192.168.0.0/24
 
 # --- Graph ---
 # Defines which nodes will peer with each other. Only nodes connected in the graph
 # will attempt to establish WireGuard tunnels.
+#
+# IMPORTANT: The graph controls direct peering only. Two nodes that are NOT
+# directly connected in the graph can still communicate. Their traffic is
+# forwarded through intermediate nodes that ARE connected.
 graph:
   # Groups: a shorthand for sets of nodes (nodes within a group are NOT auto-connected)
   - Group1 = alice, bob
