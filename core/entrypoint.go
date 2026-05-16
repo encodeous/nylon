@@ -95,6 +95,11 @@ func readNodeConfig(nodePath string) (*state.LocalCfg, error) {
 	return &nodeCfg, nil
 }
 
+func fatal(msg string, err error) {
+	fmt.Fprintf(os.Stderr, "Error: %s: %v\n", msg, err)
+	os.Exit(1)
+}
+
 // Bootstrap provides startup logic in a real environment
 func Bootstrap(centralPath, nodePath, logPath string, verbose bool, opts state.NylonOptions) {
 	setupDebugging(opts)
@@ -106,31 +111,28 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool, opts state.N
 	tunables := state.DefaultRouterTunables()
 	centralCfg, err := readCentralConfig(centralPath, nodePath, &tunables)
 	if err != nil {
-		panic(err)
+		fatal("failed to read central config", err)
 	}
 	nodeCfg, err := readNodeConfig(nodePath)
 	if err != nil {
-		panic(err)
+		fatal("failed to read node config", err)
 	}
 	if logPath != "" {
 		nodeCfg.LogPath = logPath
 	}
 
 	state.ExpandCentralConfig(centralCfg)
-	err = state.CentralConfigValidator(centralCfg)
-	if err != nil {
-		panic(err)
+	if err = state.CentralConfigValidator(centralCfg); err != nil {
+		fatal("invalid central config", err)
 	}
-	err = state.NodeConfigValidator(centralCfg, nodeCfg)
-	if err != nil {
-		panic(err)
+	if err = state.NodeConfigValidator(centralCfg, nodeCfg); err != nil {
+		fatal("invalid node config", err)
 	}
 	n, err := NewNylon(*centralCfg, *nodeCfg, level, centralPath, nil, opts, nil)
 	if err != nil {
-		panic(err)
+		fatal("failed to initialize nylon", err)
 	}
-	err = n.Start()
-	if err != nil {
-		panic(err)
+	if err = n.Start(); err != nil {
+		fatal("nylon exited with error", err)
 	}
 }

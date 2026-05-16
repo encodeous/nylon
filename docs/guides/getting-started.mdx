@@ -82,7 +82,15 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
    ```
 
 
-4. ### Launch nylon
+4. ### Validate your configuration
+
+   Before launching, you can check that your config files are correct:
+
+   ```bash
+   nylon verify central.yaml --node node.yaml
+   ```
+
+5. ### Launch nylon
 
    Run nylon on both machines:
 
