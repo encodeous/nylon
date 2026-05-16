@@ -32,7 +32,7 @@ func setupDebugging(opts state.NylonOptions) {
 	}
 }
 
-func readCentralConfig(centralPath, nodePath string) (*state.CentralCfg, error) {
+func readCentralConfig(centralPath, nodePath string, tunables *state.RouterTunables) (*state.CentralCfg, error) {
 	var centralCfg state.CentralCfg
 
 	file, err := os.ReadFile(centralPath)
@@ -58,7 +58,7 @@ func readCentralConfig(centralPath, nodePath string) (*state.CentralCfg, error) 
 			return nil, fmt.Errorf("central.yaml not found and node.yaml has no dist config")
 		}
 
-		cfg, err := FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key)
+		cfg, err := FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key, tunables.MaxConfigSize)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +103,8 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool, opts state.N
 		level = slog.LevelDebug
 	}
 
-	centralCfg, err := readCentralConfig(centralPath, nodePath)
+	tunables := state.DefaultRouterTunables()
+	centralCfg, err := readCentralConfig(centralPath, nodePath, &tunables)
 	if err != nil {
 		panic(err)
 	}

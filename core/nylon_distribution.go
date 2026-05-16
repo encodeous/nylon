@@ -16,7 +16,7 @@ import (
 )
 
 // fetches and unbundles central config from url
-func FetchConfig(repoStr string, key state.NyPublicKey) (*state.CentralCfg, error) {
+func FetchConfig(repoStr string, key state.NyPublicKey, maxSize int64) (*state.CentralCfg, error) {
 	repo, err := url.Parse(repoStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse repo URL %s: %w", repoStr, err)
@@ -56,7 +56,7 @@ func FetchConfig(repoStr string, key state.NyPublicKey) (*state.CentralCfg, erro
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch %s: %w", repo.String(), err)
 		}
-		cfgBody, err = io.ReadAll(res.Body)
+		cfgBody, err = io.ReadAll(io.LimitReader(res.Body, maxSize))
 		if err != nil {
 			res.Body.Close()
 			return nil, fmt.Errorf("failed to read response from %s: %w", repo.String(), err)
@@ -85,7 +85,7 @@ func checkForConfigUpdates(n *Nylon) error {
 	for _, repoStr := range repos {
 		go func(repo string) {
 			err := func() error {
-				config, err := FetchConfig(repo, key)
+				config, err := FetchConfig(repo, key, n.MaxConfigSize)
 				if err != nil {
 					return err
 				}
