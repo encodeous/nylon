@@ -44,16 +44,22 @@ graph LR
    Add the passive node to your `central.yaml`. Passive nodes should **not** have endpoints.
 
    ```yaml title="central.yaml"
-   clients:
-     - id: node-1 # this node should already exist on the network
+   routers:
+     - id: node-1
        pubkey: <GATEWAY_NODE_PUBLIC_KEY>
-       ...
+       addresses: [10.0.0.1]
+       endpoints:
+         - "node1.example.com:57175"
+     # ... other routers ...
+
+   clients:
      - id: my-phone
        pubkey: <PHONE_PUBLIC_KEY>
        addresses:
          - 10.0.0.5
+
    graph:
-     - node-1, my-phone # Connect the passive node to a gateway node (e.g., node-1)
+     - node-1, my-phone # Connect the passive node to a gateway node
    ```
 
 3. ### Connect to a Gateway
