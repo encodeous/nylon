@@ -372,6 +372,7 @@ func (n *Nylon) flushIO() error {
 				tLength := 0
 
 				// we can coalesce messages, but we need to make sure we don't fragment our UDP packet
+				// if a single proto message is somehow larger than SafeMTU, we still send it, but it will get fragmented
 
 				for seqR, _ := range nio.SeqnoReq {
 					prefixBytes, _ := seqR.Prefix.MarshalBinary()
@@ -383,7 +384,7 @@ func (n *Nylon) flushIO() error {
 							HopCount: uint32(nio.SeqnoReq[seqR].V2),
 						},
 					}}
-					if tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
 						goto send
 					}
 					delete(nio.SeqnoReq, seqR)
@@ -395,7 +396,7 @@ func (n *Nylon) flushIO() error {
 					req := &protocol.Ny{Type: &protocol.Ny_RouteOp{
 						RouteOp: update,
 					}}
-					if tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
 						goto send
 					}
 					delete(nio.Updates, id)
@@ -410,7 +411,7 @@ func (n *Nylon) flushIO() error {
 							Prefix: prefixBytes,
 						},
 					}}
-					if tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
 						goto send
 					}
 					delete(nio.Acks, prefix)
