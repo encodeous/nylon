@@ -157,7 +157,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	//  / |       FD(A) = 1
 	// S  |1
 	//  \ |        D(B) = 2
-	// 2 \|       FD(B) = 2
+	// 3 \|       FD(B) = 2
 	//    B
 
 	h := &RouterHarness{}
@@ -172,7 +172,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	}
 
 	AS := AddLink(rs, NewMockEndpoint("A", 1))
-	_ = AddLink(rs, NewMockEndpoint("B", 2))
+	_ = AddLink(rs, NewMockEndpoint("B", 3))
 
 	// A's advertised routes
 	h.NeighUpdate(rs, "A", "S", nodeToPrefix("S"), 0, 1)
@@ -182,7 +182,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	// B's advertised routes
 	h.NeighUpdate(rs, "B", "B", nodeToPrefix("B"), 0, 0)
 	h.NeighUpdate(rs, "B", "A", nodeToPrefix("A"), 0, 1)
-	h.NeighUpdate(rs, "B", "S", nodeToPrefix("S"), 0, 2)
+	h.NeighUpdate(rs, "B", "S", nodeToPrefix("S"), 0, 3)
 
 	ComputeRoutes(rs, h)
 	a := h.GetActions()
@@ -193,7 +193,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	)
 	assert.Equal(t, `10.0.0.1/32 via (nh: A, router: A, prefix: 10.0.0.1/32, seqno: 0, metric: 1)
 10.0.0.19/32 via (nh: S, router: S, prefix: 10.0.0.19/32, seqno: 0, metric: 0)
-10.0.0.2/32 via (nh: B, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 2)`, rs.StringRoutes())
+10.0.0.2/32 via (nh: A, router: B, prefix: 10.0.0.2/32, seqno: 0, metric: 2)`, rs.StringRoutes())
 
 	// check feasibility distances
 	assert.Equal(t, state.FD{Seqno: 0, Metric: 1}, rs.Sources[state.Source{NodeId: "A", Prefix: nodeToPrefix("A")}])
@@ -206,7 +206,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 	//    |       FD(A) = 1
 	// S  |1
 	//  \ |        D(B) = 2
-	// 2 \|       FD(B) = 2
+	// 3 \|       FD(B) = 2
 	//    B
 
 	RemoveLink(rs, AS)
@@ -244,7 +244,7 @@ func TestRouterNet2S_SolveStarvation(t *testing.T) {
 		},
 		FD: state.FD{
 			Seqno:  1,
-			Metric: 3,
+			Metric: 4,
 		},
 	}
 	a.AssertContains(t, BroadcastUpdateRoute(pr))
