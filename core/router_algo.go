@@ -556,7 +556,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 						continue
 					}
 				}
-				if ShouldSwitch(oldRoute, newRoute) {
+				if ShouldSwitch(oldRoute, newRoute, s.RouterTunables) {
 					newTable[prefix] = newRoute
 				}
 			}
@@ -671,11 +671,11 @@ func SolveStarvation(router *state.RouterState, r Router) {
 	//   requests are expected to actually reach the source.)
 }
 
-func ShouldSwitch(curRoute state.SelRoute, newRoute state.SelRoute) bool {
+func ShouldSwitch(curRoute state.SelRoute, newRoute state.SelRoute, tunable *state.RouterTunables) bool {
 	// TODO: Investigate stable routing heuristics
 	curMetric := float64(curRoute.Metric)
 	newMetric := float64(newRoute.Metric)
-	if newMetric > curMetric {
+	if newMetric*tunable.LinkSwitchDeadband > curMetric {
 		return false
 	}
 	return true

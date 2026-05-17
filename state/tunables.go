@@ -23,9 +23,10 @@ type RouterTunables struct {
 	// MinimumConfidenceWindow is the minimum number of samples before we lower the ping
 	MinimumConfidenceWindow int
 
-	GcDelay           time.Duration
-	LinkDeadThreshold time.Duration
-	RouteExpiryTime   time.Duration
+	GcDelay            time.Duration
+	LinkDeadThreshold  time.Duration
+	RouteExpiryTime    time.Duration
+	LinkSwitchDeadband float64 // We will switch to a new feasible route if: metric(new) * LinkSwitchDeadband <= metric(old)
 
 	// client configuration
 	ClientKeepaliveInterval time.Duration
@@ -75,9 +76,10 @@ func DefaultRouterTunables() RouterTunables {
 		OutlierPercentage:       0.05,
 		MinimumConfidenceWindow: int(time.Second * 15 / probeDelay),
 
-		GcDelay:           time.Millisecond * 1000,
-		LinkDeadThreshold: 5 * probeDelay,
-		RouteExpiryTime:   5 * routeUpdateDelay,
+		GcDelay:            time.Millisecond * 1000,
+		LinkDeadThreshold:  5 * probeDelay,
+		RouteExpiryTime:    5 * routeUpdateDelay,
+		LinkSwitchDeadband: 1.1,
 
 		ClientKeepaliveInterval: 3 * probeDelay,
 		ClientDeadThreshold:     6 * probeDelay, // 2 * ClientKeepaliveInterval
