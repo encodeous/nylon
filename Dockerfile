@@ -23,11 +23,17 @@ RUN apt-get update && \
     iperf3 \
     curl \
     iproute2 \
+    iptables \
+    fping \
+    mtr-tiny \
     wireguard-tools \
     net-tools \
     tcpdump \
     dnsutils \
     netcat-openbsd \
+    tmux \
+    # for demo \
+    asciinema \
     python3 && \
     rm -rf /var/lib/apt/lists/*
 

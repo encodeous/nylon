@@ -1,0 +1,59 @@
+services:
+  alice:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: debug
+    container_name: nylon-demo-alice
+    hostname: alice
+    cap_add: [NET_ADMIN]
+    privileged: true
+    volumes:
+      - ./configs/central.yaml:/app/config/central.yaml:ro
+      - ./configs/alice.yaml:/app/config/node.yaml:ro
+    entrypoint: ["/usr/local/bin/nylon", "run", "-c", "/app/config/central.yaml", "-n", "/app/config/node.yaml"]
+    networks:
+      mesh:
+        ipv4_address: 172.31.0.10
+
+  bob:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: debug
+    container_name: nylon-demo-bob
+    hostname: bob
+    cap_add: [NET_ADMIN]
+    privileged: true
+    volumes:
+      - ./configs/central.yaml:/app/config/central.yaml:ro
+      - ./configs/bob.yaml:/app/config/node.yaml:ro
+    entrypoint: ["/usr/local/bin/nylon", "run", "-c", "/app/config/central.yaml", "-n", "/app/config/node.yaml"]
+    networks:
+      mesh:
+        ipv4_address: 172.31.0.11
+
+  charlie:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: debug
+    container_name: nylon-demo-charlie
+    hostname: charlie
+    cap_add: [NET_ADMIN]
+    privileged: true
+    volumes:
+      - ./configs/central.yaml:/app/config/central.yaml:ro
+      - ./configs/charlie.yaml:/app/config/node.yaml:ro
+    entrypoint: ["/usr/local/bin/nylon", "run", "-c", "/app/config/central.yaml", "-n", "/app/config/node.yaml"]
+    networks:
+      mesh:
+        ipv4_address: 172.31.0.12
+
+networks:
+  mesh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+          gateway: 172.31.0.1
