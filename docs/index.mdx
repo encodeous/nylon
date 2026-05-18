@@ -18,40 +18,16 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import AsciinemaPlayer from '../../components/AsciinemaPlayer.astro';
+import demoCast from './assets/demo.cast?url';
 
-Nylon is a **Resilient Overlay Network (RON)** built on **WireGuard** and the **Babel** routing protocol. It provides an intelligent, self-healing mesh that ensures your servers and devices stay connected, even when *some* paths are blocked or unstable.
+Nylon is a self-healing WireGuard mesh that routes around failures. If a link goes down, nylon reroutes traffic through the next-best path in seconds. No manual intervention, no central coordination servers.
 
-## Why Nylon?
+[See how nylon compares to Tailscale, Nebula, and DIY setups →](/why-nylon)
 
-<CardGrid stagger>
-	<Card title="Dynamic Routing" icon="random">
-		Built on the Babel routing protocol, nylon handles complex topologies, recovers from outages, and strategically routes traffic for optimal latency.
-	</Card>
-	<Card title="WireGuard Core" icon="seti:lock">
-		Built on top of [wireguard-go](https://github.com/WireGuard/wireguard-go) for high-performance, state-of-the-art encryption.
-	</Card>
-	<Card title="Ease of Use" icon="rocket">
-		Single binary, minimal configuration, and a single UDP port. Deployment has never been simpler.
-	</Card>
-	<Card title="Backwards Compatible" icon="setting">
-		Connect existing WireGuard clients without any extra software.
-	</Card>
-</CardGrid>
+<AsciinemaPlayer src={demoCast} />
 
-:::note[Is nylon for you?]
-
-Nylon tries [to do one thing, and do it well](https://en.wikipedia.org/wiki/Unix_philosophy): mesh networking. You might be interested in nylon if:
-
-- You have many computers across different locations and want them to stay connected with minimal maintenance.
-- You don't mind writing a bit of YAML to configure your network.
-- You want a fully FOSS stack you can run on your own infrastructure.
-
-*If you are looking for a zero-config, managed experience, and plenty of addon features for non-technical users, Tailscale is likely a better fit. [See how nylon compares to Tailscale, Nebula, and DIY setups →](/why-nylon)*
-
-:::
-
-## Example
+## Here's another example
 
 Here is a network of 5 nodes, where the numbers on the edges represent the routing metric (nylon uses latency).
 
