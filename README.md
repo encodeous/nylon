@@ -39,7 +39,7 @@ Sample systemd service and launchctl plist files can be found under the `example
 >
 > **Security:** Nylon does not modify WireGuard's cryptographic code. All nylon control traffic (route updates, probes) is sent inside the encrypted WireGuard tunnel. For security concerns, [contact me directly](https://jiaqi.ch/).
 >
-> **Windows:** The Windows TUN interface has known issues. For now, I recommend connecting Windows machines as [passive WireGuard clients](/guides/wg-clients) via a Linux/macOS gateway.
+> **Windows:** The Windows client has known issues. For now, I recommend connecting Windows machines as [passive WireGuard clients](/guides/wg-clients) via a Linux/macOS gateway.
 >
 > Bugs and feature requests welcome via [GitHub issues](https://github.com/encodeous/nylon/issues).
 
