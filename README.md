@@ -23,6 +23,7 @@ Nylon targets under 10 seconds of convergence time after a link failure, as you 
 - **No Coordination Server**: no SaaS dependency, no single control-plane. Nodes exchange routes directly over the same WireGuard tunnel that carries your data.
 - **Single Binary, Single Port**: one statically-linked binary, one UDP port (`57175`), one YAML config. That's it.
 - **WireGuard Client Compatibility**: connect stock WireGuard clients (iOS, Android, Windows) to the mesh with zero extra software. Mobile clients roam between gateways seamlessly.
+- **Native WireGuard Speeds**: data-plane runs entirely in `wireguard-go` (polyamide), capable of 10+ Gbps throughput.
 
 ## Getting Started
 
