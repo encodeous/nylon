@@ -196,7 +196,8 @@ func (h *Harness) WaitForLog(nodeName string, pattern string) {
 func (h *Harness) WaitForMatch(nodeName string, pattern string) {
 	h.waitFor(nodeName, SourceStdout, pattern, true)
 }
-func (h *Harness) WaitForStatus(nodeName string, check func(*protocol.StatusResponse) bool) {
+func (h *Harness) WaitForStatus(t *testing.T, nodeName string, check func(*protocol.StatusResponse) bool) {
+	t.Helper()
 	start := time.Now()
 	for {
 		if time.Since(start) > WaitTimeout {
