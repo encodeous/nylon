@@ -28,6 +28,9 @@ Nylon targets under 10 seconds of convergence time after a link failure, as you 
 
 Download the latest release binary from the [releases page](https://github.com/encodeous/nylon/releases), then head to the [docs](https://nylon.jq.ax) for setup instructions.
 
+> **[Read the full documentation at nylon.jq.ax](https://nylon.jq.ax)**
+> includes configuration reference, guides for connecting WireGuard clients, port forwarding, and comparisons with Tailscale/Nebula.
+
 Sample systemd service and launchctl plist files can be found under the `examples` directory.
 
 > [!NOTE]

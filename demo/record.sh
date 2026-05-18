@@ -137,10 +137,13 @@ BCYAN="\033[1;36m"
 # Helpers
 START=$(date +%s)
 elapsed() { echo "$(( $(date +%s) - START ))s"; }
+marker() { echo "$(( $(date +%s) - START )) $1" >> /tmp/markers.txt; }
 header()  { echo -e "${BYELLOW}── $* ──${R}"; }
 ok()      { echo -e "${BGREEN}  [$(elapsed)] ✓ $*${R}"; }
 info()    { echo -e "${DIM}  $*${R}"; }
 fail()    { echo -e "${BRED}  [$(elapsed)] ✗ $*${R}"; }
+
+> /tmp/markers.txt
 
 # ── Topology diagrams ──
 topo_normal() {
@@ -184,12 +187,14 @@ done
 echo -e "${R}"
 
 ok "mesh converged"
+marker "Mesh converged"
 info "route: alice → charlie (direct, 1 hop)"
 echo ""
 
 sleep 5
 
 header "cutting direct link"
+marker "Link cut"
 echo ""
 topo_broken
 echo ""
@@ -205,11 +210,12 @@ while true; do
     break
   fi
   echo -ne "."
-  sleep 0.5
+  sleep 1
 done
 echo -e "${R}"
 
 ok "rerouted through bob!"
+marker "Rerouted via bob"
 info "route: alice → bob → charlie (2 hops)"
 echo ""
 topo_rerouted
@@ -218,6 +224,7 @@ echo ""
 sleep 5
 
 header "restoring direct link"
+marker "Link restored"
 echo ""
 echo "  $ iptables -F"
 iptables -F
@@ -230,11 +237,12 @@ for i in $(seq 1 30); do
     break
   fi
   echo -ne "."
-  sleep 0.5
+  sleep 1
 done
 echo -e "${R}"
 
 ok "direct link restored"
+marker "Direct route restored"
 info "route: alice → charlie (direct, 1 hop)"
 echo ""
 topo_restored
@@ -299,10 +307,56 @@ info "Recording complete."
 
 # ── Step 4: Extract the cast file ──────────────────────────────────
 docker cp nylon-demo-alice:/tmp/demo.cast "$OUTPUT_DIR/demo.cast"
+docker cp nylon-demo-alice:/tmp/markers.txt "$OUTPUT_DIR/markers.txt" 2>/dev/null || true
 
 if [ ! -f "$OUTPUT_DIR/demo.cast" ]; then
   echo "Error: cast file was not created."
   exit 1
+fi
+
+# Inject markers into the cast file
+if [ -f "$OUTPUT_DIR/markers.txt" ]; then
+  info "Injecting markers into cast..."
+  python3 -c "
+import json, sys
+
+markers_file = '$OUTPUT_DIR/markers.txt'
+cast_file = '$OUTPUT_DIR/demo.cast'
+
+# Read markers
+markers = []
+with open(markers_file) as f:
+    for line in f:
+        parts = line.strip().split(' ', 1)
+        if len(parts) == 2:
+            markers.append((float(parts[0]), parts[1]))
+
+# Read cast
+with open(cast_file) as f:
+    lines = f.readlines()
+
+# Parse header to get recording start offset
+header = json.loads(lines[0])
+
+# Build new cast with markers injected
+events = []
+for line in lines[1:]:
+    events.append(json.loads(line))
+
+for ts, label in markers:
+    events.append([ts, 'm', label])
+
+# Sort by timestamp
+events.sort(key=lambda e: e[0])
+
+# Write back
+with open(cast_file, 'w') as f:
+    f.write(json.dumps(header) + '\n')
+    for event in events:
+        f.write(json.dumps(event) + '\n')
+
+print(f'  Injected {len(markers)} markers')
+"
 fi
 
 info "Cast file saved to $OUTPUT_DIR/demo.cast"
