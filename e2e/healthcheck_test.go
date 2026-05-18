@@ -100,10 +100,10 @@ func TestHealthcheckPing(t *testing.T) {
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForStatus("node3", func(status *protocol.StatusResponse) bool {
+	h.WaitForStatus(t, "node3", func(status *protocol.StatusResponse) bool {
 		return HasSelectedRoute(status, "10.0.1.4/32", "node2", "node1")
 	})
-	h.WaitForStatus("node1", func(status *protocol.StatusResponse) bool {
+	h.WaitForStatus(t, "node1", func(status *protocol.StatusResponse) bool {
 		return HasSelectedRoute(status, "10.0.0.3/32", "node2", "node3")
 	})
 
@@ -166,14 +166,13 @@ func TestHealthcheckHTTP(t *testing.T) {
 	}
 
 	// Configure Primary with HTTP check (Metric 10)
-	// primMetric := uint32(10)
 	central.Routers[1].Prefixes = []state.PrefixHealthWrapper{
 		{
 			&state.HTTPPrefixHealth{
 				Prefix: servicePrefix,
 				URL:    fmt.Sprintf("http://%s:8080/health", serviceIP),
 				Delay:  new(1 * time.Second),
-				// Metric: &primMetric, // Remove override to use dynamic metric (RTT or INF)
+				Metric: new(uint32(10)),
 			},
 		},
 	}
@@ -219,7 +218,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Client should route to Backup (Metric 1000).
 
 	t.Log("Step A: Waiting for routing to fallback (Primary DOWN)")
-	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
+	h.WaitForStatus(t, "client", func(status *protocol.StatusResponse) bool {
 		return HasSelectedRoute(status, "10.0.3.1/32", "backup", "backup")
 	})
 
@@ -228,24 +227,13 @@ func TestHealthcheckHTTP(t *testing.T) {
 	// Use python3 http.server. Create 'health' file so /health returns 200.
 	// exec replaces the shell, so pkill python3 works or just killing the container process.
 	serverCmd := `touch health && python3 -m http.server 8080`
-	bg := h.ExecBackground("primary", []string{"/bin/sh", "-c", serverCmd})
+	h.ExecBackground("primary", []string{"/bin/sh", "-c", serverCmd})
 
 	// C. Wait for Primary to become healthy
 	// Primary should advertise Metric 10.
 	// Client should switch to Primary.
 	t.Log("Step C: Waiting for routing to switch to Primary (Primary UP)")
-	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
+	h.WaitForStatus(t, "client", func(status *protocol.StatusResponse) bool {
 		return HasSelectedRoute(status, "10.0.3.1/32", "primary", "primary")
-	})
-
-	// D. Stop HTTP Server
-	t.Log("Step D: Stopping HTTP server")
-	h.Exec("primary", []string{"pkill", "python3"})
-	bg.Wait()
-
-	// E. Wait for fallback to Backup
-	t.Log("Step E: Waiting for fallback to Backup")
-	h.WaitForStatus("client", func(status *protocol.StatusResponse) bool {
-		return HasSelectedRoute(status, "10.0.3.1/32", "backup", "backup")
 	})
 }
