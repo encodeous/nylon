@@ -40,6 +40,17 @@ type Nylon struct {
 	PingBuf       *ttlcache.Cache[uint64, EpPing]
 	PeerMap       atomic.Pointer[map[state.NyPublicKey]state.NodeId]
 
+	// NodeIdMap maps NodeId<->binary node id, refreshed on every central
+	// config apply. Read on the dataplane to encode and decode unicast
+	// packet headers without referencing the live CentralCfg.
+	NodeIdMap atomic.Pointer[state.NodeIdMap]
+
+	// ExitFilter holds the immutable per-packet state needed by the exit
+	// filter, snapshotted on every config apply. The filter reads only
+	// this pointer, never the live CentralCfg or LocalCfg, since access
+	// to those off the dispatch goroutine would otherwise require locks.
+	ExitFilter atomic.Pointer[ExitFilterSnapshot]
+
 	router struct {
 		LastStarvationRequest time.Time
 		IO                    map[state.NodeId]*IOPending
@@ -174,6 +185,9 @@ func (n *Nylon) Init() error {
 	}
 	err = n.reconcileRouterState(&n.CentralCfg)
 	if err != nil {
+		return err
+	}
+	if err := n.refreshNodeBindings(); err != nil {
 		return err
 	}
 

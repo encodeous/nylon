@@ -20,6 +20,53 @@ const (
 func (n *Nylon) InstallTC() {
 	t := n.Trace
 
+	// exit-encap filter: outbound IP packets that fall off our routing
+	// table get wrapped in a NyUnicast / exit packet bound for the
+	// configured exit node. Installed before the generic forwarder so
+	// that locally-originated traffic to "the internet" gets captured
+	// here first. Reads only the atomic ExitFilter snapshot, never the
+	// live LocalCfg or CentralCfg.
+	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
+		snap := n.ExitFilter.Load()
+		if snap == nil || snap.ExitNodeBin == state.InvalidNodeIdBin {
+			return device.TcPass, nil
+		}
+		if packet.Incoming() || !packet.Validate() {
+			return device.TcPass, nil
+		}
+		ver := packet.GetIPVersion()
+		if ver != 4 && ver != 6 {
+			return device.TcPass, nil
+		}
+		dst := packet.GetDst()
+		if _, ok := n.router.ForwardTable.Load().Lookup(dst); ok {
+			return device.TcPass, nil // overlay route exists; keep normal routing
+		}
+		if state.IsDefaultLocalExcludedAddr(dst) {
+			return device.TcDrop, nil
+		}
+		entry, ok := snap.NodeForward[snap.ExitNodeBin]
+		if !ok || entry.Peer == nil {
+			if n.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("ExitDrop: %v -> %v, exit %s, reason no_route\n", packet.GetSrc(), dst, snap.ExitNode))
+			}
+			return device.TcDrop, nil
+		}
+		src := packet.GetSrc()
+		if err := wrapExitPacket(packet, snap.ExitNodeBin, snap.LocalIdBin); err != nil {
+			if n.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("ExitDrop: %v -> %v, exit %s, reason %v\n", src, dst, snap.ExitNode, err))
+			}
+			return device.TcDrop, nil
+		}
+		packet.ToPeer = entry.Peer
+		packet.Priority = device.TcMediumPriority
+		if n.DBG_trace_tc {
+			t.Submit(fmt.Sprintf("ExitEncap: %v -> %v, exit %s via %s\n", src, dst, snap.ExitNode, entry.Nh))
+		}
+		return device.TcForward, nil
+	})
+
 	if n.DBG_trace_tc {
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
 			if packet.Validate() { // make sure it's an IP packet
@@ -127,6 +174,41 @@ func (n *Nylon) InstallTC() {
 			return device.TcDrop, nil
 		}
 		return device.TcPass, nil
+	})
+
+	// handle incoming NyUnicast packets. Installed last so that under
+	// reverse-installation evaluation it runs first; this ensures
+	// inbound exit-transit packets get re-forwarded before any of the
+	// IP-routing filters above ever see them.
+	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
+		if !packet.Incoming() || packet.GetIPVersion() != NyUnicastProtoId {
+			return device.TcPass, nil
+		}
+		snap := n.ExitFilter.Load()
+		if snap == nil {
+			return device.TcDrop, nil
+		}
+		payload := packet.Payload()
+		h, err := parseNyUnicastHeader(payload)
+		if err != nil {
+			if n.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("ExitDrop: malformed header: %v\n", err))
+			}
+			return device.TcDrop, nil
+		}
+		switch h.subtype {
+		case NyUnicastSubtypeExit:
+			action, err := n.handleExitPacket(packet, snap, h)
+			if err != nil && n.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("ExitDrop: reason %v\n", err))
+			}
+			return action, err
+		default:
+			if n.DBG_trace_tc {
+				t.Submit(fmt.Sprintf("ExitDrop: unknown unicast subtype %d\n", h.subtype))
+			}
+			return device.TcDrop, nil
+		}
 	})
 }
 

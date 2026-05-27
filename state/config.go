@@ -64,6 +64,11 @@ type LocalCfg struct {
 	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
 	PostUp           []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
 	PostDown         []string              `yaml:"post_down,omitempty"`          // a list of commands executed in order after the nylon interface is brought down
+
+	// Exit-node feature. Mutually exclusive: a node is either an exit
+	// itself, a client of an exit, or neither.
+	AdvertiseExitNode bool   `yaml:"advertise_exit_node,omitempty"` // accept exit-encap traffic and terminate it on this node
+	ExitNode          NodeId `yaml:"exit_node,omitempty"`           // route otherwise-unrouted traffic through this remote node
 }
 
 func (c *CentralCfg) Clone() (error, *CentralCfg) {

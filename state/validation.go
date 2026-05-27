@@ -56,6 +56,15 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 			return fmt.Errorf("invalid prefix %s", p)
 		}
 	}
+	if node.AdvertiseExitNode && node.ExitNode != "" {
+		return fmt.Errorf("node %s cannot advertise an exit node and use exit_node %s at the same time", node.Id, node.ExitNode)
+	}
+	if node.ExitNode == node.Id {
+		return fmt.Errorf("node %s cannot use itself as exit_node", node.Id)
+	}
+	if central != nil && node.ExitNode != "" && !central.IsNode(node.ExitNode) {
+		return fmt.Errorf("exit_node %s is not in central config", node.ExitNode)
+	}
 	// check that node is in central config
 	if central != nil && !central.IsNode(node.Id) {
 		return fmt.Errorf("node %s is not in central config", node.Id)
@@ -99,6 +108,14 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 	_, err := ParseGraph(cfg.Graph, nodes)
 	if err != nil {
 		return err
+	}
+
+	// The dataplane unicast header carries a 16-bit binary node id; ensure
+	// the network is small enough to fit. With 64K nodes this is a generous
+	// bound; if it ever needs to grow, widen NodeIdBin in lockstep with the
+	// header wire format.
+	if uint64(len(nodes)) > uint64(MaxNodeIdBin) {
+		return fmt.Errorf("network has %d nodes, exceeds maximum %d supported by NodeIdBin", len(nodes), MaxNodeIdBin)
 	}
 
 	// ensure each node contains unique prefixes (anycast routing allows duplicate prefixes across nodes)
