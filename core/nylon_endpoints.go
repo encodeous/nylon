@@ -33,6 +33,10 @@ func (n *Nylon) Probe(node state.NodeId, ep *state.NylonEndpoint, waitErr bool) 
 		return err
 	}
 
+	n.PingBuf.Set(token, EpPing{
+		TimeSent: time.Now(),
+	}, ttlcache.DefaultTTL)
+
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -41,12 +45,8 @@ func (n *Nylon) Probe(node state.NodeId, ep *state.NylonEndpoint, waitErr bool) 
 		defer wg.Done()
 		sendErr = n.SendNylon(ping, nep, peer)
 		if sendErr != nil {
-			return
+			n.PingBuf.Delete(token)
 		}
-
-		n.PingBuf.Set(token, EpPing{
-			TimeSent: time.Now(),
-		}, ttlcache.DefaultTTL)
 	}()
 
 	if waitErr {
@@ -60,11 +60,14 @@ func handleProbe(n *Nylon, pkt *protocol.Ny_Probe, endpoint conn.Endpoint, peer 
 	if pkt.ResponseToken == nil {
 		// ping
 		// build pong response
-		res := pkt
-		res.ResponseToken = new(rand.Uint64())
+		responseToken := pkt.Token
+		res := &protocol.Ny_Probe{
+			Token:         pkt.Token,
+			ResponseToken: &responseToken,
+		}
 
 		// send pong
-		err := n.SendNylon(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: pkt}}, endpoint, peer)
+		err := n.SendNylon(&protocol.Ny{Type: &protocol.Ny_ProbeOp{ProbeOp: res}}, endpoint, peer)
 		if err != nil {
 			n.Log.Error("Failed to send nylon packet to node", "node", node, "error", err)
 			return
@@ -98,10 +101,12 @@ func handleProbePing(n *Nylon, node state.NodeId, wgEndpoint conn.Endpoint) {
 				// refresh wireguard ep
 				dep.WgEndpoint = wgEndpoint
 
-				if !dep.IsActive() {
+				wasInactive := !dep.IsActive()
+				dep.Renew()
+				if wasInactive {
+					ComputeRoutes(n.RouterState, n)
 					n.UpdateNeighbour(node)
 				}
-				dep.Renew()
 
 				if n.DBG_log_probe {
 					n.Log.Debug("probe from", "addr", ap.String())
@@ -117,6 +122,7 @@ func handleProbePing(n *Nylon, node state.NodeId, wgEndpoint conn.Endpoint) {
 			newEp.Renew()
 			neigh.Eps = append(neigh.Eps, newEp)
 			// push route update to improve convergence time
+			ComputeRoutes(n.RouterState, n)
 			n.UpdateNeighbour(node)
 			return
 		}
