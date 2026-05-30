@@ -1,14 +1,7 @@
-<div align="center">
-    <img src="docs/assets/banner.svg" width=500 height=250 alt="nylon - a self-healing mesh network built on WireGuard">
+# nylon
 
 [![Join our Discord](https://img.shields.io/discord/1499576745916104795?logo=discord&style=for-the-badge)](https://discord.gg/987gqqPGqr)
 [![Docs](https://img.shields.io/badge/docs-nylon.jq.ax-blue?style=for-the-badge)](https://nylon.jq.ax)
-
-</div>
-
----
-
-# nylon
 
 Nylon is a self-healing WireGuard mesh that routes around failures. If a link goes down, nylon reroutes traffic through the next-best path in seconds. No manual intervention, no central coordination servers, just like how a real network should be :)
 
