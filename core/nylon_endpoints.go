@@ -17,6 +17,7 @@ import (
 type EpPing struct {
 	TimeSent time.Time
 	Peer     state.NodeId
+	Endpoint *state.NylonEndpoint
 	Complete func(protocol.EndpointProbeStatus, time.Duration)
 }
 
@@ -92,6 +93,7 @@ func (n *Nylon) sendEndpointProbe(node state.NodeId, ep *state.NylonEndpoint, ti
 	n.PingBuf.Set(token, EpPing{
 		TimeSent: sentAt,
 		Peer:     node,
+		Endpoint: ep,
 		Complete: func(status protocol.EndpointProbeStatus, latency time.Duration) {
 			if timeoutTimer != nil {
 				timeoutTimer.Stop()
@@ -197,32 +199,24 @@ func handleProbePong(n *Nylon, node state.NodeId, token uint64, ep conn.Endpoint
 		n.Log.Warn("probe came back from wrong peer", "expected", health.Peer, "actual", node)
 		return
 	}
-	receivedAt := time.Now()
-	latency := receivedAt.Sub(health.TimeSent)
+	latency := time.Since(health.TimeSent)
 	health.Complete(protocol.EndpointProbeStatus_ENDPOINT_PROBE_REPLIED, latency)
 
-	// check if link exists
-	for _, neigh := range n.RouterState.Neighbours {
-		for _, dep := range neigh.Eps {
-			dpLink := dep.AsNylonEndpoint()
-			ap, err := dpLink.DynEP.Get()
-			if err == nil && ap == ep.DstIPPort() && neigh.Id == node {
-				// we have a link
-				if n.DBG_log_probe {
-					n.Log.Debug("probe back", "peer", node, "ping", latency)
-				}
-				dpLink.Renew()
-				dpLink.UpdatePing(latency)
-
-				// update wireguard endpoint
-				dpLink.WgEndpoint = ep
-
-				ComputeRoutes(n.RouterState, n)
-				return
-			}
-		}
+	dpLink := health.Endpoint
+	if dpLink == nil {
+		n.Log.Warn("probe came back without a recorded endpoint", "from", ep.DstToString(), "node", node)
+		return
 	}
-	n.Log.Warn("probe came back and couldn't find link", "from", ep.DstToString(), "node", node)
+	if n.DBG_log_probe {
+		n.Log.Debug("probe back", "peer", node, "ping", latency)
+	}
+	dpLink.Renew()
+	dpLink.UpdatePing(latency)
+
+	// Record the reply's current WireGuard endpoint on the endpoint that sent the probe.
+	dpLink.WgEndpoint = ep
+
+	ComputeRoutes(n.RouterState, n)
 }
 
 func (n *Nylon) probeLinks(active bool) error {
