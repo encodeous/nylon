@@ -64,6 +64,8 @@ message EndpointInfo {
   uint32 metric = 5;
   int64 filtered_rtt_ns = 7;
   int64 stabilized_rtt_ns = 8;
+  string local_bind_interface = 10;
+  string local_bind_source = 11;
 }
 
 message WireGuardPeerStats {
