@@ -1,9 +1,12 @@
 package state
 
 import (
+	"net/netip"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -148,4 +151,48 @@ func TestParseGraph_InvalidGraph(t *testing.T) {
 	failGraph(t, `1,2,3,4,5,6,7,8,9,10,11,12,13,14,15`)
 	failGraph(t, `,,,,,,,,,,,,,,,,`)
 	failGraph(t, `a=a`)
+}
+
+func TestLocalBindsParse(t *testing.T) {
+	data := []byte(`
+key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+id: alice
+port: 57175
+binds:
+  - interface: eth0
+    source: 203.0.113.10
+`)
+	var local LocalCfg
+	err := yaml.Unmarshal(data, &local)
+	assert.NoError(t, err)
+	assert.Len(t, local.Binds, 1)
+	assert.Equal(t, "eth0", local.Binds[0].Interface)
+	assert.Equal(t, netip.MustParseAddr("203.0.113.10"), local.Binds[0].Source)
+}
+
+func TestNodeConfigValidatorRejectsSelectorlessBind(t *testing.T) {
+	local := LocalCfg{
+		Id:    "alice",
+		Key:   [32]byte{1},
+		Port:  57175,
+		Binds: []LocalBind{{}},
+	}
+
+	err := NodeConfigValidator(nil, &local)
+	assert.ErrorContains(t, err, "must specify source or interface")
+}
+
+func TestNodeConfigValidatorAllowsBind(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("local binds are linux-only")
+	}
+	local := LocalCfg{
+		Id:    "alice",
+		Key:   [32]byte{1},
+		Port:  57175,
+		Binds: []LocalBind{{Source: netip.MustParseAddr("203.0.113.10")}},
+	}
+
+	err := NodeConfigValidator(nil, &local)
+	assert.NoError(t, err)
 }

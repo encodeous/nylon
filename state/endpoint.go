@@ -23,6 +23,13 @@ type Endpoint interface {
 	AsNylonEndpoint() *NylonEndpoint
 }
 
+func SameIPFamily(a, b netip.Addr) bool {
+	if !a.IsValid() || !b.IsValid() {
+		return true
+	}
+	return a.BitLen() == b.BitLen()
+}
+
 /*
 		DynamicEndpoint represents either an ip:port or a dns name. This may be resolved to a different address at any time
 
@@ -164,6 +171,7 @@ type NylonEndpoint struct {
 	remoteInit    bool
 	WgEndpoint    conn.Endpoint
 	DynEP         *DynamicEndpoint
+	Bind          LocalBind
 }
 
 func (ep *NylonEndpoint) AsNylonEndpoint() *NylonEndpoint {
@@ -175,6 +183,9 @@ func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device) (conn.Endpoint, er
 	if err != nil {
 		return nil, err
 	}
+	if !SameIPFamily(ep.Bind.Source, ap.Addr()) {
+		return nil, fmt.Errorf("bind source %s does not match endpoint %s", ep.Bind.Source, ap)
+	}
 
 	if ep.WgEndpoint == nil || ep.WgEndpoint.DstIPPort() != ap {
 		wgEp, err := device.Bind().ParseEndpoint(ap.String())
@@ -182,6 +193,19 @@ func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device) (conn.Endpoint, er
 			return nil, fmt.Errorf("failed to parse endpoint: %s, %v", ap.String(), err)
 		}
 		ep.WgEndpoint = wgEp
+	}
+	if setter, ok := ep.WgEndpoint.(interface {
+		SetSrc(netip.Addr, int32)
+	}); ok && (ep.Bind.Source.IsValid() || ep.Bind.Interface != "") {
+		ifidx := int32(0)
+		if ep.Bind.Interface != "" {
+			iface, err := net.InterfaceByName(ep.Bind.Interface)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve bind interface %s: %w", ep.Bind.Interface, err)
+			}
+			ifidx = int32(iface.Index)
+		}
+		setter.SetSrc(ep.Bind.Source, ifidx)
 	}
 	return ep.WgEndpoint, nil
 }
