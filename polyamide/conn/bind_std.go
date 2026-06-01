@@ -526,6 +526,7 @@ func splitCoalescedMessages(msgs []ipv6.Message, firstMsgAt int, getGSO getGSOFu
 		if err != nil {
 			return n, err
 		}
+		control := append([]byte(nil), msg.OOB[:msg.NN]...)
 		if gsoSize > 0 {
 			numToSplit = (msg.N + gsoSize - 1) / gsoSize
 			end = gsoSize
@@ -536,6 +537,8 @@ func splitCoalescedMessages(msgs []ipv6.Message, firstMsgAt int, getGSO getGSOFu
 			}
 			copied := copy(msgs[n].Buffers[0], msg.Buffers[0][start:end])
 			msgs[n].N = copied
+			msgs[n].OOB = append(msgs[n].OOB[:0], control...)
+			msgs[n].NN = len(control)
 			msgs[n].Addr = msg.Addr
 			start = end
 			end += gsoSize
