@@ -137,16 +137,20 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 }
 
 func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
-	cur := n.GetRouter(n.LocalCfg.Id)
-	nextRouter := next.GetRouter(n.LocalCfg.Id)
-
 	currentLocal := make(map[netip.Prefix]state.PrefixHealthWrapper)
-	for _, prefix := range cur.Prefixes {
-		currentLocal[prefix.GetPrefix()] = prefix
+	if cur := n.CentralCfg.TryGetNode(n.LocalCfg.Id); cur != nil {
+		for _, prefix := range cur.Prefixes {
+			currentLocal[prefix.GetPrefix()] = prefix
+		}
 	}
-	desiredLocal := make(map[netip.Prefix]state.PrefixHealthWrapper)
-	for _, prefix := range nextRouter.Prefixes {
-		desiredLocal[prefix.GetPrefix()] = prefix
+	nextNode := next.TryGetNode(n.LocalCfg.Id)
+	if nextNode == nil {
+		return
+	}
+
+	desiredLocal := make(map[netip.Prefix]int)
+	for i, prefix := range nextNode.Prefixes {
+		desiredLocal[prefix.GetPrefix()] = i
 	}
 
 	for prefix, adv := range n.RouterState.Advertised {
@@ -161,8 +165,15 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 		}
 	}
 
-	for prefix, desired := range desiredLocal {
-		if _, ok := currentLocal[prefix]; !ok {
+	for prefix, index := range desiredLocal {
+		desired := nextNode.Prefixes[index]
+		if current, ok := currentLocal[prefix]; ok && samePrefixHealthConfig(current, desired, &n.RouterTunables) {
+			desired = current
+			nextNode.Prefixes[index] = current
+		} else {
+			if current, ok := currentLocal[prefix]; ok {
+				current.Stop()
+			}
 			n.Log.Debug("starting prefix healthcheck", "prefix", prefix)
 			desired.Start(n.Log, &n.RouterTunables)
 		}
@@ -175,6 +186,53 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 			},
 		}
 	}
+}
+
+func samePrefixHealthConfig(a, b state.PrefixHealthWrapper, tunables *state.RouterTunables) bool {
+	switch av := a.PrefixHealth.(type) {
+	case *state.StaticPrefixHealth:
+		bv, ok := b.PrefixHealth.(*state.StaticPrefixHealth)
+		return ok && av.Prefix == bv.Prefix && av.Metric == bv.Metric
+	case *state.PingPrefixHealth:
+		bv, ok := b.PrefixHealth.(*state.PingPrefixHealth)
+		return ok &&
+			av.Prefix == bv.Prefix &&
+			av.Addr == bv.Addr &&
+			av.BindIf == bv.BindIf &&
+			equalUint32Ptr(av.Metric, bv.Metric) &&
+			prefixHealthDelay(av.Delay, tunables) == prefixHealthDelay(bv.Delay, tunables) &&
+			prefixHealthMaxFailures(av.MaxFailures, tunables) == prefixHealthMaxFailures(bv.MaxFailures, tunables)
+	case *state.HTTPPrefixHealth:
+		bv, ok := b.PrefixHealth.(*state.HTTPPrefixHealth)
+		return ok &&
+			av.Prefix == bv.Prefix &&
+			av.URL == bv.URL &&
+			equalUint32Ptr(av.Metric, bv.Metric) &&
+			prefixHealthDelay(av.Delay, tunables) == prefixHealthDelay(bv.Delay, tunables)
+	default:
+		return false
+	}
+}
+
+func equalUint32Ptr(a, b *uint32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func prefixHealthDelay(value *time.Duration, tunables *state.RouterTunables) time.Duration {
+	if value != nil {
+		return *value
+	}
+	return tunables.HealthCheckDelay
+}
+
+func prefixHealthMaxFailures(value *int, tunables *state.RouterTunables) int {
+	if value != nil {
+		return *value
+	}
+	return tunables.HealthCheckMaxFailures
 }
 
 func (n *Nylon) startAdvertisedPrefixHealth() {
