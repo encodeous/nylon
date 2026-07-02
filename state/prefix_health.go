@@ -39,6 +39,11 @@ func (s *StaticPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	// do nothing
 }
 
+func (s *StaticPrefixHealth) sameConfig(other PrefixHealth, _ *RouterTunables) bool {
+	o, ok := other.(*StaticPrefixHealth)
+	return ok && s.Prefix == o.Prefix && s.Metric == o.Metric
+}
+
 type PingPrefixHealth struct {
 	Prefix      netip.Prefix   `yaml:"prefix"`
 	Addr        netip.Addr     `yaml:"addr"`                   // the address to ping
@@ -46,7 +51,7 @@ type PingPrefixHealth struct {
 	Delay       *time.Duration `yaml:"delay,omitempty"`        // delay between pings
 	BindIf      string         `yaml:"bind_if,omitempty"`      // local interface to bind to
 	Metric      *uint32        `yaml:"metric,omitempty"`       // metric override
-	lastMetric  uint32
+	lastMetric  atomic.Uint32
 	running     atomic.Bool
 }
 
@@ -81,7 +86,7 @@ func (p *PingPrefixHealth) GetMetric() uint32 {
 	if p.Metric != nil {
 		return *p.Metric
 	}
-	return p.lastMetric
+	return p.lastMetric.Load()
 }
 func (p *PingPrefixHealth) GetPrefix() netip.Prefix {
 	return p.Prefix
@@ -96,11 +101,12 @@ func (p *PingPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	if p.MaxFailures == nil {
 		p.MaxFailures = &t.HealthCheckMaxFailures
 	}
+	// Default to unreachable until the first successful probe.
+	p.lastMetric.Store(INF)
 	go func() {
 		ticker := time.NewTicker(*p.Delay)
 		for p.running.Load() {
 			time.Sleep(*p.Delay)
-			p.lastMetric = INF
 			bind4 := ""
 			bind6 := ""
 			var err error
@@ -133,17 +139,28 @@ func (p *PingPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 				rtt, err := pinger.PingAttempts(addr, time.Duration(int64(*p.Delay)/int64(*p.MaxFailures)), *p.MaxFailures)
 				if err != nil {
 					// failed
-					p.lastMetric = INF
+					p.lastMetric.Store(INF)
 					log.Debug("prefix healthcheck failed", "prefix", p.Prefix.String(), "addr", p.Addr.String(), "error", err)
 					pinger.Close()
 					break // break to outer loop to recreate pinger
 				} else {
 					// success
-					p.lastMetric = DurationToMetric(rtt)
+					p.lastMetric.Store(DurationToMetric(rtt))
 				}
 			}
 		}
 	}()
+}
+
+func (p *PingPrefixHealth) sameConfig(other PrefixHealth, tunables *RouterTunables) bool {
+	o, ok := other.(*PingPrefixHealth)
+	return ok &&
+		p.Prefix == o.Prefix &&
+		p.Addr == o.Addr &&
+		p.BindIf == o.BindIf &&
+		sameOptionalUint32(p.Metric, o.Metric) &&
+		prefixHealthDelay(p.Delay, tunables) == prefixHealthDelay(o.Delay, tunables) &&
+		prefixHealthMaxFailures(p.MaxFailures, tunables) == prefixHealthMaxFailures(o.MaxFailures, tunables)
 }
 
 type HTTPPrefixHealth struct {
@@ -151,7 +168,7 @@ type HTTPPrefixHealth struct {
 	URL        string         `yaml:"url"`              // the URL to check
 	Delay      *time.Duration `yaml:"delay,omitempty"`  // delay between probes
 	Metric     *uint32        `yaml:"metric,omitempty"` // metric override
-	lastMetric uint32
+	lastMetric atomic.Uint32
 	running    atomic.Bool
 }
 
@@ -163,7 +180,7 @@ func (h *HTTPPrefixHealth) GetMetric() uint32 {
 	if h.Metric != nil {
 		return *h.Metric
 	}
-	return h.lastMetric
+	return h.lastMetric.Load()
 }
 func (h *HTTPPrefixHealth) GetPrefix() netip.Prefix {
 	return h.Prefix
@@ -172,7 +189,7 @@ func (h *HTTPPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	if h.running.Swap(true) {
 		return
 	}
-	h.lastMetric = INF
+	h.lastMetric.Store(INF)
 	if h.Delay == nil {
 		h.Delay = &t.HealthCheckDelay
 	}
@@ -186,19 +203,62 @@ func (h *HTTPPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 			resp, err := http.Get(h.URL)
 			if err != nil || resp.StatusCode != http.StatusOK {
 				// failed
-				h.lastMetric = INF
+				h.lastMetric.Store(INF)
 				log.Debug("prefix healthcheck failed", "prefix", h.Prefix.String(), "url", h.URL, "error", err)
 			} else {
 				// success
 				rtt := time.Since(startTime)
-				h.lastMetric = DurationToMetric(rtt)
+				h.lastMetric.Store(DurationToMetric(rtt))
 			}
 		}
 	}()
 }
 
+func (h *HTTPPrefixHealth) sameConfig(other PrefixHealth, tunables *RouterTunables) bool {
+	o, ok := other.(*HTTPPrefixHealth)
+	return ok &&
+		h.Prefix == o.Prefix &&
+		h.URL == o.URL &&
+		sameOptionalUint32(h.Metric, o.Metric) &&
+		prefixHealthDelay(h.Delay, tunables) == prefixHealthDelay(o.Delay, tunables)
+}
+
 type PrefixHealthWrapper struct {
 	PrefixHealth
+}
+
+type prefixHealthConfig interface {
+	sameConfig(other PrefixHealth, tunables *RouterTunables) bool
+}
+
+// SameConfig reports whether two prefix health checks have equivalent configuration.
+func (p PrefixHealthWrapper) SameConfig(other PrefixHealthWrapper, tunables *RouterTunables) bool {
+	if p.PrefixHealth == nil || other.PrefixHealth == nil {
+		return p.PrefixHealth == other.PrefixHealth
+	}
+	config, ok := p.PrefixHealth.(prefixHealthConfig)
+	return ok && config.sameConfig(other.PrefixHealth, tunables)
+}
+
+func sameOptionalUint32(a, b *uint32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func prefixHealthDelay(value *time.Duration, tunables *RouterTunables) time.Duration {
+	if value != nil {
+		return *value
+	}
+	return tunables.HealthCheckDelay
+}
+
+func prefixHealthMaxFailures(value *int, tunables *RouterTunables) int {
+	if value != nil {
+		return *value
+	}
+	return tunables.HealthCheckMaxFailures
 }
 
 func (p PrefixHealthWrapper) MarshalYAML() (interface{}, error) {
