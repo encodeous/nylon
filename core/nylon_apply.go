@@ -167,7 +167,7 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 
 	for prefix, index := range desiredLocal {
 		desired := nextNode.Prefixes[index]
-		if current, ok := currentLocal[prefix]; ok && samePrefixHealthConfig(current, desired, &n.RouterTunables) {
+		if current, ok := currentLocal[prefix]; ok && current.SameConfig(desired, &n.RouterTunables) {
 			desired = current
 			nextNode.Prefixes[index] = current
 		} else {
@@ -186,53 +186,6 @@ func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
 			},
 		}
 	}
-}
-
-func samePrefixHealthConfig(a, b state.PrefixHealthWrapper, tunables *state.RouterTunables) bool {
-	switch av := a.PrefixHealth.(type) {
-	case *state.StaticPrefixHealth:
-		bv, ok := b.PrefixHealth.(*state.StaticPrefixHealth)
-		return ok && av.Prefix == bv.Prefix && av.Metric == bv.Metric
-	case *state.PingPrefixHealth:
-		bv, ok := b.PrefixHealth.(*state.PingPrefixHealth)
-		return ok &&
-			av.Prefix == bv.Prefix &&
-			av.Addr == bv.Addr &&
-			av.BindIf == bv.BindIf &&
-			equalUint32Ptr(av.Metric, bv.Metric) &&
-			prefixHealthDelay(av.Delay, tunables) == prefixHealthDelay(bv.Delay, tunables) &&
-			prefixHealthMaxFailures(av.MaxFailures, tunables) == prefixHealthMaxFailures(bv.MaxFailures, tunables)
-	case *state.HTTPPrefixHealth:
-		bv, ok := b.PrefixHealth.(*state.HTTPPrefixHealth)
-		return ok &&
-			av.Prefix == bv.Prefix &&
-			av.URL == bv.URL &&
-			equalUint32Ptr(av.Metric, bv.Metric) &&
-			prefixHealthDelay(av.Delay, tunables) == prefixHealthDelay(bv.Delay, tunables)
-	default:
-		return false
-	}
-}
-
-func equalUint32Ptr(a, b *uint32) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-func prefixHealthDelay(value *time.Duration, tunables *state.RouterTunables) time.Duration {
-	if value != nil {
-		return *value
-	}
-	return tunables.HealthCheckDelay
-}
-
-func prefixHealthMaxFailures(value *int, tunables *state.RouterTunables) int {
-	if value != nil {
-		return *value
-	}
-	return tunables.HealthCheckMaxFailures
 }
 
 func (n *Nylon) startAdvertisedPrefixHealth() {
