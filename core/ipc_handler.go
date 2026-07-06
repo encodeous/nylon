@@ -435,7 +435,7 @@ func handleIPCProbe(n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse 
 
 	probeCtx, probeCancel := context.WithTimeout(n.Context, probeTimeout+n.IPCDispatchTimeout)
 	defer probeCancel()
-	results, err := All(probeCtx, probes)
+	results, err := AwaitAll(probeCtx, probes)
 	if err != nil {
 		if ctxErr := probeCtx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
 			return errResponse(err.Error())

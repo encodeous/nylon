@@ -31,7 +31,7 @@ func TestFutureAllPreservesOrder(t *testing.T) {
 	completeB(2, nil)
 	completeA(1, nil)
 
-	values, err := All(context.Background(), []Future[int]{a, b})
+	values, err := AwaitAll(context.Background(), []Future[int]{a, b})
 	if err != nil {
 		t.Fatalf("await all failed: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestFutureAllTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 
-	_, err := All(ctx, []Future[int]{future})
+	_, err := AwaitAll(ctx, []Future[int]{future})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected context deadline exceeded, got %v", err)
 	}

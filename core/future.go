@@ -72,10 +72,10 @@ func (f Future[T]) Done() <-chan struct{} {
 	return f.state.done
 }
 
-// All blocks until every input future completes or ctx is canceled.
-// Values are returned in the same order as the input slice. All awaits and
+// AwaitAll blocks until every input future completes or ctx is canceled.
+// Values are returned in the same order as the input slice. AwaitAll awaits and
 // consumes every completed input future in order.
-func All[T any](ctx context.Context, futures []Future[T]) ([]T, error) {
+func AwaitAll[T any](ctx context.Context, futures []Future[T]) ([]T, error) {
 	values := make([]T, len(futures))
 	var firstErr error
 	for idx, item := range futures {
