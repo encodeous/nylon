@@ -20,10 +20,25 @@ func (elem *TCElement) InitPacket(ver int, len uint16) {
 	elem.SetLength(len)
 }
 
-func (elem *TCElement) ParsePacket() {
-	elem.Packet = elem.Buffer[MessageTransportHeaderSize:]
+func (elem *TCElement) ParsePacket() bool {
+	if elem == nil {
+		return false
+	}
+	if len(elem.Packet) == 0 {
+		if elem.Buffer == nil {
+			return false
+		}
+		elem.Packet = elem.Buffer[MessageTransportHeaderSize:]
+	}
+	if !elem.hasPacketHeader() {
+		return false
+	}
 	l := elem.GetLength()
-	elem.Packet = elem.Buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+l]
+	if int(l) > len(elem.Packet) {
+		return false
+	}
+	elem.Packet = elem.Packet[:l]
+	return true
 }
 
 func (elem *TCElement) Incoming() bool {
@@ -137,6 +152,9 @@ func (elem *TCElement) Validate() bool {
 	if elem == nil || len(elem.Packet) == 0 {
 		return false
 	}
+	if !elem.hasPacketHeader() {
+		return false
+	}
 	ver := elem.GetIPVersion()
 	if ver == 4 {
 		if elem.GetLength() < ipv4.HeaderLen {
@@ -150,6 +168,19 @@ func (elem *TCElement) Validate() bool {
 		if elem.GetLength() < PolyHeaderSize {
 			return false
 		}
+	}
+	return true
+}
+
+func (elem *TCElement) hasPacketHeader() bool {
+	if elem == nil || len(elem.Packet) < PolyHeaderSize {
+		return false
+	}
+	ver := elem.GetIPVersion()
+	if ver == 4 {
+		return len(elem.Packet) >= ipv4.HeaderLen
+	} else if ver == 6 {
+		return len(elem.Packet) >= ipv6.HeaderLen
 	}
 	return true
 }
