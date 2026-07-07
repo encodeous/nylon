@@ -12,7 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	_ "unsafe"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wintun"
@@ -49,6 +49,9 @@ type NativeTun struct {
 var (
 	WintunTunnelType          = "WireGuard"
 	WintunStaticRequestedGUID *windows.GUID
+	modiphlpapi               = windows.NewLazySystemDLL("iphlpapi.dll")
+	procGetIpInterfaceEntry   = modiphlpapi.NewProc("GetIpInterfaceEntry")
+	procSetIpInterfaceEntry   = modiphlpapi.NewProc("SetIpInterfaceEntry")
 )
 
 //go:linkname procyield runtime.procyield
@@ -75,6 +78,11 @@ func CreateTUNWithRequestedGUID(ifname string, requestedGUID *windows.GUID, mtu 
 	if mtu > 0 {
 		forcedMTU = mtu
 	}
+	if err := setInterfaceMTU(wt.LUID(), windows.AF_INET6, forcedMTU); err != nil {
+		wt.Close()
+		return nil, fmt.Errorf("Error setting IPv6 interface MTU: %w", err)
+	}
+	_ = setInterfaceMTU(wt.LUID(), windows.AF_INET, forcedMTU)
 
 	tun := &NativeTun{
 		wt:        wt,
@@ -223,6 +231,24 @@ func (tun *NativeTun) LUID() uint64 {
 // RunningVersion returns the running version of the Wintun driver.
 func (tun *NativeTun) RunningVersion() (version uint32, err error) {
 	return wintun.RunningVersion()
+}
+
+func setInterfaceMTU(luid uint64, family uint16, mtu int) error {
+	var row windows.MibIpInterfaceRow
+	row.Family = family
+	row.InterfaceLuid = luid
+
+	r1, _, _ := procGetIpInterfaceEntry.Call(uintptr(unsafe.Pointer(&row)))
+	if r1 != 0 {
+		return windows.Errno(r1)
+	}
+
+	row.NlMtu = uint32(mtu)
+	r1, _, _ = procSetIpInterfaceEntry.Call(uintptr(unsafe.Pointer(&row)))
+	if r1 != 0 {
+		return windows.Errno(r1)
+	}
+	return nil
 }
 
 func (rate *rateJuggler) update(packetLen uint64) {

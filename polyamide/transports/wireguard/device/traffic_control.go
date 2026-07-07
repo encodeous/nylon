@@ -109,8 +109,7 @@ func (device *Device) TCBatch(batch []*TCElement, tcs *TCState) {
 	for i, elem := range batch {
 		// process TC Filters
 		act := TcPass
-		elem.ParsePacket()
-		if !elem.Validate() {
+		if !elem.ParsePacket() || !elem.Validate() {
 			device.Log.Errorf("Found malformed packet, dropping packet")
 			act = TcDrop
 		} else {

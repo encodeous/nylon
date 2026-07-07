@@ -249,6 +249,7 @@ func (device *Device) RoutineReadFromTUN() {
 			}
 			tce := device.GetTCElement()
 			tce.Buffer = bufs[i]
+			tce.Packet = bufs[i][offset : offset+sizes[i]]
 			tcBufs = append(tcBufs, tce)
 
 			bufs[i] = device.GetMessageBuffer()
