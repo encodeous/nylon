@@ -1,11 +1,31 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
 	"time"
 )
+
+func NewDispatchFuture[T any](n *Nylon, fun func() (T, error)) Future[T] {
+	future, complete := NewFuture[T]()
+	dispatch := func() error {
+		value, err := fun()
+		complete(value, err)
+		return nil
+	}
+	select {
+	case n.DispatchChannel <- dispatch:
+	case <-n.Context.Done():
+		var zero T
+		complete(zero, context.Cause(n.Context))
+	default:
+		var zero T
+		complete(zero, fmt.Errorf("dispatch channel is full"))
+	}
+	return future
+}
 
 // Dispatch Dispatches the function to run on the main thread without waiting for it to complete
 func (n *Nylon) Dispatch(fun func() error) {

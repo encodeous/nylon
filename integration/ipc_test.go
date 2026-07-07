@@ -96,6 +96,42 @@ func TestIPCStatus(t *testing.T) {
 	assert.GreaterOrEqual(t, len(s.GetFeasibilityDistances()), 1)
 }
 
+func TestIPCProbeReportsTimeout(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	vh := &VirtualHarness{}
+	a1 := "192.168.52.1:1234"
+	b1 := "192.168.52.2:1234"
+	vh.NewNode("a", "10.0.0.1/32")
+	vh.NewNode("b", "10.0.0.2/32")
+	vh.Central.Graph = []string{"a, b"}
+	vh.Endpoints = map[string]state.NodeId{a1: "a", b1: "b"}
+	vh.AddLink(a1, b1).WithPacketLoss(1)
+	vh.AddLink(b1, a1).WithPacketLoss(1)
+	errs := vh.Start()
+	defer vh.Stop()
+
+	time.Sleep(500 * time.Millisecond)
+
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	resp := ipcCall(t, a, &protocol.IpcRequest{
+		Request: &protocol.IpcRequest_Probe{Probe: &protocol.ProbeRequest{PeerId: "b", TimeoutMs: 100}},
+	})
+
+	require.True(t, resp.Ok, resp.Error)
+	results := resp.GetProbe().GetResults()
+	require.NotEmpty(t, results)
+	for _, result := range results {
+		assert.Equal(t, protocol.EndpointProbeStatus_ENDPOINT_PROBE_TIMEOUT, result.Status)
+		assert.Zero(t, result.LatencyNs)
+	}
+
+	select {
+	case err := <-errs:
+		t.Fatal(err)
+	default:
+	}
+}
+
 func TestIPCReloadConfig(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	vh, errs := setupTwoNodeHarness(t)

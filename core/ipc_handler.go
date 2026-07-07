@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -18,6 +19,11 @@ import (
 
 var pjMarshal = protojson.MarshalOptions{EmitUnpopulated: true}
 var pjUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
+
+const (
+	defaultIPCProbeTimeout = 2 * time.Second
+	maxIPCProbeTimeout     = 10 * time.Second
+)
 
 func writeResponse(rw *bufio.ReadWriter, resp *protocol.IpcResponse) error {
 	data, err := pjMarshal.Marshal(resp)
@@ -64,6 +70,13 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 	if _, ok := req.Request.(*protocol.IpcRequest_Trace); ok {
 		return handleTrace(n, rw)
 	}
+	if _, ok := req.Request.(*protocol.IpcRequest_Probe); ok {
+		resp := handleIPCProbe(n, req.GetProbe())
+		if err := writeResponse(rw, resp); err != nil {
+			return err
+		}
+		return device.ErrIPCStatusHandled
+	}
 
 	done := make(chan *protocol.IpcResponse, 1)
 	n.Dispatch(func() error {
@@ -71,8 +84,6 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 		switch req.Request.(type) {
 		case *protocol.IpcRequest_Status:
 			resp = handleStatus(n, req.GetStatus())
-		case *protocol.IpcRequest_Probe:
-			resp = handleIPCProbe(n, req.GetProbe())
 		case *protocol.IpcRequest_Reload:
 			resp = handleIPCReload(n, req.GetReload())
 		default:
@@ -87,7 +98,7 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 	case resp = <-done:
 	case <-n.Context.Done():
 		resp = errResponse("nylon shutting down")
-	case <-time.After(1 * time.Second):
+	case <-time.After(n.IPCDispatchTimeout):
 		// nylon is too busy to handle IPC requests
 		resp = errResponse("timed out waiting for dispatch")
 	}
@@ -210,7 +221,7 @@ func buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
 		nep := ep.AsNylonEndpoint()
 		var resolved *string
 		if ap, err := nep.DynEP.Get(); err == nil {
-			resolved = stringPtr(ap.String())
+			resolved = new(ap.String())
 		}
 		eps = append(eps, &protocol.EndpointInfo{
 			Address:         nep.DynEP.Value,
@@ -376,10 +387,6 @@ func keyString(key state.NyPublicKey) string {
 	return string(text)
 }
 
-func stringPtr(v string) *string {
-	return &v
-}
-
 func comparePubRoute(a, b *protocol.PubRoute) int {
 	if c := cmp.Compare(a.Source.Prefix, b.Source.Prefix); c != 0 {
 		return c
@@ -412,25 +419,39 @@ func sortRouteTableEntries(entries []*protocol.RouteTableEntry) {
 }
 
 func handleIPCProbe(n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse {
-	neigh := n.RouterState.GetNeighbour(state.NodeId(req.PeerId))
-	if neigh == nil {
-		return errResponse(fmt.Sprintf("peer %q is not a neighbour", req.PeerId))
-	}
-	results := make([]*protocol.EndpointProbeResult, 0, len(neigh.Eps))
-	for _, ep := range neigh.Eps {
-		nep := ep.AsNylonEndpoint()
-		addr := nep.DynEP.Value
-		err := n.Probe(neigh.Id, nep, true)
-		r := &protocol.EndpointProbeResult{Address: addr, Success: err == nil}
-		if err != nil {
-			r.Error = err.Error()
+	probeTimeout := ipcProbeTimeout(req)
+
+	dispatchCtx, dispatchCancel := context.WithTimeout(n.Context, n.IPCDispatchTimeout)
+	defer dispatchCancel()
+	probes, err := NewDispatchFuture(n, func() ([]Future[*protocol.EndpointProbeResult], error) {
+		return n.sendEndpointProbes(state.NodeId(req.PeerId), probeTimeout)
+	}).Await(dispatchCtx)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errResponse("timed out waiting for dispatch")
 		}
-		results = append(results, r)
+		return errResponse(err.Error())
+	}
+
+	probeCtx, probeCancel := context.WithTimeout(n.Context, probeTimeout+n.IPCDispatchTimeout)
+	defer probeCancel()
+	results, err := AwaitAll(probeCtx, probes)
+	if err != nil {
+		if ctxErr := probeCtx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return errResponse(err.Error())
+		}
 	}
 	return &protocol.IpcResponse{
 		Ok:       true,
 		Response: &protocol.IpcResponse_Probe{Probe: &protocol.ProbeResponse{Results: results}},
 	}
+}
+
+func ipcProbeTimeout(req *protocol.ProbeRequest) time.Duration {
+	if req.TimeoutMs == 0 {
+		return defaultIPCProbeTimeout
+	}
+	return min(time.Duration(req.TimeoutMs)*time.Millisecond, maxIPCProbeTimeout)
 }
 
 func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcResponse {
