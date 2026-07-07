@@ -73,6 +73,61 @@ func (ReloadResult) EnumDescriptor() ([]byte, []int) {
 	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{0}
 }
 
+type EndpointProbeStatus int32
+
+const (
+	EndpointProbeStatus_ENDPOINT_PROBE_STATUS_UNSPECIFIED EndpointProbeStatus = 0
+	EndpointProbeStatus_ENDPOINT_PROBE_REPLIED            EndpointProbeStatus = 1
+	EndpointProbeStatus_ENDPOINT_PROBE_TIMEOUT            EndpointProbeStatus = 2
+	EndpointProbeStatus_ENDPOINT_PROBE_SEND_ERROR         EndpointProbeStatus = 3
+	EndpointProbeStatus_ENDPOINT_PROBE_RESOLVE_ERROR      EndpointProbeStatus = 4
+)
+
+// Enum value maps for EndpointProbeStatus.
+var (
+	EndpointProbeStatus_name = map[int32]string{
+		0: "ENDPOINT_PROBE_STATUS_UNSPECIFIED",
+		1: "ENDPOINT_PROBE_REPLIED",
+		2: "ENDPOINT_PROBE_TIMEOUT",
+		3: "ENDPOINT_PROBE_SEND_ERROR",
+		4: "ENDPOINT_PROBE_RESOLVE_ERROR",
+	}
+	EndpointProbeStatus_value = map[string]int32{
+		"ENDPOINT_PROBE_STATUS_UNSPECIFIED": 0,
+		"ENDPOINT_PROBE_REPLIED":            1,
+		"ENDPOINT_PROBE_TIMEOUT":            2,
+		"ENDPOINT_PROBE_SEND_ERROR":         3,
+		"ENDPOINT_PROBE_RESOLVE_ERROR":      4,
+	}
+)
+
+func (x EndpointProbeStatus) Enum() *EndpointProbeStatus {
+	p := new(EndpointProbeStatus)
+	*p = x
+	return p
+}
+
+func (x EndpointProbeStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EndpointProbeStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_nylon_ipc_proto_enumTypes[1].Descriptor()
+}
+
+func (EndpointProbeStatus) Type() protoreflect.EnumType {
+	return &file_protocol_nylon_ipc_proto_enumTypes[1]
+}
+
+func (x EndpointProbeStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EndpointProbeStatus.Descriptor instead.
+func (EndpointProbeStatus) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{1}
+}
+
 type StatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -112,6 +167,7 @@ func (*StatusRequest) Descriptor() ([]byte, []int) {
 type ProbeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	TimeoutMs     uint32                 `protobuf:"varint,2,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -151,6 +207,13 @@ func (x *ProbeRequest) GetPeerId() string {
 		return x.PeerId
 	}
 	return ""
+}
+
+func (x *ProbeRequest) GetTimeoutMs() uint32 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
 }
 
 type ReloadRequest struct {
@@ -1324,8 +1387,9 @@ func (x *StatusResponse) GetFeasibilityDistances() []*FeasibilityDistance {
 type EndpointProbeResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Resolved      *string                `protobuf:"bytes,4,opt,name=resolved,proto3,oneof" json:"resolved,omitempty"`
+	Status        EndpointProbeStatus    `protobuf:"varint,5,opt,name=status,proto3,enum=proto.EndpointProbeStatus" json:"status,omitempty"`
+	LatencyNs     int64                  `protobuf:"varint,6,opt,name=latency_ns,json=latencyNs,proto3" json:"latency_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1367,18 +1431,25 @@ func (x *EndpointProbeResult) GetAddress() string {
 	return ""
 }
 
-func (x *EndpointProbeResult) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *EndpointProbeResult) GetError() string {
-	if x != nil {
-		return x.Error
+func (x *EndpointProbeResult) GetResolved() string {
+	if x != nil && x.Resolved != nil {
+		return *x.Resolved
 	}
 	return ""
+}
+
+func (x *EndpointProbeResult) GetStatus() EndpointProbeStatus {
+	if x != nil {
+		return x.Status
+	}
+	return EndpointProbeStatus_ENDPOINT_PROBE_STATUS_UNSPECIFIED
+}
+
+func (x *EndpointProbeResult) GetLatencyNs() int64 {
+	if x != nil {
+		return x.LatencyNs
+	}
+	return 0
 }
 
 type ProbeResponse struct {
@@ -1770,9 +1841,11 @@ var File_protocol_nylon_ipc_proto protoreflect.FileDescriptor
 const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\n" +
 	"\x18protocol/nylon_ipc.proto\x12\x05proto\"\x0f\n" +
-	"\rStatusRequest\"'\n" +
+	"\rStatusRequest\"F\n" +
 	"\fProbeRequest\x12\x17\n" +
-	"\apeer_id\x18\x01 \x01(\tR\x06peerId\"\x0f\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x02 \x01(\rR\ttimeoutMs\"\x0f\n" +
 	"\rReloadRequest\"\x0e\n" +
 	"\fTraceRequest\"9\n" +
 	"\x06Source\x12\x17\n" +
@@ -1871,11 +1944,14 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"neighbours\x18\x02 \x03(\v2\x14.proto.NeighbourInfoR\n" +
 	"neighbours\x12*\n" +
 	"\x06routes\x18\x03 \x01(\v2\x12.proto.RouteTablesR\x06routes\x12O\n" +
-	"\x15feasibility_distances\x18\x04 \x03(\v2\x1a.proto.FeasibilityDistanceR\x14feasibilityDistances\"_\n" +
+	"\x15feasibility_distances\x18\x04 \x03(\v2\x1a.proto.FeasibilityDistanceR\x14feasibilityDistances\"\xb0\x01\n" +
 	"\x13EndpointProbeResult\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x18\n" +
-	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"E\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1f\n" +
+	"\bresolved\x18\x04 \x01(\tH\x00R\bresolved\x88\x01\x01\x122\n" +
+	"\x06status\x18\x05 \x01(\x0e2\x1a.proto.EndpointProbeStatusR\x06status\x12\x1d\n" +
+	"\n" +
+	"latency_ns\x18\x06 \x01(\x03R\tlatencyNsB\v\n" +
+	"\t_resolved\"E\n" +
 	"\rProbeResponse\x124\n" +
 	"\aresults\x18\x01 \x03(\v2\x1a.proto.EndpointProbeResultR\aresults\"W\n" +
 	"\x0eReloadResponse\x12+\n" +
@@ -1904,7 +1980,13 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\x04NOOP\x10\x00\x12\v\n" +
 	"\aAPPLIED\x10\x01\x12\f\n" +
 	"\bREJECTED\x10\x02\x12\x14\n" +
-	"\x10RESTART_REQUIRED\x10\x03B\vZ\tprotocol/b\x06proto3"
+	"\x10RESTART_REQUIRED\x10\x03*\xb5\x01\n" +
+	"\x13EndpointProbeStatus\x12%\n" +
+	"!ENDPOINT_PROBE_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16ENDPOINT_PROBE_REPLIED\x10\x01\x12\x1a\n" +
+	"\x16ENDPOINT_PROBE_TIMEOUT\x10\x02\x12\x1d\n" +
+	"\x19ENDPOINT_PROBE_SEND_ERROR\x10\x03\x12 \n" +
+	"\x1cENDPOINT_PROBE_RESOLVE_ERROR\x10\x04B\vZ\tprotocol/b\x06proto3"
 
 var (
 	file_protocol_nylon_ipc_proto_rawDescOnce sync.Once
@@ -1918,73 +2000,75 @@ func file_protocol_nylon_ipc_proto_rawDescGZIP() []byte {
 	return file_protocol_nylon_ipc_proto_rawDescData
 }
 
-var file_protocol_nylon_ipc_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_protocol_nylon_ipc_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_protocol_nylon_ipc_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_protocol_nylon_ipc_proto_goTypes = []any{
 	(ReloadResult)(0),           // 0: proto.ReloadResult
-	(*StatusRequest)(nil),       // 1: proto.StatusRequest
-	(*ProbeRequest)(nil),        // 2: proto.ProbeRequest
-	(*ReloadRequest)(nil),       // 3: proto.ReloadRequest
-	(*TraceRequest)(nil),        // 4: proto.TraceRequest
-	(*Source)(nil),              // 5: proto.Source
-	(*FD)(nil),                  // 6: proto.FD
-	(*PubRoute)(nil),            // 7: proto.PubRoute
-	(*NeighRoute)(nil),          // 8: proto.NeighRoute
-	(*SelRoute)(nil),            // 9: proto.SelRoute
-	(*Advertisement)(nil),       // 10: proto.Advertisement
-	(*EndpointInfo)(nil),        // 11: proto.EndpointInfo
-	(*WireGuardPeerStats)(nil),  // 12: proto.WireGuardPeerStats
-	(*NeighbourInfo)(nil),       // 13: proto.NeighbourInfo
-	(*RouteTableEntry)(nil),     // 14: proto.RouteTableEntry
-	(*RouteTables)(nil),         // 15: proto.RouteTables
-	(*SeqnoEntry)(nil),          // 16: proto.SeqnoEntry
-	(*FeasibilityDistance)(nil), // 17: proto.FeasibilityDistance
-	(*NodeStats)(nil),           // 18: proto.NodeStats
-	(*NodeStatus)(nil),          // 19: proto.NodeStatus
-	(*StatusResponse)(nil),      // 20: proto.StatusResponse
-	(*EndpointProbeResult)(nil), // 21: proto.EndpointProbeResult
-	(*ProbeResponse)(nil),       // 22: proto.ProbeResponse
-	(*ReloadResponse)(nil),      // 23: proto.ReloadResponse
-	(*TraceEvent)(nil),          // 24: proto.TraceEvent
-	(*IpcRequest)(nil),          // 25: proto.IpcRequest
-	(*IpcResponse)(nil),         // 26: proto.IpcResponse
+	(EndpointProbeStatus)(0),    // 1: proto.EndpointProbeStatus
+	(*StatusRequest)(nil),       // 2: proto.StatusRequest
+	(*ProbeRequest)(nil),        // 3: proto.ProbeRequest
+	(*ReloadRequest)(nil),       // 4: proto.ReloadRequest
+	(*TraceRequest)(nil),        // 5: proto.TraceRequest
+	(*Source)(nil),              // 6: proto.Source
+	(*FD)(nil),                  // 7: proto.FD
+	(*PubRoute)(nil),            // 8: proto.PubRoute
+	(*NeighRoute)(nil),          // 9: proto.NeighRoute
+	(*SelRoute)(nil),            // 10: proto.SelRoute
+	(*Advertisement)(nil),       // 11: proto.Advertisement
+	(*EndpointInfo)(nil),        // 12: proto.EndpointInfo
+	(*WireGuardPeerStats)(nil),  // 13: proto.WireGuardPeerStats
+	(*NeighbourInfo)(nil),       // 14: proto.NeighbourInfo
+	(*RouteTableEntry)(nil),     // 15: proto.RouteTableEntry
+	(*RouteTables)(nil),         // 16: proto.RouteTables
+	(*SeqnoEntry)(nil),          // 17: proto.SeqnoEntry
+	(*FeasibilityDistance)(nil), // 18: proto.FeasibilityDistance
+	(*NodeStats)(nil),           // 19: proto.NodeStats
+	(*NodeStatus)(nil),          // 20: proto.NodeStatus
+	(*StatusResponse)(nil),      // 21: proto.StatusResponse
+	(*EndpointProbeResult)(nil), // 22: proto.EndpointProbeResult
+	(*ProbeResponse)(nil),       // 23: proto.ProbeResponse
+	(*ReloadResponse)(nil),      // 24: proto.ReloadResponse
+	(*TraceEvent)(nil),          // 25: proto.TraceEvent
+	(*IpcRequest)(nil),          // 26: proto.IpcRequest
+	(*IpcResponse)(nil),         // 27: proto.IpcResponse
 }
 var file_protocol_nylon_ipc_proto_depIdxs = []int32{
-	5,  // 0: proto.PubRoute.source:type_name -> proto.Source
-	6,  // 1: proto.PubRoute.fd:type_name -> proto.FD
-	7,  // 2: proto.NeighRoute.pub_route:type_name -> proto.PubRoute
-	7,  // 3: proto.SelRoute.pub_route:type_name -> proto.PubRoute
-	11, // 4: proto.NeighbourInfo.endpoints:type_name -> proto.EndpointInfo
-	8,  // 5: proto.NeighbourInfo.routes:type_name -> proto.NeighRoute
-	10, // 6: proto.NeighbourInfo.advertised:type_name -> proto.Advertisement
-	12, // 7: proto.NeighbourInfo.wireguard:type_name -> proto.WireGuardPeerStats
-	9,  // 8: proto.RouteTables.selected:type_name -> proto.SelRoute
-	14, // 9: proto.RouteTables.forward:type_name -> proto.RouteTableEntry
-	14, // 10: proto.RouteTables.exit:type_name -> proto.RouteTableEntry
-	5,  // 11: proto.FeasibilityDistance.source:type_name -> proto.Source
-	6,  // 12: proto.FeasibilityDistance.fd:type_name -> proto.FD
-	10, // 13: proto.NodeStatus.advertised:type_name -> proto.Advertisement
-	16, // 14: proto.NodeStatus.seqnos:type_name -> proto.SeqnoEntry
-	18, // 15: proto.NodeStatus.stats:type_name -> proto.NodeStats
-	19, // 16: proto.StatusResponse.node:type_name -> proto.NodeStatus
-	13, // 17: proto.StatusResponse.neighbours:type_name -> proto.NeighbourInfo
-	15, // 18: proto.StatusResponse.routes:type_name -> proto.RouteTables
-	17, // 19: proto.StatusResponse.feasibility_distances:type_name -> proto.FeasibilityDistance
-	21, // 20: proto.ProbeResponse.results:type_name -> proto.EndpointProbeResult
-	0,  // 21: proto.ReloadResponse.result:type_name -> proto.ReloadResult
-	1,  // 22: proto.IpcRequest.status:type_name -> proto.StatusRequest
-	2,  // 23: proto.IpcRequest.probe:type_name -> proto.ProbeRequest
-	3,  // 24: proto.IpcRequest.reload:type_name -> proto.ReloadRequest
-	4,  // 25: proto.IpcRequest.trace:type_name -> proto.TraceRequest
-	20, // 26: proto.IpcResponse.status:type_name -> proto.StatusResponse
-	22, // 27: proto.IpcResponse.probe:type_name -> proto.ProbeResponse
-	23, // 28: proto.IpcResponse.reload:type_name -> proto.ReloadResponse
-	24, // 29: proto.IpcResponse.trace:type_name -> proto.TraceEvent
-	30, // [30:30] is the sub-list for method output_type
-	30, // [30:30] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	6,  // 0: proto.PubRoute.source:type_name -> proto.Source
+	7,  // 1: proto.PubRoute.fd:type_name -> proto.FD
+	8,  // 2: proto.NeighRoute.pub_route:type_name -> proto.PubRoute
+	8,  // 3: proto.SelRoute.pub_route:type_name -> proto.PubRoute
+	12, // 4: proto.NeighbourInfo.endpoints:type_name -> proto.EndpointInfo
+	9,  // 5: proto.NeighbourInfo.routes:type_name -> proto.NeighRoute
+	11, // 6: proto.NeighbourInfo.advertised:type_name -> proto.Advertisement
+	13, // 7: proto.NeighbourInfo.wireguard:type_name -> proto.WireGuardPeerStats
+	10, // 8: proto.RouteTables.selected:type_name -> proto.SelRoute
+	15, // 9: proto.RouteTables.forward:type_name -> proto.RouteTableEntry
+	15, // 10: proto.RouteTables.exit:type_name -> proto.RouteTableEntry
+	6,  // 11: proto.FeasibilityDistance.source:type_name -> proto.Source
+	7,  // 12: proto.FeasibilityDistance.fd:type_name -> proto.FD
+	11, // 13: proto.NodeStatus.advertised:type_name -> proto.Advertisement
+	17, // 14: proto.NodeStatus.seqnos:type_name -> proto.SeqnoEntry
+	19, // 15: proto.NodeStatus.stats:type_name -> proto.NodeStats
+	20, // 16: proto.StatusResponse.node:type_name -> proto.NodeStatus
+	14, // 17: proto.StatusResponse.neighbours:type_name -> proto.NeighbourInfo
+	16, // 18: proto.StatusResponse.routes:type_name -> proto.RouteTables
+	18, // 19: proto.StatusResponse.feasibility_distances:type_name -> proto.FeasibilityDistance
+	1,  // 20: proto.EndpointProbeResult.status:type_name -> proto.EndpointProbeStatus
+	22, // 21: proto.ProbeResponse.results:type_name -> proto.EndpointProbeResult
+	0,  // 22: proto.ReloadResponse.result:type_name -> proto.ReloadResult
+	2,  // 23: proto.IpcRequest.status:type_name -> proto.StatusRequest
+	3,  // 24: proto.IpcRequest.probe:type_name -> proto.ProbeRequest
+	4,  // 25: proto.IpcRequest.reload:type_name -> proto.ReloadRequest
+	5,  // 26: proto.IpcRequest.trace:type_name -> proto.TraceRequest
+	21, // 27: proto.IpcResponse.status:type_name -> proto.StatusResponse
+	23, // 28: proto.IpcResponse.probe:type_name -> proto.ProbeResponse
+	24, // 29: proto.IpcResponse.reload:type_name -> proto.ReloadResponse
+	25, // 30: proto.IpcResponse.trace:type_name -> proto.TraceEvent
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_protocol_nylon_ipc_proto_init() }
@@ -1994,6 +2078,7 @@ func file_protocol_nylon_ipc_proto_init() {
 	}
 	file_protocol_nylon_ipc_proto_msgTypes[10].OneofWrappers = []any{}
 	file_protocol_nylon_ipc_proto_msgTypes[11].OneofWrappers = []any{}
+	file_protocol_nylon_ipc_proto_msgTypes[20].OneofWrappers = []any{}
 	file_protocol_nylon_ipc_proto_msgTypes[24].OneofWrappers = []any{
 		(*IpcRequest_Status)(nil),
 		(*IpcRequest_Probe)(nil),
@@ -2011,7 +2096,7 @@ func file_protocol_nylon_ipc_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_nylon_ipc_proto_rawDesc), len(file_protocol_nylon_ipc_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,

@@ -15,6 +15,7 @@ type RouterTunables struct {
 	StarvationDelay       time.Duration
 	SeqnoDedupTTL         time.Duration
 	NeighbourIOFlushDelay time.Duration
+	IPCDispatchTimeout    time.Duration
 	SafeMTU               int
 
 	// WindowSamples is the sliding window size
@@ -70,6 +71,7 @@ func DefaultRouterTunables() RouterTunables {
 		StarvationDelay:       time.Millisecond * 100,
 		SeqnoDedupTTL:         time.Second * 3,
 		NeighbourIOFlushDelay: time.Millisecond * 500,
+		IPCDispatchTimeout:    time.Second,
 		SafeMTU:               1200,
 
 		WindowSamples:           int((time.Second * 60) / probeDelay),
