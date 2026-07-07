@@ -109,6 +109,7 @@ func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 		ne.Delete(prefix)
 		n.router.ForwardTable.Store(nf)
 		n.router.ExitTable.Store(ne)
+		n.refreshExitFilter()
 		return
 	}
 	peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(nh).PubKey))
@@ -126,6 +127,7 @@ func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 	}
 	n.router.ForwardTable.Store(nf)
 	n.router.ExitTable.Store(ne)
+	n.refreshExitFilter()
 }
 
 func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
@@ -135,6 +137,7 @@ func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
 	ne.Delete(prefix)
 	n.router.ForwardTable.Store(nf)
 	n.router.ExitTable.Store(ne)
+	n.refreshExitFilter()
 }
 
 type IOPending struct {
@@ -207,7 +210,19 @@ func (n *Nylon) InitRouter() error {
 	return nil
 }
 
-// ComputeSysRouteTable computes: computed = prefixes - (((n.CentralCfg.ExcludeIPs U selected self prefixes) - n.LocalCfg.UnexcludeIPs) U n.LocalCfg.ExcludeIPs)
+// ComputeSysRouteTable computes the prefixes that should be installed in the
+// OS routing table. The formula is roughly:
+//
+//	computed = (prefixes ∪ exitDefaults)
+//	         - (((CentralCfg.ExcludeIPs ∪ selected_self_prefixes ∪ defaultLocalExcludes)
+//	             - LocalCfg.UnexcludeIPs)
+//	            ∪ LocalCfg.ExcludeIPs)
+//
+// When LocalCfg.ExitNode is set we add 0.0.0.0/0 so the OS sends all
+// unrouted traffic into the nylon interface, where the exit-encap filter
+// picks it up. Default-local excludes (loopback, link-local, multicast)
+// are never advertised through Babel — they are purely local capture
+// policy, so they live here rather than in the router.
 func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 	prefixes := make([]netip.Prefix, 0)
 	selectedSelf := make([]netip.Prefix, 0)
@@ -220,12 +235,16 @@ func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 
 	excludes := netipx.IPSetBuilder{}
 	excludes.AddSet(state.MakeSet(n.CentralCfg.ExcludeIPs))
+	excludes.AddSet(state.MakeSet(state.DefaultLocalExcludes()))
 	excludes.AddSet(state.MakeSet(selectedSelf))
 	excludes.RemoveSet(state.MakeSet(n.LocalCfg.UnexcludeIPs))
 	excludes.AddSet(state.MakeSet(n.LocalCfg.ExcludeIPs))
 
 	final := netipx.IPSetBuilder{}
 	final.AddSet(state.MakeSet(prefixes))
+	if n.LocalCfg.ExitNode != "" {
+		final.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+	}
 	res, _ := excludes.IPSet()
 	final.RemoveSet(res)
 
