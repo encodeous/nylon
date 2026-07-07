@@ -9,12 +9,13 @@ import (
 var ErrFutureAlreadyAwaited = errors.New("future already awaited")
 
 type futureState[T any] struct {
-	done    chan struct{}
-	once    sync.Once
-	mu      sync.Mutex
-	value   T
-	err     error
-	awaited bool
+	done     chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	value    T
+	err      error
+	awaiting bool
+	awaited  bool
 }
 
 // Future is a single-assignment async result.
@@ -38,32 +39,51 @@ func NewFuture[T any]() (Future[T], func(T, error)) {
 	return Future[T]{state: state}, complete
 }
 
-// Await blocks until the future completes or ctx is canceled.
-// A future result can be awaited once; later Await calls return ErrFutureAlreadyAwaited.
+// Await blocks until the future completes or ctx is canceled. Only one Await
+// call may wait for or consume a result at a time; concurrent calls and calls
+// after the result has been consumed return ErrFutureAlreadyAwaited.
 func (f Future[T]) Await(ctx context.Context) (T, error) {
+	if err := f.beginAwait(); err != nil {
+		var zero T
+		return zero, err
+	}
 	select {
 	case <-f.state.done:
-		return f.result()
+		return f.finishAwait()
 	default:
 	}
 	select {
 	case <-f.state.done:
-		return f.result()
+		return f.finishAwait()
 	case <-ctx.Done():
+		f.cancelAwait()
 		var zero T
 		return zero, ctx.Err()
 	}
 }
 
-func (f Future[T]) result() (T, error) {
+func (f Future[T]) beginAwait() error {
 	f.state.mu.Lock()
 	defer f.state.mu.Unlock()
-	if f.state.awaited {
-		var zero T
-		return zero, ErrFutureAlreadyAwaited
+	if f.state.awaited || f.state.awaiting {
+		return ErrFutureAlreadyAwaited
 	}
+	f.state.awaiting = true
+	return nil
+}
+
+func (f Future[T]) finishAwait() (T, error) {
+	f.state.mu.Lock()
+	defer f.state.mu.Unlock()
+	f.state.awaiting = false
 	f.state.awaited = true
 	return f.state.value, f.state.err
+}
+
+func (f Future[T]) cancelAwait() {
+	f.state.mu.Lock()
+	defer f.state.mu.Unlock()
+	f.state.awaiting = false
 }
 
 // Done returns a receive-only readiness channel for use in select statements.

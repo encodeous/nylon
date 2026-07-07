@@ -144,9 +144,9 @@ enum EndpointProbeStatus {
 
 message EndpointProbeResult {
   string address = 1;
-  optional string resolved = 2;
-  EndpointProbeStatus status = 3;
-  int64 latency_ns = 4;
+  optional string resolved = 4;
+  EndpointProbeStatus status = 5;
+  int64 latency_ns = 6;
 }
 
 message ProbeResponse {
