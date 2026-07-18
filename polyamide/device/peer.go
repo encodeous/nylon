@@ -136,11 +136,6 @@ func (peer *Peer) SendBuffers(buffers [][]byte, eps []conn.Endpoint) error {
 		for _, ep := range endpoints {
 			ep.ClearSrc()
 		}
-		for _, ep := range eps {
-			if ep != nil {
-				ep.ClearSrc()
-			}
-		}
 		peer.endpoints.clearSrcOnTx = false
 	}
 	peer.endpoints.Unlock()

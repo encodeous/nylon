@@ -1,0 +1,77 @@
+# Endpoint Local Binds
+
+Nylon keeps routing decisions separate from transport endpoint selection.
+Routing chooses which node to visit next. Endpoint selection chooses which
+underlay address, source address, and local interface are used for the UDP
+packet sent to that next node.
+
+## Model
+
+At the routing level, a neighbour is represented once. Multiple underlay
+endpoints for the same neighbour are link-level candidates for the same routing
+edge, and Nylon surfaces the best active endpoint metric to the router.
+
+At the link level, a Nylon endpoint may carry an optional local bind selector:
+
+- source address: the local address to use for the outgoing UDP packet
+- interface index: the local interface to constrain the outgoing UDP packet to
+
+The source address and endpoint address must be in the same IP family when a
+source address is configured. If no local bind selector is configured, endpoint
+traffic uses the kernel's normal source address and route selection.
+
+Users configure local bind selectors in `node.yaml`:
+
+```yaml
+binds:
+  - interface: eth0
+    source: 192.0.2.10
+  - interface: eth0
+    source: 2001:db8::10
+```
+
+For each peer endpoint, Nylon creates link-level candidates for the configured
+binds whose source address family matches the remote endpoint. Interface-only
+binds are applied to all endpoint families. If `binds` is empty, Nylon keeps the
+default behaviour and creates one unbound candidate per endpoint.
+
+This design does not create one socket per local bind. A Nylon device owns one
+IPv4 UDP socket and one IPv6 UDP socket when both address families are
+available. Local bind selectors are attached to endpoint sends.
+
+## Linux Transport
+
+On Linux, endpoint-local binds are encoded as per-message ancillary data:
+
+- IPv4 uses `IP_PKTINFO` with `in_pktinfo.ipi_spec_dst` and
+  `in_pktinfo.ipi_ifindex`.
+- IPv6 uses `IPV6_PKTINFO` with `in6_pktinfo.ipi6_addr` and
+  `in6_pktinfo.ipi6_ifindex`.
+
+When both a source address and interface index are provided, Nylon sends both in
+the packet info control message. The source address remains the requested source
+address; the interface index constrains output interface selection. When only an
+interface is provided, the packet info source address is left unspecified and
+the kernel may select an address for that interface.
+
+This keeps probe packets and other control traffic precise without changing the
+socket-level bind. It also allows different endpoints for the same peer to use
+different local bind selectors while still sharing the device sockets.
+
+## Non-Linux Platforms
+
+The endpoint-local bind mechanism is currently implemented only for Linux.
+Other platforms keep the default socket behaviour. A cross-platform user-facing
+configuration should only expose selectors that the current platform can honor,
+or should fail validation before the device starts.
+
+## Routing Behaviour
+
+Endpoint-local binds affect only the link-level endpoint used to send packets.
+They do not create additional routing-level neighbours or independent routed
+edges. Nylon still computes routes over nodes and uses the best active endpoint
+metric for each neighbour.
+
+Bandwidth aggregation, ECMP, and max-flow style forwarding are outside this
+model. Supporting those would require different routing semantics rather than
+additional endpoint-local bind selectors.

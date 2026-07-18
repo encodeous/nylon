@@ -223,14 +223,20 @@ func buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
 		if ap, err := nep.DynEP.Get(); err == nil {
 			resolved = new(ap.String())
 		}
+		bindSource := ""
+		if nep.Bind.Source.IsValid() {
+			bindSource = nep.Bind.Source.String()
+		}
 		eps = append(eps, &protocol.EndpointInfo{
-			Address:         nep.DynEP.Value,
-			Resolved:        resolved,
-			Active:          ep.IsActive(),
-			RemoteInit:      ep.IsRemote(),
-			Metric:          ep.Metric(),
-			FilteredRttNs:   int64(nep.FilteredPing()),
-			StabilizedRttNs: int64(nep.StabilizedPing()),
+			Address:            nep.DynEP.Value,
+			Resolved:           resolved,
+			Active:             ep.IsActive(),
+			RemoteInit:         ep.IsRemote(),
+			Metric:             ep.Metric(),
+			FilteredRttNs:      int64(nep.FilteredPing()),
+			StabilizedRttNs:    int64(nep.StabilizedPing()),
+			LocalBindInterface: nep.Bind.Interface,
+			LocalBindSource:    bindSource,
 		})
 	}
 	slices.SortFunc(eps, func(a, b *protocol.EndpointInfo) int {

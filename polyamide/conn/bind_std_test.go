@@ -248,3 +248,27 @@ func Test_splitCoalescedMessages(t *testing.T) {
 		})
 	}
 }
+
+func Test_splitCoalescedMessagesPreservesControl(t *testing.T) {
+	msgs := []ipv6.Message{
+		{Buffers: [][]byte{make([]byte, 1<<16-1)}, OOB: make([]byte, 0, 2)},
+		{Buffers: [][]byte{make([]byte, 1<<16-1)}, OOB: make([]byte, 0, 2)},
+		{Buffers: [][]byte{make([]byte, 1<<16-1)}, N: 2, NN: 2, OOB: []byte{1, 0}},
+		{Buffers: [][]byte{make([]byte, 1<<16-1)}, OOB: make([]byte, 0, 2)},
+	}
+	got, err := splitCoalescedMessages(msgs, 2, mockGetGSOSize)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("got to eval: %d want: %d", got, 2)
+	}
+	for i := 0; i < got; i++ {
+		if msgs[i].NN != 2 {
+			t.Fatalf("msg[%d].NN: %d want: 2", i, msgs[i].NN)
+		}
+		if gotGSO, err := mockGetGSOSize(msgs[i].OOB[:msgs[i].NN]); err != nil || gotGSO != 1 {
+			t.Fatalf("msg[%d] gso: %d err: %v", i, gotGSO, err)
+		}
+	}
+}

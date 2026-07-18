@@ -70,7 +70,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 			continue
 		}
 		// configure existing neighbours
-		reconcileConfiguredEndpoints(neigh, cfg.Endpoints, &n.RouterTunables)
+		reconcileConfiguredEndpoints(neigh, configuredEndpoints(n.LocalCfg.Binds, cfg.Endpoints, &n.RouterTunables))
 		neighs = append(neighs, neigh)
 		delete(desired, neigh.Id)
 	}
@@ -88,9 +88,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 			Routes: make(map[netip.Prefix]state.NeighRoute),
 			Eps:    make([]state.Endpoint, 0, len(cfg.Endpoints)),
 		}
-		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil, &n.RouterTunables))
-		}
+		stNeigh.Eps = append(stNeigh.Eps, configuredEndpoints(n.LocalCfg.Binds, cfg.Endpoints, &n.RouterTunables)...)
 		neighs = append(neighs, stNeigh)
 	}
 	n.RouterState.Neighbours = neighs
@@ -107,14 +105,64 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 	return nil
 }
 
-func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.DynamicEndpoint, t *state.RouterTunables) {
-	desiredByValue := make(map[string]*state.DynamicEndpoint, len(desired))
+func configuredEndpoints(binds []state.LocalBind, endpoints []*state.DynamicEndpoint, t *state.RouterTunables) []state.Endpoint {
+	if len(binds) == 0 {
+		eps := make([]state.Endpoint, 0, len(endpoints))
+		for _, ep := range endpoints {
+			eps = append(eps, state.NewEndpoint(ep, false, nil, t))
+		}
+		return eps
+	}
+
+	eps := make([]state.Endpoint, 0, len(endpoints)*len(binds))
+	for _, ep := range endpoints {
+		for _, bind := range binds {
+			if !bindMatchesEndpoint(bind, ep) {
+				continue
+			}
+			nep := state.NewEndpoint(ep, false, nil, t)
+			nep.Bind = bind
+			eps = append(eps, nep)
+		}
+	}
+	return eps
+}
+
+func bindMatchesEndpoint(bind state.LocalBind, ep *state.DynamicEndpoint) bool {
+	if !bind.Source.IsValid() {
+		return true
+	}
+	host, _, err := ep.Parse()
+	if err != nil {
+		return false
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return true
+	}
+	return state.SameIPFamily(bind.Source, addr)
+}
+
+type endpointIdentity struct {
+	value string
+	bind  state.LocalBind
+}
+
+func endpointKey(ep *state.NylonEndpoint) endpointIdentity {
+	return endpointIdentity{
+		value: ep.DynEP.Value,
+		bind:  ep.Bind,
+	}
+}
+
+func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []state.Endpoint) {
+	desiredByKey := make(map[endpointIdentity]state.Endpoint, len(desired))
 	for _, ep := range desired {
-		desiredByValue[ep.Value] = ep
+		desiredByKey[endpointKey(ep.AsNylonEndpoint())] = ep
 	}
 
 	eps := make([]state.Endpoint, 0, len(neigh.Eps)+len(desired))
-	seen := make(map[string]struct{}, len(desired))
+	seen := make(map[endpointIdentity]struct{}, len(desired))
 	for _, ep := range neigh.Eps {
 		nep := ep.AsNylonEndpoint()
 		if ep.IsRemote() {
@@ -122,16 +170,18 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 			continue
 		}
 		// only keep if desired
-		if desiredEp, ok := desiredByValue[nep.DynEP.Value]; ok {
+		key := endpointKey(nep)
+		if _, ok := desiredByKey[key]; ok {
 			eps = append(eps, ep)
-			seen[desiredEp.Value] = struct{}{}
+			seen[key] = struct{}{}
 		}
 	}
 	for _, ep := range desired {
-		if _, ok := seen[ep.Value]; ok {
+		key := endpointKey(ep.AsNylonEndpoint())
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		eps = append(eps, state.NewEndpoint(ep, false, nil, t))
+		eps = append(eps, ep)
 	}
 	neigh.Eps = eps
 }
