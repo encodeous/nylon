@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -196,22 +197,37 @@ func (h *HTTPPrefixHealth) Start(log *slog.Logger, t *RouterTunables) {
 	go func() {
 		ticker := time.NewTicker(*h.Delay)
 		defer ticker.Stop()
+		client := &http.Client{Timeout: *h.Delay}
 		for h.running.Load() { // TODO: add a way to interrupt this sleep, if ticker has a high delay
 			<-ticker.C
-			// HTTP probe logic would go here
-			startTime := time.Now()
-			resp, err := http.Get(h.URL)
-			if err != nil || resp.StatusCode != http.StatusOK {
-				// failed
-				h.lastMetric.Store(INF)
-				log.Debug("prefix healthcheck failed", "prefix", h.Prefix.String(), "url", h.URL, "error", err)
-			} else {
-				// success
-				rtt := time.Since(startTime)
-				h.lastMetric.Store(DurationToMetric(rtt))
-			}
+			h.checkHTTP(log, client)
 		}
 	}()
+}
+
+func (h *HTTPPrefixHealth) checkHTTP(log *slog.Logger, client *http.Client) {
+	startTime := time.Now()
+	resp, err := client.Get(h.URL)
+	if err != nil {
+		h.lastMetric.Store(INF)
+		log.Debug("prefix healthcheck failed", "prefix", h.Prefix.String(), "url", h.URL, "error", err)
+		return
+	}
+	_, drainErr := io.Copy(io.Discard, resp.Body)
+	closeErr := resp.Body.Close()
+	if drainErr != nil {
+		log.Debug("failed to drain prefix healthcheck response", "prefix", h.Prefix.String(), "url", h.URL, "error", drainErr)
+	}
+	if closeErr != nil {
+		log.Debug("failed to close prefix healthcheck response", "prefix", h.Prefix.String(), "url", h.URL, "error", closeErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		h.lastMetric.Store(INF)
+		log.Debug("prefix healthcheck failed", "prefix", h.Prefix.String(), "url", h.URL, "status", resp.StatusCode)
+		return
+	}
+	rtt := time.Since(startTime)
+	h.lastMetric.Store(DurationToMetric(rtt))
 }
 
 func (h *HTTPPrefixHealth) sameConfig(other PrefixHealth, tunables *RouterTunables) bool {
