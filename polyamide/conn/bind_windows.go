@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	packetsPerRing = 1024
-	bytesPerPacket = 2048 - 32
-	receiveSpins   = 15
+	packetsPerRing   = 1024
+	bytesPerPacket   = 2048 - 32
+	receiveSpins     = 15
+	winRingBatchSize = 16
 )
 
 type ringPacket struct {
@@ -348,8 +349,7 @@ func (bind *WinRingBind) Close() error {
 // TODO: When all Binds handle IdealBatchSize, remove this dynamic function and
 // rename the IdealBatchSize constant to BatchSize.
 func (bind *WinRingBind) BatchSize() int {
-	// TODO: implement batching in and out of the ring
-	return 1
+	return winRingBatchSize
 }
 
 func (bind *WinRingBind) SetMark(mark uint32) error {
@@ -461,18 +461,10 @@ func (bind *WinRingBind) receiveIPv6(bufs [][]byte, sizes []int, eps []Endpoint)
 	return 1, err
 }
 
-func (bind *afWinRingBind) Send(buf []byte, nend *WinRingEndpoint, isOpen *atomic.Uint32) error {
-	if isOpen.Load() != 1 {
-		return net.ErrClosed
-	}
-	if len(buf) > bytesPerPacket {
-		return io.ErrShortBuffer
-	}
-	bind.tx.mu.Lock()
-	defer bind.tx.mu.Unlock()
+func (bind *afWinRingBind) reapTransmitCompletions(isOpen *atomic.Uint32, wait bool) error {
 	var results [packetsPerRing]winrio.Result
 	count := winrio.DequeueCompletion(bind.tx.cq, results[:])
-	if count == 0 && bind.tx.isFull {
+	if count == 0 && wait {
 		err := winrio.Notify(bind.tx.cq)
 		if err != nil {
 			return err
@@ -495,22 +487,51 @@ func (bind *afWinRingBind) Send(buf []byte, nend *WinRingEndpoint, isOpen *atomi
 	if count > 0 {
 		bind.tx.Return(count)
 	}
-	packet := bind.tx.Push()
-	packet.addr = *nend
-	copy(packet.data[:], buf)
-	dataBuffer := &winrio.Buffer{
-		Id:     bind.tx.id,
-		Offset: uint32(uintptr(unsafe.Pointer(&packet.data[0])) - bind.tx.packets),
-		Length: uint32(len(buf)),
+	return nil
+}
+
+func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *atomic.Uint32) error {
+	if isOpen.Load() != 1 {
+		return net.ErrClosed
 	}
-	addressBuffer := &winrio.Buffer{
-		Id:     bind.tx.id,
-		Offset: uint32(uintptr(unsafe.Pointer(&packet.addr)) - bind.tx.packets),
-		Length: uint32(unsafe.Sizeof(packet.addr)),
+	bind.tx.mu.Lock()
+	defer bind.tx.mu.Unlock()
+
+	if err := bind.reapTransmitCompletions(isOpen, false); err != nil {
+		return err
 	}
-	bind.mu.Lock()
-	defer bind.mu.Unlock()
-	return winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, 0, 0)
+
+	for _, buf := range bufs {
+		if len(buf) > bytesPerPacket {
+			return io.ErrShortBuffer
+		}
+		if bind.tx.isFull {
+			if err := bind.reapTransmitCompletions(isOpen, true); err != nil {
+				return err
+			}
+		}
+
+		packet := bind.tx.Push()
+		packet.addr = *nend
+		copy(packet.data[:], buf)
+		dataBuffer := &winrio.Buffer{
+			Id:     bind.tx.id,
+			Offset: uint32(uintptr(unsafe.Pointer(&packet.data[0])) - bind.tx.packets),
+			Length: uint32(len(buf)),
+		}
+		addressBuffer := &winrio.Buffer{
+			Id:     bind.tx.id,
+			Offset: uint32(uintptr(unsafe.Pointer(&packet.addr)) - bind.tx.packets),
+			Length: uint32(unsafe.Sizeof(packet.addr)),
+		}
+		bind.mu.Lock()
+		err := winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, 0, 0)
+		bind.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (bind *WinRingBind) Send(bufs [][]byte, endpoint Endpoint) error {
@@ -520,22 +541,20 @@ func (bind *WinRingBind) Send(bufs [][]byte, endpoint Endpoint) error {
 	}
 	bind.mu.RLock()
 	defer bind.mu.RUnlock()
-	for _, buf := range bufs {
-		switch nend.family {
-		case windows.AF_INET:
-			if bind.v4.blackhole {
-				continue
-			}
-			if err := bind.v4.Send(buf, nend, &bind.isOpen); err != nil {
-				return err
-			}
-		case windows.AF_INET6:
-			if bind.v6.blackhole {
-				continue
-			}
-			if err := bind.v6.Send(buf, nend, &bind.isOpen); err != nil {
-				return err
-			}
+	switch nend.family {
+	case windows.AF_INET:
+		if bind.v4.blackhole {
+			return nil
+		}
+		if err := bind.v4.Send(bufs, nend, &bind.isOpen); err != nil {
+			return err
+		}
+	case windows.AF_INET6:
+		if bind.v6.blackhole {
+			return nil
+		}
+		if err := bind.v6.Send(bufs, nend, &bind.isOpen); err != nil {
+			return err
 		}
 	}
 	return nil
