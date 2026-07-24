@@ -188,7 +188,7 @@ retry:
 		case windows.ERROR_HANDLE_EOF:
 			return count, os.ErrClosed
 		case windows.ERROR_INVALID_DATA:
-			return count, errors.New("Send ring corrupt")
+			return count, errors.New("Receive ring corrupt")
 		}
 		return count, fmt.Errorf("Read failed: %w", err)
 	}

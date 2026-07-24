@@ -1,7 +1,9 @@
 package conn
 
 import (
+	"errors"
 	"math"
+	"sync/atomic"
 	"testing"
 
 	"github.com/encodeous/nylon/polyamide/conn/winrio"
@@ -22,6 +24,17 @@ func TestRIOSendFlags(t *testing.T) {
 		if got := rioSendFlags(test.batchSize); got != test.want {
 			t.Errorf("rioSendFlags(%d) = %d, want %d", test.batchSize, got, test.want)
 		}
+	}
+}
+
+func TestRIOSendRejectsOversizedBatch(t *testing.T) {
+	var isOpen atomic.Uint32
+	isOpen.Store(1)
+
+	bind := &afWinRingBind{}
+	bufs := make([][]byte, winRingBatchSize+1)
+	if err := bind.Send(bufs, nil, &isOpen); !errors.Is(err, errTooManyPackets) {
+		t.Fatalf("Send() error = %v, want %v", err, errTooManyPackets)
 	}
 }
 

@@ -28,6 +28,8 @@ const (
 	winRingBatchSize = 32
 )
 
+var errTooManyPackets = errors.New("send batch exceeds maximum batch size")
+
 type ringPacket struct {
 	addr WinRingEndpoint
 	data [bytesPerPacket]byte
@@ -516,6 +518,9 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 	}
 	if len(bufs) == 0 {
 		return nil
+	}
+	if len(bufs) > winRingBatchSize {
+		return errTooManyPackets
 	}
 	for _, buf := range bufs {
 		if len(buf) > bytesPerPacket {
