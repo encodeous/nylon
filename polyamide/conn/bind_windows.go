@@ -25,7 +25,7 @@ const (
 	packetsPerRing   = 1024
 	bytesPerPacket   = 2048 - 32
 	receiveSpins     = 15
-	winRingBatchSize = 16
+	winRingBatchSize = 32
 )
 
 type ringPacket struct {

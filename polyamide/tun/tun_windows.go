@@ -22,7 +22,7 @@ const (
 	rateMeasurementGranularity = uint64((time.Second / 2) / time.Nanosecond)
 	spinloopRateThreshold      = 800000000 / 8                                   // 800mbps
 	spinloopDuration           = uint64(time.Millisecond / 80 / time.Nanosecond) // ~1gbit/s
-	wintunBatchSize            = 16
+	wintunBatchSize            = 32
 )
 
 type rateJuggler struct {
