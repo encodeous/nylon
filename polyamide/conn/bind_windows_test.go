@@ -3,7 +3,27 @@ package conn
 import (
 	"math"
 	"testing"
+
+	"github.com/encodeous/nylon/polyamide/conn/winrio"
 )
+
+func TestRIOSendFlags(t *testing.T) {
+	tests := []struct {
+		batchSize int
+		want      uint32
+	}{
+		{batchSize: 0, want: 0},
+		{batchSize: 1, want: 0},
+		{batchSize: 2, want: winrio.MsgDefer},
+		{batchSize: winRingBatchSize, want: winrio.MsgDefer},
+	}
+
+	for _, test := range tests {
+		if got := rioSendFlags(test.batchSize); got != test.want {
+			t.Errorf("rioSendFlags(%d) = %d, want %d", test.batchSize, got, test.want)
+		}
+	}
+}
 
 func TestRingBufferAvailable(t *testing.T) {
 	tests := []struct {

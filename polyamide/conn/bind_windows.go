@@ -76,6 +76,13 @@ func (rb *ringBuffer) cancelPush() {
 	rb.isFull = false
 }
 
+func rioSendFlags(batchSize int) uint32 {
+	if batchSize > 1 {
+		return winrio.MsgDefer
+	}
+	return 0
+}
+
 type afWinRingBind struct {
 	sock      windows.Handle
 	rx, tx    ringBuffer
@@ -529,6 +536,7 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 
 	bind.mu.Lock()
 	defer bind.mu.Unlock()
+	sendFlags := rioSendFlags(len(bufs))
 	deferred := false
 	for _, buf := range bufs {
 		packet := bind.tx.Push()
@@ -544,7 +552,7 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 			Offset: uint32(uintptr(unsafe.Pointer(&packet.addr)) - bind.tx.packets),
 			Length: uint32(unsafe.Sizeof(packet.addr)),
 		}
-		err := winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, winrio.MsgDefer, 0)
+		err := winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, sendFlags, 0)
 		if err != nil {
 			bind.tx.cancelPush()
 			if deferred {
@@ -554,7 +562,10 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 			}
 			return err
 		}
-		deferred = true
+		deferred = sendFlags == winrio.MsgDefer
+	}
+	if !deferred {
+		return nil
 	}
 	return winrio.SendEx(bind.rq, nil, 0, nil, nil, nil, nil, winrio.MsgCommitOnly, 0)
 }
