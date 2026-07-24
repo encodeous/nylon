@@ -7,6 +7,7 @@ package conn
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -60,6 +61,18 @@ func (rb *ringBuffer) Return(count uint32) {
 		return
 	}
 	rb.head += count
+	rb.isFull = false
+}
+
+func (rb *ringBuffer) available() uint32 {
+	if rb.isFull {
+		return 0
+	}
+	return packetsPerRing - (rb.tail - rb.head)
+}
+
+func (rb *ringBuffer) cancelPush() {
+	rb.tail--
 	rb.isFull = false
 }
 
@@ -494,23 +507,30 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 	if isOpen.Load() != 1 {
 		return net.ErrClosed
 	}
+	if len(bufs) == 0 {
+		return nil
+	}
+	for _, buf := range bufs {
+		if len(buf) > bytesPerPacket {
+			return io.ErrShortBuffer
+		}
+	}
 	bind.tx.mu.Lock()
 	defer bind.tx.mu.Unlock()
 
 	if err := bind.reapTransmitCompletions(isOpen, false); err != nil {
 		return err
 	}
+	for bind.tx.available() < uint32(len(bufs)) {
+		if err := bind.reapTransmitCompletions(isOpen, true); err != nil {
+			return err
+		}
+	}
 
+	bind.mu.Lock()
+	defer bind.mu.Unlock()
+	deferred := false
 	for _, buf := range bufs {
-		if len(buf) > bytesPerPacket {
-			return io.ErrShortBuffer
-		}
-		if bind.tx.isFull {
-			if err := bind.reapTransmitCompletions(isOpen, true); err != nil {
-				return err
-			}
-		}
-
 		packet := bind.tx.Push()
 		packet.addr = *nend
 		copy(packet.data[:], buf)
@@ -524,14 +544,19 @@ func (bind *afWinRingBind) Send(bufs [][]byte, nend *WinRingEndpoint, isOpen *at
 			Offset: uint32(uintptr(unsafe.Pointer(&packet.addr)) - bind.tx.packets),
 			Length: uint32(unsafe.Sizeof(packet.addr)),
 		}
-		bind.mu.Lock()
-		err := winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, 0, 0)
-		bind.mu.Unlock()
+		err := winrio.SendEx(bind.rq, dataBuffer, 1, nil, addressBuffer, nil, nil, winrio.MsgDefer, 0)
 		if err != nil {
+			bind.tx.cancelPush()
+			if deferred {
+				if commitErr := winrio.SendEx(bind.rq, nil, 0, nil, nil, nil, nil, winrio.MsgCommitOnly, 0); commitErr != nil {
+					return errors.Join(err, commitErr)
+				}
+			}
 			return err
 		}
+		deferred = true
 	}
-	return nil
+	return winrio.SendEx(bind.rq, nil, 0, nil, nil, nil, nil, winrio.MsgCommitOnly, 0)
 }
 
 func (bind *WinRingBind) Send(bufs [][]byte, endpoint Endpoint) error {
