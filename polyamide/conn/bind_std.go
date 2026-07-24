@@ -203,8 +203,8 @@ again:
 	return fns, uint16(port), nil
 }
 
-func (s *StdNetBind) putMessages(msgs *[]ipv6.Message) {
-	for i := range *msgs {
+func (s *StdNetBind) putMessages(msgs *[]ipv6.Message, count int) {
+	for i := range (*msgs)[:count] {
 		(*msgs)[i].OOB = (*msgs)[i].OOB[:0]
 		(*msgs)[i] = ipv6.Message{Buffers: (*msgs)[i].Buffers, OOB: (*msgs)[i].OOB}
 	}
@@ -241,7 +241,7 @@ func (s *StdNetBind) receiveIP(
 		(*msgs)[i].Buffers[0] = bufs[i]
 		(*msgs)[i].OOB = (*msgs)[i].OOB[:cap((*msgs)[i].OOB)]
 	}
-	defer s.putMessages(msgs)
+	defer s.putMessages(msgs, len(bufs))
 	var numMsgs int
 	if runtime.GOOS == "linux" || runtime.GOOS == "android" {
 		if rxOffload {
@@ -369,7 +369,10 @@ func (s *StdNetBind) Send(bufs [][]byte, endpoint Endpoint) error {
 	}
 
 	msgs := s.getMessages()
-	defer s.putMessages(msgs)
+	usedMessages := 0
+	defer func() {
+		s.putMessages(msgs, usedMessages)
+	}()
 	ua := s.udpAddrPool.Get().(*net.UDPAddr)
 	defer s.udpAddrPool.Put(ua)
 	if is6 {
@@ -389,6 +392,7 @@ func (s *StdNetBind) Send(bufs [][]byte, endpoint Endpoint) error {
 retry:
 	if offload {
 		n := coalesceMessages(ua, endpoint.(*StdNetEndpoint), bufs, *msgs, setGSOSize)
+		usedMessages = max(usedMessages, n)
 		err = s.send(conn, br, (*msgs)[:n])
 		if err != nil && offload && errShouldDisableUDPGSO(err) {
 			offload = false
@@ -403,6 +407,7 @@ retry:
 			goto retry
 		}
 	} else {
+		usedMessages = max(usedMessages, len(bufs))
 		for i := range bufs {
 			(*msgs)[i].Addr = ua
 			(*msgs)[i].Buffers[0] = bufs[i]

@@ -448,6 +448,30 @@ func handleVirtioRead(in []byte, bufs [][]byte, sizes []int, offset int) (int, e
 	return gsoSplit(in, hdr, bufs, sizes, offset, ipVersion == 6)
 }
 
+func (tun *NativeTun) readPacket(
+	bufs [][]byte,
+	sizes []int,
+	offset int,
+	read func([]byte) (int, error),
+) (int, error) {
+	readInto := bufs[0][offset:]
+	if tun.vnetHdr {
+		readInto = tun.readBuff[:]
+	}
+	n, err := read(readInto)
+	if errors.Is(err, syscall.EBADFD) {
+		err = os.ErrClosed
+	}
+	if err != nil {
+		return 0, err
+	}
+	if tun.vnetHdr {
+		return handleVirtioRead(readInto[:n], bufs, sizes, offset)
+	}
+	sizes[0] = n
+	return 1, nil
+}
+
 func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	tun.readOpMu.Lock()
 	defer tun.readOpMu.Unlock()
@@ -455,24 +479,42 @@ func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 	case err := <-tun.errors:
 		return 0, err
 	default:
-		readInto := bufs[0][offset:]
-		if tun.vnetHdr {
-			readInto = tun.readBuff[:]
-		}
-		n, err := tun.tunFile.Read(readInto)
-		if errors.Is(err, syscall.EBADFD) {
-			err = os.ErrClosed
-		}
-		if err != nil {
-			return 0, err
-		}
-		if tun.vnetHdr {
-			return handleVirtioRead(readInto[:n], bufs, sizes, offset)
-		} else {
-			sizes[0] = n
-			return 1, nil
-		}
 	}
+
+	count, err := tun.readPacket(bufs, sizes, offset, tun.tunFile.Read)
+	if err != nil {
+		return count, err
+	}
+
+	rawConn, err := tun.tunFile.SyscallConn()
+	if err != nil {
+		return count, err
+	}
+	var drainErr error
+	err = rawConn.Control(func(fd uintptr) {
+		for count < len(bufs) {
+			n, readErr := tun.readPacket(
+				bufs[count:],
+				sizes[count:],
+				offset,
+				func(buf []byte) (int, error) {
+					return unix.Read(int(fd), buf)
+				},
+			)
+			count += n
+			if errors.Is(readErr, syscall.EAGAIN) || errors.Is(readErr, syscall.EWOULDBLOCK) {
+				return
+			}
+			if readErr != nil {
+				drainErr = readErr
+				return
+			}
+		}
+	})
+	if err != nil {
+		return count, err
+	}
+	return count, drainErr
 }
 
 func (tun *NativeTun) Events() <-chan Event {
