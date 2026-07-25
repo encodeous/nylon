@@ -22,6 +22,7 @@ const (
 	rateMeasurementGranularity = uint64((time.Second / 2) / time.Nanosecond)
 	spinloopRateThreshold      = 800000000 / 8                                   // 800mbps
 	spinloopDuration           = uint64(time.Millisecond / 80 / time.Nanosecond) // ~1gbit/s
+	wintunBatchSize            = 32
 )
 
 type rateJuggler struct {
@@ -146,8 +147,7 @@ func (tun *NativeTun) ForceMTU(mtu int) {
 }
 
 func (tun *NativeTun) BatchSize() int {
-	// TODO: implement batching with wintun
-	return 1
+	return wintunBatchSize
 }
 
 // Note: Read() and Write() assume the caller comes only from a single thread; there's no locking.
@@ -161,19 +161,24 @@ retry:
 	}
 	start := nanotime()
 	shouldSpin := tun.rate.current.Load() >= spinloopRateThreshold && uint64(start-tun.rate.nextStartTime.Load()) <= rateMeasurementGranularity*2
-	for {
+	count := 0
+	for count < min(len(bufs), len(sizes)) {
 		if tun.close.Load() {
-			return 0, os.ErrClosed
+			return count, os.ErrClosed
 		}
 		packet, err := tun.session.ReceivePacket()
 		switch err {
 		case nil:
-			n := copy(bufs[0][offset:], packet)
-			sizes[0] = n
+			n := copy(bufs[count][offset:], packet)
+			sizes[count] = n
 			tun.session.ReleaseReceivePacket(packet)
 			tun.rate.update(uint64(n))
-			return 1, nil
+			count++
+			continue
 		case windows.ERROR_NO_MORE_ITEMS:
+			if count > 0 {
+				return count, nil
+			}
 			if !shouldSpin || uint64(nanotime()-start) >= spinloopDuration {
 				windows.WaitForSingleObject(tun.readWait, windows.INFINITE)
 				goto retry
@@ -181,12 +186,13 @@ retry:
 			procyield(1)
 			continue
 		case windows.ERROR_HANDLE_EOF:
-			return 0, os.ErrClosed
+			return count, os.ErrClosed
 		case windows.ERROR_INVALID_DATA:
-			return 0, errors.New("Send ring corrupt")
+			return count, errors.New("Receive ring corrupt")
 		}
-		return 0, fmt.Errorf("Read failed: %w", err)
+		return count, fmt.Errorf("Read failed: %w", err)
 	}
+	return count, nil
 }
 
 func (tun *NativeTun) Write(bufs [][]byte, offset int) (int, error) {
