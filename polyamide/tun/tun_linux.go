@@ -46,8 +46,9 @@ type NativeTun struct {
 	nameCache string    // name of interface
 	nameErr   error
 
-	readOpMu sync.Mutex                    // readOpMu guards readBuff
-	readBuff [virtioNetHdrLen + 65535]byte // if vnetHdr every read() is prefixed by virtioNetHdr
+	readOpMu       sync.Mutex                    // readOpMu guards readBuff and pendingReadLen
+	readBuff       [virtioNetHdrLen + 65535]byte // if vnetHdr every read() is prefixed by virtioNetHdr
+	pendingReadLen int                           // length of a virtio frame deferred to the next Read
 
 	writeOpMu   sync.Mutex // writeOpMu guards toWrite, tcpGROTable
 	toWrite     []int
@@ -453,7 +454,7 @@ func (tun *NativeTun) readPacket(
 	sizes []int,
 	offset int,
 	read func([]byte) (int, error),
-) (int, error) {
+) (int, int, error) {
 	readInto := bufs[0][offset:]
 	if tun.vnetHdr {
 		readInto = tun.readBuff[:]
@@ -463,13 +464,14 @@ func (tun *NativeTun) readPacket(
 		err = os.ErrClosed
 	}
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if tun.vnetHdr {
-		return handleVirtioRead(readInto[:n], bufs, sizes, offset)
+		count, err := handleVirtioRead(readInto[:n], bufs, sizes, offset)
+		return count, n, err
 	}
 	sizes[0] = n
-	return 1, nil
+	return 1, n, nil
 }
 
 func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
@@ -481,7 +483,15 @@ func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 	default:
 	}
 
-	count, err := tun.readPacket(bufs, sizes, offset, tun.tunFile.Read)
+	var count int
+	var err error
+	if tun.pendingReadLen > 0 {
+		pendingReadLen := tun.pendingReadLen
+		tun.pendingReadLen = 0
+		count, err = handleVirtioRead(tun.readBuff[:pendingReadLen], bufs, sizes, offset)
+	} else {
+		count, _, err = tun.readPacket(bufs, sizes, offset, tun.tunFile.Read)
+	}
 	if err != nil {
 		return count, err
 	}
@@ -493,7 +503,7 @@ func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 	var drainErr error
 	err = rawConn.Control(func(fd uintptr) {
 		for count < len(bufs) {
-			n, readErr := tun.readPacket(
+			n, readLen, readErr := tun.readPacket(
 				bufs[count:],
 				sizes[count:],
 				offset,
@@ -501,6 +511,12 @@ func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 					return unix.Read(int(fd), buf)
 				},
 			)
+			if tun.vnetHdr && errors.Is(readErr, ErrTooManySegments) {
+				// The frame is already consumed from the TUN device. Keep it
+				// in readBuff and split it into a fresh batch on the next Read.
+				tun.pendingReadLen = readLen
+				return
+			}
 			count += n
 			if errors.Is(readErr, syscall.EAGAIN) || errors.Is(readErr, syscall.EWOULDBLOCK) {
 				return
