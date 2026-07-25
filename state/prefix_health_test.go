@@ -1,7 +1,11 @@
 package state
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,6 +111,49 @@ delay: 5s
 				assert.Equal(t, orig.URL, result.URL)
 				assert.Equal(t, orig.Delay, result.Delay)
 			}
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type closeTrackingBody struct {
+	*strings.Reader
+	closed bool
+}
+
+func (b *closeTrackingBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+func TestHTTPPrefixHealthClosesResponseBody(t *testing.T) {
+	for _, statusCode := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			body := &closeTrackingBody{Reader: strings.NewReader("ok")}
+			client := &http.Client{
+				Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: statusCode,
+						Body:       body,
+						Header:     make(http.Header),
+						Request:    req,
+					}, nil
+				}),
+			}
+			health := &HTTPPrefixHealth{
+				Prefix: netip.MustParsePrefix("172.16.0.0/16"),
+				URL:    "http://example.com/health",
+			}
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+			health.checkHTTP(logger, client)
+
+			assert.True(t, body.closed)
 		})
 	}
 }
