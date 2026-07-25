@@ -97,13 +97,27 @@ func TestNativeTunReadDefersVirtioFrameThatExceedsRemainingBatch(t *testing.T) {
 	if err := segmentedHeader.encode(segmentedPacket); err != nil {
 		t.Fatal(err)
 	}
+
+	const outputOffset = 4
+	wantBufs := make([][]byte, 2)
+	wantSizes := make([]int, len(wantBufs))
+	for i := range wantBufs {
+		wantBufs[i] = make([]byte, 256)
+	}
+	wantCount, err := handleVirtioRead(bytes.Clone(segmentedPacket), wantBufs, wantSizes, outputOffset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wantCount != len(wantBufs) {
+		t.Fatalf("direct virtio split returned %d packets, want %d", wantCount, len(wantBufs))
+	}
+
 	for _, packet := range [][]byte{singlePacket, segmentedPacket} {
 		if _, err := unix.Write(fds[1], packet); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	const outputOffset = 4
 	bufs := make([][]byte, 2)
 	sizes := make([]int, len(bufs))
 	for i := range bufs {
@@ -133,9 +147,15 @@ func TestNativeTunReadDefersVirtioFrameThatExceedsRemainingBatch(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("second Read returned %d packets, want 2", count)
 	}
-	for i, wantSize := range []int{128, 128} {
-		if sizes[i] != wantSize {
-			t.Errorf("sizes[%d] = %d, want %d", i, sizes[i], wantSize)
+	for i := range wantBufs {
+		if sizes[i] != wantSizes[i] {
+			t.Errorf("sizes[%d] = %d, want %d", i, sizes[i], wantSizes[i])
+			continue
+		}
+		got := bufs[i][outputOffset : outputOffset+sizes[i]]
+		want := wantBufs[i][outputOffset : outputOffset+wantSizes[i]]
+		if !bytes.Equal(got, want) {
+			t.Errorf("packet %d differs after being deferred", i)
 		}
 	}
 }

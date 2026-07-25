@@ -241,7 +241,13 @@ func (s *StdNetBind) receiveIP(
 		(*msgs)[i].Buffers[0] = bufs[i]
 		(*msgs)[i].OOB = (*msgs)[i].OOB[:cap((*msgs)[i].OOB)]
 	}
-	defer s.putMessages(msgs, len(bufs))
+	cleanupCount := len(bufs)
+	if runtime.GOOS == "linux" || runtime.GOOS == "android" {
+		// ReadBatch receives the full message slice, or its tail when GRO is
+		// enabled, and splitCoalescedMessages can populate the full front range.
+		cleanupCount = len(*msgs)
+	}
+	defer s.putMessages(msgs, cleanupCount)
 	var numMsgs int
 	if runtime.GOOS == "linux" || runtime.GOOS == "android" {
 		if rxOffload {

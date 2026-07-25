@@ -511,6 +511,9 @@ func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) 
 					return unix.Read(int(fd), buf)
 				},
 			)
+			if errors.Is(readErr, syscall.EINTR) {
+				continue
+			}
 			if tun.vnetHdr && errors.Is(readErr, ErrTooManySegments) {
 				// The frame is already consumed from the TUN device. Keep it
 				// in readBuff and split it into a fresh batch on the next Read.
