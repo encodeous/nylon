@@ -898,6 +898,68 @@ func TestRouter_HeldRouteInstallsBlackhole(t *testing.T) {
 	assert.Equal(t, state.INF, rs.Routes[specific].Metric, "held route should be installed as an exact-prefix blackhole")
 }
 
+func TestRouter_HeldRouteReleaseDeletesBlackhole(t *testing.T) {
+	releaseCases := []struct {
+		name    string
+		release func(*state.RouterState, *RouterHarness, netip.Prefix)
+	}{
+		{
+			name: "all acknowledgements received",
+			release: func(rs *state.RouterState, h *RouterHarness, prefix netip.Prefix) {
+				HandleAckRetract(rs, h, "B", prefix)
+			},
+		},
+		{
+			name: "hold expires",
+			release: func(rs *state.RouterState, h *RouterHarness, prefix netip.Prefix) {
+				route := rs.Routes[prefix]
+				route.ExpireAt = time.Now().Add(-time.Second)
+				rs.Routes[prefix] = route
+				ComputeRoutes(rs, h)
+			},
+		},
+	}
+
+	for _, tc := range releaseCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tunables := ConfigureConstants()
+			h := &RouterHarness{}
+			aggregate := netip.MustParsePrefix("10.0.0.0/24")
+			specific := nodeToPrefix("C")
+			rs := &state.RouterState{
+				RouterTunables: tunables,
+				Id:             "A",
+				SelfSeqno:      make(map[netip.Prefix]uint16),
+				Routes:         make(map[netip.Prefix]state.SelRoute),
+				Sources:        make(map[state.Source]state.FD),
+				Neighbours:     MakeNeighbours("B", "C"),
+				Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+			}
+
+			_ = AddLink(rs, NewMockEndpoint("B", 1))
+			ac := AddLink(rs, NewMockEndpoint("C", 1))
+
+			h.NeighUpdate(rs, "B", "B", aggregate, 0, 0)
+			h.NeighUpdate(rs, "C", "C", specific, 0, 0)
+			ComputeRoutes(rs, h)
+			h.GetActions()
+			h.GetTableActions()
+
+			RemoveLink(rs, ac)
+			ComputeRoutes(rs, h)
+			assert.Equal(t, state.INF, rs.Routes[specific].Metric)
+			h.GetActions()
+			h.GetTableActions().AssertContains(t, TableInsert(specific, rs.Routes[specific]))
+
+			tc.release(rs, h, specific)
+
+			assert.NotContains(t, rs.Routes, specific, "released held route should leave RouterState")
+			assert.Contains(t, rs.Routes, aggregate, "covering route should remain selected")
+			h.GetTableActions().AssertContains(t, TableDelete(specific))
+		})
+	}
+}
+
 func TestRouter_SelectedNeighbourUnfeasibleSourceChangeIsUnselected(t *testing.T) {
 	tunables := ConfigureConstants()
 	// A selected B's route to P with source S. B then changes the source for
