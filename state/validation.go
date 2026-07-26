@@ -84,6 +84,11 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		if slices.Contains(nodes, string(node.Id)) {
 			return fmt.Errorf("duplicate router id %s", node.Id)
 		}
+		for _, endpoint := range node.Endpoints {
+			if _, _, err := parseEndpoint(endpoint); err != nil {
+				return fmt.Errorf("router %s has invalid endpoint: %w", node.Id, err)
+			}
+		}
 		nodes = append(nodes, string(node.Id))
 	}
 	for _, node := range cfg.Clients {

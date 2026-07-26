@@ -53,7 +53,7 @@ func (n *Nylon) InstallTC() {
 		})
 		// forward only outgoing packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.ForwardTable.Load().Lookup(packet.GetDst())
+			entry, ok := n.router.Tables.Load().Forward.Lookup(packet.GetDst())
 			if ok && !packet.Incoming() {
 				if entry.Blackhole {
 					return device.TcDrop, nil
@@ -69,7 +69,7 @@ func (n *Nylon) InstallTC() {
 	} else {
 		// forward packets based on the routing table
 		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.ForwardTable.Load().Lookup(packet.GetDst())
+			entry, ok := n.router.Tables.Load().Forward.Lookup(packet.GetDst())
 			if ok {
 				if entry.Blackhole {
 					return device.TcDrop, nil
@@ -107,7 +107,7 @@ func (n *Nylon) InstallTC() {
 
 	// bounce back packets destined for the current node
 	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		entry, ok := n.router.ExitTable.Load().Lookup(packet.GetDst())
+		entry, ok := n.router.Tables.Load().Exit.Lookup(packet.GetDst())
 		// we should only accept packets destined to us, but not our passive clients
 		if ok && entry.Nh == n.LocalCfg.Id {
 			if n.DBG_trace_tc {
@@ -161,6 +161,13 @@ func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint conn.End
 
 func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *device.Peer) {
 	// we need to be careful here, since this function is called on the dataplane
+	defer func() {
+		err := recover()
+		if err != nil {
+			n.Log.Error("panic while handling poly socket", "err", err)
+		}
+	}()
+
 	bundle := &protocol.TransportBundle{}
 	err := proto.Unmarshal(packet, bundle)
 	if err != nil {
@@ -173,18 +180,17 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 	if nt == nil {
 		return // not loaded yet
 	}
+	if peer == nil {
+		n.Log.Debug("dropping nylon packet without an authenticated peer")
+		return
+	}
 	neigh, ok := (*nt)[state.NyPublicKey(peer.GetPublicKey())]
 	if !ok {
-		// this should not be possible
-		panic("impossible state, peer added, but not a node in the network")
+		// This is expected briefly while a peer is being retired after a config
+		// change. The packet was authenticated under an obsolete generation.
+		n.Log.Debug("dropping nylon packet from an unknown peer", "key", peer.GetPublicKey())
+		return
 	}
-
-	defer func() {
-		err := recover()
-		if err != nil {
-			n.Log.Error("panic while handling poly socket", "err", err)
-		}
-	}()
 
 	for _, pkt := range bundle.Packets {
 		switch pkt.Type.(type) {

@@ -149,7 +149,7 @@ func probeRouter(id string, pubKey state.NyPublicKey, nylonIP string, endpoint s
 		},
 	}
 	if endpoint != "" {
-		cfg.Endpoints = []*state.DynamicEndpoint{state.NewDynamicEndpoint(endpoint)}
+		cfg.Endpoints = []string{endpoint}
 	}
 	return cfg
 }

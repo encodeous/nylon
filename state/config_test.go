@@ -1,6 +1,7 @@
 package state
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -148,4 +149,23 @@ func TestParseGraph_InvalidGraph(t *testing.T) {
 	failGraph(t, `1,2,3,4,5,6,7,8,9,10,11,12,13,14,15`)
 	failGraph(t, `,,,,,,,,,,,,,,,,`)
 	failGraph(t, `a=a`)
+}
+
+func TestExpandCentralConfigIsIdempotent(t *testing.T) {
+	addr := netip.MustParseAddr("192.0.2.1")
+	cfg := CentralCfg{
+		Routers: []RouterCfg{{
+			NodeCfg: NodeCfg{
+				Id:        "router",
+				Addresses: []netip.Addr{addr},
+			},
+		}},
+	}
+
+	ExpandCentralConfig(&cfg)
+	ExpandCentralConfig(&cfg)
+
+	if assert.Len(t, cfg.Routers[0].Prefixes, 1) {
+		assert.Equal(t, AddrToPrefix(addr), cfg.Routers[0].Prefixes[0].GetPrefix())
+	}
 }
