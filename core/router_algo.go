@@ -607,6 +607,10 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 				// insert blackhole
 				r.TableInsertRoute(prefix, oldRoute)
 				r.RouterEvent(log.EventRouteUpdated, "blackholed", "prefix", prefix, "route", oldRoute)
+			} else if !exists {
+				// The held route has been released. Remove its exact-prefix
+				// blackhole so a covering route can be used again.
+				r.TableDeleteRoute(prefix)
 			}
 		}
 	}
