@@ -55,6 +55,14 @@ type NylonOptions struct {
 	DBG_debug            bool
 	DBG_trace            bool
 	DBG_trace_tc         bool
+
+	// Exit-node overrides. Each value is paired with a *Set boolean so an
+	// empty value can still represent "explicitly cleared by CLI" without
+	// being ambiguous with "not specified".
+	AdvertiseExitNode    bool
+	AdvertiseExitNodeSet bool
+	ExitNode             NodeId
+	ExitNodeSet          bool
 }
 
 func DefaultRouterTunables() RouterTunables {

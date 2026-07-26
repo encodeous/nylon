@@ -41,6 +41,10 @@ func (n *Nylon) ApplyCentralConfig(cfg *state.CentralCfg) (ApplyResult, error) {
 	n.reconcileAdvertisedPrefixes(next)
 	n.CentralCfg = *next
 
+	if err := n.refreshNodeBindings(); err != nil {
+		return ApplyRejected, err
+	}
+
 	if err := n.SyncWireGuard(); err != nil {
 		return ApplyRejected, err
 	}
