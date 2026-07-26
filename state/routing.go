@@ -11,6 +11,11 @@ import (
 
 type NodeId string
 
+type LocalBind struct {
+	Interface string     `yaml:"interface,omitempty"`
+	Source    netip.Addr `yaml:"source,omitempty"`
+}
+
 // Source is a pair of a router-id and a prefix (Babel Section 2.7).
 type Source struct {
 	NodeId

@@ -641,16 +641,18 @@ func (x *Advertisement) GetPassiveHold() bool {
 }
 
 type EndpointInfo struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Address         string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Resolved        *string                `protobuf:"bytes,2,opt,name=resolved,proto3,oneof" json:"resolved,omitempty"`
-	Active          bool                   `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
-	RemoteInit      bool                   `protobuf:"varint,4,opt,name=remote_init,json=remoteInit,proto3" json:"remote_init,omitempty"`
-	Metric          uint32                 `protobuf:"varint,5,opt,name=metric,proto3" json:"metric,omitempty"`
-	FilteredRttNs   int64                  `protobuf:"varint,7,opt,name=filtered_rtt_ns,json=filteredRttNs,proto3" json:"filtered_rtt_ns,omitempty"`
-	StabilizedRttNs int64                  `protobuf:"varint,8,opt,name=stabilized_rtt_ns,json=stabilizedRttNs,proto3" json:"stabilized_rtt_ns,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Address            string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Resolved           *string                `protobuf:"bytes,2,opt,name=resolved,proto3,oneof" json:"resolved,omitempty"`
+	Active             bool                   `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
+	RemoteInit         bool                   `protobuf:"varint,4,opt,name=remote_init,json=remoteInit,proto3" json:"remote_init,omitempty"`
+	Metric             uint32                 `protobuf:"varint,5,opt,name=metric,proto3" json:"metric,omitempty"`
+	FilteredRttNs      int64                  `protobuf:"varint,7,opt,name=filtered_rtt_ns,json=filteredRttNs,proto3" json:"filtered_rtt_ns,omitempty"`
+	StabilizedRttNs    int64                  `protobuf:"varint,8,opt,name=stabilized_rtt_ns,json=stabilizedRttNs,proto3" json:"stabilized_rtt_ns,omitempty"`
+	LocalBindInterface string                 `protobuf:"bytes,10,opt,name=local_bind_interface,json=localBindInterface,proto3" json:"local_bind_interface,omitempty"`
+	LocalBindSource    string                 `protobuf:"bytes,11,opt,name=local_bind_source,json=localBindSource,proto3" json:"local_bind_source,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *EndpointInfo) Reset() {
@@ -730,6 +732,20 @@ func (x *EndpointInfo) GetStabilizedRttNs() int64 {
 		return x.StabilizedRttNs
 	}
 	return 0
+}
+
+func (x *EndpointInfo) GetLocalBindInterface() string {
+	if x != nil {
+		return x.LocalBindInterface
+	}
+	return ""
+}
+
+func (x *EndpointInfo) GetLocalBindSource() string {
+	if x != nil {
+		return x.LocalBindSource
+	}
+	return ""
 }
 
 type WireGuardPeerStats struct {
@@ -1872,7 +1888,7 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"\x06metric\x18\x03 \x01(\rR\x06metric\x12\x1f\n" +
 	"\vexpiry_unix\x18\x04 \x01(\x03R\n" +
 	"expiryUnix\x12!\n" +
-	"\fpassive_hold\x18\x05 \x01(\bR\vpassiveHold\"\xfb\x01\n" +
+	"\fpassive_hold\x18\x05 \x01(\bR\vpassiveHold\"\xd9\x02\n" +
 	"\fEndpointInfo\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1f\n" +
 	"\bresolved\x18\x02 \x01(\tH\x00R\bresolved\x88\x01\x01\x12\x16\n" +
@@ -1881,7 +1897,10 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"remoteInit\x12\x16\n" +
 	"\x06metric\x18\x05 \x01(\rR\x06metric\x12&\n" +
 	"\x0ffiltered_rtt_ns\x18\a \x01(\x03R\rfilteredRttNs\x12*\n" +
-	"\x11stabilized_rtt_ns\x18\b \x01(\x03R\x0fstabilizedRttNsB\v\n" +
+	"\x11stabilized_rtt_ns\x18\b \x01(\x03R\x0fstabilizedRttNs\x120\n" +
+	"\x14local_bind_interface\x18\n" +
+	" \x01(\tR\x12localBindInterface\x12*\n" +
+	"\x11local_bind_source\x18\v \x01(\tR\x0flocalBindSourceB\v\n" +
 	"\t_resolved\"\xf0\x01\n" +
 	"\x12WireGuardPeerStats\x122\n" +
 	"\x15latest_handshake_unix\x18\x01 \x01(\x03R\x13latestHandshakeUnix\x12\x19\n" +

@@ -22,6 +22,14 @@ log_path: "" # write logs to this file (empty = stderr only)
 interface_name: "" # override the interface name (default: "nylon", or utunX on macOS)
 dns_resolvers: [] # DNS servers for nylon's own lookups, e.g. ["1.1.1.1:53"]
 
+# Local endpoint selectors. Nylon probes each peer endpoint through matching
+# binds and uses the best active link for the routing edge.
+binds:
+  - interface: eth0
+    source: 192.0.2.10
+  - interface: eth0
+    source: 2001:db8::10
+
 # Bootstrap: fetch central.yaml from a remote bundle on first start
 dist:
   url: https://static.example.com/network1.nybundle

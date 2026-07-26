@@ -3,11 +3,19 @@ package state
 import (
 	"math"
 	"math/rand/v2"
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestSameIPFamily(t *testing.T) {
+	assert.True(t, SameIPFamily(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("198.51.100.1")))
+	assert.True(t, SameIPFamily(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2")))
+	assert.False(t, SameIPFamily(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1")))
+	assert.True(t, SameIPFamily(netip.Addr{}, netip.MustParseAddr("2001:db8::1")))
+}
 
 type DataSource struct {
 	Name string

@@ -21,6 +21,8 @@ func (e *StdNetEndpoint) SrcToString() string {
 	return ""
 }
 
+func (e *StdNetEndpoint) SetSrc(addr netip.Addr, ifidx int32) {}
+
 // TODO: macOS, FreeBSD and other BSDs likely do support the sticky sockets
 // {get,set}srcControl feature set, but use alternatively named flags and need
 // ports and require testing.

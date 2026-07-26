@@ -45,6 +45,54 @@ func (e *StdNetEndpoint) SrcToString() string {
 	return e.SrcIP().String()
 }
 
+func (e *StdNetEndpoint) SetSrc(addr netip.Addr, ifidx int32) {
+	if !addr.IsValid() && ifidx == 0 {
+		e.ClearSrc()
+		return
+	}
+	if !addr.IsValid() {
+		addr = netip.AddrFrom16([16]byte{})
+		if e.DstIP().Is4() {
+			addr = netip.AddrFrom4([4]byte{})
+		}
+	}
+	if addr.Is4() {
+		if e.src == nil || cap(e.src) < unix.CmsgSpace(unix.SizeofInet4Pktinfo) {
+			e.src = make([]byte, 0, unix.CmsgSpace(unix.SizeofInet4Pktinfo))
+		}
+		e.src = e.src[:unix.CmsgSpace(unix.SizeofInet4Pktinfo)]
+		hdr := unix.Cmsghdr{
+			Level: unix.IPPROTO_IP,
+			Type:  unix.IP_PKTINFO,
+		}
+		hdr.SetLen(unix.CmsgLen(unix.SizeofInet4Pktinfo))
+		copy(e.src, unsafe.Slice((*byte)(unsafe.Pointer(&hdr)), int(unsafe.Sizeof(hdr))))
+		info := unix.Inet4Pktinfo{
+			Ifindex:  ifidx,
+			Spec_dst: addr.As4(),
+		}
+		copy(e.src[unix.CmsgLen(0):], unsafe.Slice((*byte)(unsafe.Pointer(&info)), unix.SizeofInet4Pktinfo))
+		return
+	}
+	if addr.Is6() {
+		if e.src == nil || cap(e.src) < unix.CmsgSpace(unix.SizeofInet6Pktinfo) {
+			e.src = make([]byte, 0, unix.CmsgSpace(unix.SizeofInet6Pktinfo))
+		}
+		e.src = e.src[:unix.CmsgSpace(unix.SizeofInet6Pktinfo)]
+		hdr := unix.Cmsghdr{
+			Level: unix.IPPROTO_IPV6,
+			Type:  unix.IPV6_PKTINFO,
+		}
+		hdr.SetLen(unix.CmsgLen(unix.SizeofInet6Pktinfo))
+		copy(e.src, unsafe.Slice((*byte)(unsafe.Pointer(&hdr)), int(unsafe.Sizeof(hdr))))
+		info := unix.Inet6Pktinfo{
+			Ifindex: uint32(ifidx),
+			Addr:    addr.As16(),
+		}
+		copy(e.src[unix.CmsgLen(0):], unsafe.Slice((*byte)(unsafe.Pointer(&info)), unix.SizeofInet6Pktinfo))
+	}
+}
+
 // getSrcFromControl parses the control for PKTINFO and if found updates ep with
 // the source information found.
 func getSrcFromControl(control []byte, ep *StdNetEndpoint) {

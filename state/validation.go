@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"runtime"
 	"slices"
 )
 
@@ -41,6 +42,19 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 		_, err := url.Parse(node.Dist.Url)
 		if err != nil {
 			return err
+		}
+	}
+	seenBinds := make(map[LocalBind]struct{})
+	for _, bind := range node.Binds {
+		if bind.Interface == "" && !bind.Source.IsValid() {
+			return fmt.Errorf("bind must specify source or interface")
+		}
+		if _, ok := seenBinds[bind]; ok {
+			return fmt.Errorf("duplicate bind %s %s", bind.Interface, bind.Source)
+		}
+		seenBinds[bind] = struct{}{}
+		if runtime.GOOS != "linux" {
+			return fmt.Errorf("local binds are only supported on linux")
 		}
 	}
 	if len(node.DnsResolvers) != 0 {
