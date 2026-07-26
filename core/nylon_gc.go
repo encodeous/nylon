@@ -1,6 +1,16 @@
 package core
 
 func nylonGc(n *Nylon) error {
+	activeAddresses := make(map[string]struct{})
+	for _, neigh := range n.RouterState.Neighbours {
+		for _, endpoint := range neigh.Eps {
+			link := endpoint.AsNylonEndpoint()
+			if link.IsActive() {
+				activeAddresses[link.Address] = struct{}{}
+			}
+		}
+	}
+
 	// scan for dead links
 	for _, neigh := range n.RouterState.Neighbours {
 		// filter dplinks
@@ -8,13 +18,15 @@ func nylonGc(n *Nylon) error {
 		for _, x := range neigh.Eps {
 			x := x.AsNylonEndpoint()
 			if !x.IsActive() {
-				x.DynEP.Clear()
+				if _, activeElsewhere := activeAddresses[x.Address]; !activeElsewhere {
+					n.EndpointResolver.Expire(x.Address)
+				}
 			}
 			if x.IsAlive() {
 				neigh.Eps[count] = x
 				count++
 			} else {
-				n.Log.Debug("removed dead endpoint", "ep", x.DynEP.String(), "to", neigh.Id)
+				n.Log.Debug("removed dead endpoint", "ep", x.Address, "to", neigh.Id)
 			}
 		}
 		neigh.Eps = neigh.Eps[:count]

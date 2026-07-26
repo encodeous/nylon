@@ -21,7 +21,7 @@ type NodeCfg struct {
 // RouterCfg represents a central representation of a node that can route
 type RouterCfg struct {
 	NodeCfg   `yaml:",inline"`
-	Endpoints []*DynamicEndpoint
+	Endpoints []string
 }
 type ClientCfg struct {
 	NodeCfg `yaml:",inline"`
@@ -55,7 +55,7 @@ type LocalCfg struct {
 	Dist             *LocalDistributionCfg `yaml:",omitempty"`                   // distribution configuration
 	UseSystemRouting bool                  `yaml:"use_system_routing,omitempty"` // all packets from peers will come out of the TUN interface
 	NoNetConfigure   bool                  `yaml:"no_net_configure,omitempty"`   // do not configure system networking at all
-	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // dns resolvers used by nylon, currently only for config repo
+	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // DNS resolvers used for endpoints and config repositories
 	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
 	LogPath          string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
 	UnexcludeIPs     []netip.Prefix        `yaml:"unexclude_ips,omitempty"`      // split tunnel, subtracts from centrally excluded ip ranges
@@ -376,24 +376,31 @@ func (e *CentralCfg) FindNodeBy(pkey NyPublicKey) *NodeId {
 func ExpandCentralConfig(cfg *CentralCfg) {
 	// compatibility & convenience: advertise address as a host address (/32 or /128)
 	for idx, node := range cfg.Routers {
-		for _, addr := range node.Addresses {
-			advAddress := StaticPrefixHealth{
-				Prefix: AddrToPrefix(addr),
-				Metric: 0,
-			}
-			node.Prefixes = append([]PrefixHealthWrapper{{&advAddress}}, node.Prefixes...)
-		}
+		expandNodeAddresses(&node.NodeCfg)
 		cfg.Routers[idx] = node
 	}
 	for idx, node := range cfg.Clients {
-		for _, addr := range node.Addresses {
-			advAddress := StaticPrefixHealth{
-				Prefix: AddrToPrefix(addr),
-				Metric: 0,
-			}
-			node.Prefixes = append([]PrefixHealthWrapper{{&advAddress}}, node.Prefixes...)
-		}
+		expandNodeAddresses(&node.NodeCfg)
 		cfg.Clients[idx] = node
+	}
+}
+
+func expandNodeAddresses(node *NodeCfg) {
+	prefixes := make(map[netip.Prefix]struct{}, len(node.Prefixes))
+	for _, prefix := range node.Prefixes {
+		prefixes[prefix.GetPrefix()] = struct{}{}
+	}
+	for _, addr := range node.Addresses {
+		prefix := AddrToPrefix(addr)
+		if _, ok := prefixes[prefix]; ok {
+			continue
+		}
+		advAddress := StaticPrefixHealth{
+			Prefix: prefix,
+			Metric: 0,
+		}
+		node.Prefixes = append([]PrefixHealthWrapper{{&advAddress}}, node.Prefixes...)
+		prefixes[prefix] = struct{}{}
 	}
 }
 

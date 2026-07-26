@@ -185,7 +185,7 @@ func (v *VirtualHarness) Start() chan error {
 	}
 	for e, n := range v.Endpoints {
 		idx := v.IndexOf(n)
-		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, state.NewDynamicEndpoint(e))
+		v.Central.Routers[idx].Endpoints = append(v.Central.Routers[idx].Endpoints, e)
 	}
 	if v.LogLevel == nil {
 		v.LogLevel = new(slog.LevelDebug)

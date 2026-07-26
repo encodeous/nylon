@@ -138,6 +138,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 	clientIP := GetIP(h.Subnet, 20)
 	primaryIP := GetIP(h.Subnet, 21)
 	backupIP := GetIP(h.Subnet, 22)
+	dnsIP := GetIP(h.Subnet, 100)
 
 	// Keys
 	clientKey := state.GenerateKey()
@@ -150,6 +151,18 @@ func TestHealthcheckHTTP(t *testing.T) {
 	serviceIP := "10.0.3.1"
 	servicePrefixStr := serviceIP + "/32"
 	servicePrefix := netip.MustParsePrefix(servicePrefixStr)
+	healthHost := "health.service.test"
+	corefile := `
+. {
+    file /etc/coredns/service.test.db service.test
+    errors
+}
+`
+	zoneFile := fmt.Sprintf(`
+service.test. 0 IN SOA sns.dns.icann.org. noc.dns.icann.org. 2017042745 7200 3600 1209600 0
+health.service.test. 0 IN A %s
+`, serviceIP)
+	h.StartDNS("dns", dnsIP, corefile, map[string]string{"service.test.db": zoneFile})
 
 	// 1. Central Config
 	central := state.CentralCfg{
@@ -170,7 +183,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 		{
 			&state.HTTPPrefixHealth{
 				Prefix: servicePrefix,
-				URL:    fmt.Sprintf("http://%s:8080/health", serviceIP),
+				URL:    fmt.Sprintf("http://%s:8080/health", healthHost),
 				Delay:  new(1 * time.Second),
 				Metric: new(uint32(10)),
 			},
@@ -195,6 +208,7 @@ func TestHealthcheckHTTP(t *testing.T) {
 
 	primaryCfg := SimpleLocal("primary", primaryKey)
 	primaryCfg.PreUp = append(primaryCfg.PreUp, fmt.Sprintf("ip addr add %s dev lo", servicePrefixStr))
+	primaryCfg.DnsResolvers = []string{dnsIP + ":53"}
 
 	backupCfg := SimpleLocal("backup", backupKey)
 	backupCfg.PreUp = append(backupCfg.PreUp, fmt.Sprintf("ip addr add %s dev lo", servicePrefixStr))

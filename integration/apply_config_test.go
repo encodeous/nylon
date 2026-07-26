@@ -4,6 +4,7 @@ package integration
 
 import (
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -149,6 +150,95 @@ func TestApplyCentralConfigLocalNodeRemovedRequiresRestart(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, centralUnchanged)
 	assert.True(t, bStillNeighbour)
+}
+
+func TestApplyCentralConfigRotatesPeerKeyWithoutChangingNextHop(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	vh := &VirtualHarness{UntrackedRouting: true}
+	a1 := "192.168.30.1:1234"
+	vh.NewNode("a", "10.0.0.1/32")
+	b1 := "192.168.30.2:1234"
+	vh.NewNode("b", "10.0.0.2/32")
+	vh.Central.Graph = []string{"a, b"}
+	vh.Endpoints = map[string]state.NodeId{
+		a1: "a",
+		b1: "b",
+	}
+	vh.AddLink(a1, b1)
+	vh.AddLink(b1, a1)
+
+	errs := vh.Start()
+	defer vh.Stop()
+
+	received := make(chan byte, 16)
+	vh.Net.SelfHandler = func(node state.NodeId, _, dst netip.Addr, data []byte) bool {
+		if node == "b" && dst == netip.MustParseAddr("10.0.0.2") && len(data) != 0 {
+			select {
+			case received <- data[0]:
+			default:
+			}
+		}
+		return true
+	}
+
+	waitForPayload(t, vh, errs, received, 1)
+
+	newPrivateKey := state.GenerateKey()
+	b := vh.Nylons[vh.IndexOf("b")].Load()
+	assert.NoError(t, b.Device.SetPrivateKey(device.NoisePrivateKey(newPrivateKey)))
+
+	err, next := vh.Central.Clone()
+	assert.NoError(t, err)
+	next.Timestamp++
+	next.Routers[vh.IndexOf("b")].PubKey = newPrivateKey.Pubkey()
+
+	applyConfigAndWait(t, b, next)
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	applyConfigAndWait(t, a, next)
+
+	waitForPayload(t, vh, errs, received, 2)
+}
+
+func applyConfigAndWait(t *testing.T, n *core.Nylon, cfg *state.CentralCfg) {
+	t.Helper()
+	done := make(chan struct{})
+	var result core.ApplyResult
+	var err error
+	n.Dispatch(func() error {
+		result, err = n.ApplyCentralConfig(cfg)
+		close(done)
+		return nil
+	})
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for central config apply")
+	}
+	assert.NoError(t, err)
+	assert.Equal(t, core.ApplyApplied, result)
+}
+
+func waitForPayload(t *testing.T, vh *VirtualHarness, errs <-chan error, received <-chan byte, payload byte) {
+	t.Helper()
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case got := <-received:
+			if got == payload {
+				return
+			}
+		case <-ticker.C:
+			vh.Net.Send("a", "10.0.0.1", "10.0.0.2", []byte{payload}, 64)
+		case err := <-errs:
+			t.Fatal(err)
+		case <-timeout.C:
+			t.Fatalf("timed out waiting for payload %d", payload)
+		}
+	}
 }
 
 type applyResult struct {

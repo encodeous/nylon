@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"cmp"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/netip"
 	"runtime"
 	"slices"
 
@@ -89,9 +91,12 @@ listen_port=%d
 		}
 	}
 
-	// init wireguard related tasks
+	// schedule application state reconciliation
 	n.RepeatTask(func() error {
-		return n.UpdateWireGuard()
+		if err := n.SyncApplicationState(); err != nil {
+			n.Log.Warn("runtime reconciliation incomplete; will retry", "err", err)
+		}
+		return nil
 	}, n.ProbeDelay)
 
 	return nil
@@ -146,15 +151,9 @@ func (n *Nylon) SyncWireGuard() error {
 		desired[peer] = ncfg.PubKey
 	}
 
-	for peer, oldKey := range n.AppliedSystem.Peers {
-		newKey, ok := desired[peer]
-		if !ok || newKey != oldKey {
-			n.Log.Debug("removing", "peer", peer)
-			n.Device.RemovePeer(device.NoisePublicKey(oldKey))
-			delete(n.AppliedSystem.Peers, peer)
-		}
-	}
-
+	// Prepare every desired peer before removing any old peer. In particular,
+	// public-key rotation must keep the old peer alive until the forwarding
+	// table has been rebound to the replacement.
 	for _, peer := range slices.Sorted(slices.Values(n.GetPeers(n.LocalCfg.Id))) {
 		ncfg := n.GetNode(peer)
 		wgPeer := n.Device.LookupPeer(device.NoisePublicKey(ncfg.PubKey))
@@ -170,20 +169,31 @@ func (n *Nylon) SyncWireGuard() error {
 		if n.IsClient(peer) {
 			wgPeer.SetPreferRoaming(true)
 		}
-		n.AppliedSystem.Peers[peer] = ncfg.PubKey
 	}
 
-	return n.syncWireGuardEndpoints()
-}
-
-func (n *Nylon) UpdateWireGuard() error {
-	if n.Device == nil {
-		return nil
-	}
 	if err := n.syncWireGuardEndpoints(); err != nil {
 		return err
 	}
-	return n.SyncSystemState()
+
+	// The forwarding table caches concrete peers for the one-lookup hot path.
+	// Rebind every entry before stopping peers from the previous generation.
+	n.rebindForwardingPeers()
+
+	desiredKeys := make(map[state.NyPublicKey]struct{}, len(desired))
+	for _, key := range desired {
+		desiredKeys[key] = struct{}{}
+	}
+	for _, wgPeer := range n.Device.GetPeers() {
+		key := state.NyPublicKey(wgPeer.GetPublicKey())
+		if _, ok := desiredKeys[key]; ok {
+			continue
+		}
+		n.Log.Debug("removing obsolete WireGuard peer", "key", key)
+		n.Device.RemovePeer(wgPeer.GetPublicKey())
+	}
+
+	n.AppliedSystem.Peers = desired
+	return nil
 }
 
 func (n *Nylon) syncWireGuardEndpoints() error {
@@ -207,28 +217,11 @@ func (n *Nylon) syncWireGuardEndpoints() error {
 				return cmp.Compare(a.Metric(), b.Metric())
 			})
 			for _, ep := range links {
-				nep, err := ep.AsNylonEndpoint().GetWgEndpoint(n.Device)
+				nep, err := ep.AsNylonEndpoint().GetWgEndpoint(n.Device, n.EndpointResolver)
 				if err != nil {
 					continue
 				}
 				eps = append(eps, nep)
-			}
-		}
-
-		// add endpoint if it is not in the list
-		for _, ep := range pcfg.Endpoints {
-			ap, err := ep.Get()
-			if err != nil {
-				continue
-			}
-			if !slices.ContainsFunc(eps, func(endpoint conn.Endpoint) bool {
-				return endpoint.DstIPPort() == ap
-			}) {
-				endpoint, err := n.Device.Bind().ParseEndpoint(ap.String())
-				if err != nil {
-					return err
-				}
-				eps = append(eps, endpoint)
 			}
 		}
 
@@ -245,64 +238,83 @@ func (n *Nylon) SyncSystemState() error {
 	if n.NoNetConfigure {
 		return nil
 	}
-	if err := n.syncAliases(); err != nil {
-		return err
-	}
-	return n.syncSystemRoutes()
+	return errors.Join(n.syncAliases(), n.syncSystemRoutes())
 }
 
 func (n *Nylon) syncAliases() error {
 	desired := n.GetRouter(n.LocalCfg.Id).Addresses
+	applied := slices.Clone(n.AppliedSystem.Aliases)
+	var syncErr error
 	// we must first add the new alias before removing the old ones, else the system might flush our routes
 	for _, newEntry := range desired {
-		if !slices.Contains(n.AppliedSystem.Aliases, newEntry) {
+		if !slices.Contains(applied, newEntry) {
 			n.Log.Debug("installing alias", "addr", newEntry.String())
 			err := ConfigureAlias(n.Log, n.Interface, newEntry)
 			if err != nil {
 				n.Log.Error("failed to configure alias", "err", err)
+				syncErr = errors.Join(syncErr, fmt.Errorf("install alias %s: %w", newEntry, err))
+				continue
 			}
+			applied = append(applied, newEntry)
 		}
 	}
-	for _, oldEntry := range n.AppliedSystem.Aliases {
+	hadAliases := len(applied) != 0
+	for _, oldEntry := range slices.Clone(applied) {
 		if !slices.Contains(desired, oldEntry) {
 			n.Log.Debug("removing old alias", "addr", oldEntry.String())
 			err := RemoveAlias(n.Log, n.Interface, oldEntry)
 			if err != nil {
 				n.Log.Error("failed to remove alias", "err", err)
+				syncErr = errors.Join(syncErr, fmt.Errorf("remove alias %s: %w", oldEntry, err))
+				continue
 			}
+			applied = slices.DeleteFunc(applied, func(addr netip.Addr) bool {
+				return addr == oldEntry
+			})
 		}
 	}
 	// special case for linux: if all aliases are removed, the kernel will also flush the routes
-	if len(n.AppliedSystem.Aliases) != 0 && len(desired) == 0 && runtime.GOOS == "linux" {
+	if hadAliases && len(applied) == 0 && runtime.GOOS == "linux" {
 		n.AppliedSystem.Routes = nil
 	}
-	n.AppliedSystem.Aliases = slices.Clone(desired)
-	return nil
+	n.AppliedSystem.Aliases = applied
+	return syncErr
 }
 
 func (n *Nylon) syncSystemRoutes() error {
 	newEntries := n.ComputeSysRouteTable()
-	oldEntries := n.AppliedSystem.Routes
-	for _, oldEntry := range oldEntries {
+	applied := slices.Clone(n.AppliedSystem.Routes)
+	var syncErr error
+	// Install new routes before removing old ones so a partial reconciliation
+	// preserves as much connectivity as possible.
+	for _, newEntry := range newEntries {
+		if !slices.Contains(applied, newEntry) {
+			// install route
+			n.Log.Debug("installing new route", "prefix", newEntry.String())
+			err := ConfigureRoute(n.Log, n.Tun, n.Interface, newEntry)
+			if err != nil {
+				n.Log.Error("failed to configure route", "err", err)
+				syncErr = errors.Join(syncErr, fmt.Errorf("install route %s: %w", newEntry, err))
+				continue
+			}
+			applied = append(applied, newEntry)
+		}
+	}
+	for _, oldEntry := range slices.Clone(applied) {
 		if !slices.Contains(newEntries, oldEntry) {
 			// uninstall route
 			n.Log.Debug("removing old route", "prefix", oldEntry.String())
 			err := RemoveRoute(n.Log, n.Tun, n.Interface, oldEntry)
 			if err != nil {
 				n.Log.Error("failed to remove route", "err", err)
+				syncErr = errors.Join(syncErr, fmt.Errorf("remove route %s: %w", oldEntry, err))
+				continue
 			}
+			applied = slices.DeleteFunc(applied, func(prefix netip.Prefix) bool {
+				return prefix == oldEntry
+			})
 		}
 	}
-	for _, newEntry := range newEntries {
-		if !slices.Contains(oldEntries, newEntry) {
-			// install route
-			n.Log.Debug("installing new route", "prefix", newEntry.String())
-			err := ConfigureRoute(n.Log, n.Tun, n.Interface, newEntry)
-			if err != nil {
-				n.Log.Error("failed to configure route", "err", err)
-			}
-		}
-	}
-	n.AppliedSystem.Routes = slices.Clone(newEntries)
-	return nil
+	n.AppliedSystem.Routes = applied
+	return syncErr
 }

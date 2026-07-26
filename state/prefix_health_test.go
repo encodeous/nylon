@@ -145,13 +145,11 @@ func TestHTTPPrefixHealthClosesResponseBody(t *testing.T) {
 					}, nil
 				}),
 			}
-			health := &HTTPPrefixHealth{
-				Prefix: netip.MustParsePrefix("172.16.0.0/16"),
-				URL:    "http://example.com/health",
-			}
+			prefix := netip.MustParsePrefix("172.16.0.0/16")
+			url := "http://example.com/health"
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-			health.checkHTTP(logger, client)
+			checkHTTPPrefix(logger, client, prefix, url)
 
 			assert.True(t, body.closed)
 		})

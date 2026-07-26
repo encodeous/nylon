@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"reflect"
 	"slices"
-	"time"
 
 	"github.com/encodeous/nylon/state"
 )
@@ -20,36 +19,53 @@ const (
 )
 
 func (n *Nylon) ApplyCentralConfig(cfg *state.CentralCfg) (ApplyResult, error) {
-	err, next := cfg.Clone()
+	candidate, err := normalizeCentralConfig(cfg)
 	if err != nil {
 		return ApplyRejected, err
 	}
-	state.ExpandCentralConfig(next)
-	if err := state.CentralConfigValidator(next); err != nil {
-		return ApplyRejected, err
-	}
-	if !next.IsRouter(n.LocalCfg.Id) {
+	if !candidate.IsRouter(n.LocalCfg.Id) {
 		return ApplyRestartRequired, errors.New("local node is not a router in the new central config")
 	}
-	if reflect.DeepEqual(n.CentralCfg, next) {
-		return ApplyNoop, nil
+	sameConfig := reflect.DeepEqual(&n.CentralCfg, candidate)
+	if sameConfig {
+		// A previous apply may have committed the desired config while external
+		// reconciliation was incomplete. Make an explicit retry useful even
+		// before the periodic reconciler runs again.
+		return ApplyNoop, n.SyncApplicationState()
 	}
-
-	if err := n.reconcileRouterState(next); err != nil {
+	if err := n.reconcileRouterState(candidate); err != nil {
 		return ApplyRejected, err
 	}
-	n.reconcileAdvertisedPrefixes(next)
-	n.CentralCfg = *next
+	n.reconcileAdvertisedPrefixes(candidate)
+	n.CentralCfg = *candidate
 
+	// From here on the candidate is the accepted desired state. Failures while
+	// converging WireGuard or OS state are retryable and must not describe the
+	// already-committed config as rejected.
+	return ApplyApplied, n.SyncApplicationState()
+}
+
+func (n *Nylon) SyncApplicationState() error {
+	if n.Device == nil {
+		return nil
+	}
 	if err := n.SyncWireGuard(); err != nil {
-		return ApplyRejected, err
-	}
-	if err := n.SyncSystemState(); err != nil {
-		return ApplyRejected, err
+		return err
 	}
 	ComputeRoutes(n.RouterState, n)
+	return n.SyncSystemState()
+}
 
-	return ApplyApplied, nil
+func normalizeCentralConfig(cfg *state.CentralCfg) (*state.CentralCfg, error) {
+	err, normalized := cfg.Clone()
+	if err != nil {
+		return nil, err
+	}
+	state.ExpandCentralConfig(normalized)
+	if err := state.CentralConfigValidator(normalized); err != nil {
+		return nil, err
+	}
+	return normalized, nil
 }
 
 func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
@@ -94,6 +110,15 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 		neighs = append(neighs, stNeigh)
 	}
 	n.RouterState.Neighbours = neighs
+	if n.EndpointResolver != nil {
+		addresses := make(map[string]struct{})
+		for _, neigh := range neighs {
+			for _, endpoint := range neigh.Eps {
+				addresses[endpoint.AsNylonEndpoint().Address] = struct{}{}
+			}
+		}
+		n.EndpointResolver.Retain(addresses)
+	}
 
 	// rebuild pubkey to peer's id mapping
 	pubkeyMap := make(map[state.NyPublicKey]state.NodeId)
@@ -107,10 +132,10 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 	return nil
 }
 
-func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.DynamicEndpoint, t *state.RouterTunables) {
-	desiredByValue := make(map[string]*state.DynamicEndpoint, len(desired))
-	for _, ep := range desired {
-		desiredByValue[ep.Value] = ep
+func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []string, t *state.RouterTunables) {
+	desiredAddresses := make(map[string]struct{}, len(desired))
+	for _, address := range desired {
+		desiredAddresses[address] = struct{}{}
 	}
 
 	eps := make([]state.Endpoint, 0, len(neigh.Eps)+len(desired))
@@ -122,77 +147,16 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []*state.Dynam
 			continue
 		}
 		// only keep if desired
-		if desiredEp, ok := desiredByValue[nep.DynEP.Value]; ok {
+		if _, ok := desiredAddresses[nep.Address]; ok {
 			eps = append(eps, ep)
-			seen[desiredEp.Value] = struct{}{}
+			seen[nep.Address] = struct{}{}
 		}
 	}
-	for _, ep := range desired {
-		if _, ok := seen[ep.Value]; ok {
+	for _, address := range desired {
+		if _, ok := seen[address]; ok {
 			continue
 		}
-		eps = append(eps, state.NewEndpoint(ep, false, nil, t))
+		eps = append(eps, state.NewEndpoint(address, false, nil, t))
 	}
 	neigh.Eps = eps
 }
-
-func (n *Nylon) reconcileAdvertisedPrefixes(next *state.CentralCfg) {
-	currentLocal := make(map[netip.Prefix]state.PrefixHealthWrapper)
-	if cur := n.CentralCfg.TryGetNode(n.LocalCfg.Id); cur != nil {
-		for _, prefix := range cur.Prefixes {
-			currentLocal[prefix.GetPrefix()] = prefix
-		}
-	}
-	nextNode := next.TryGetNode(n.LocalCfg.Id)
-	if nextNode == nil {
-		return
-	}
-
-	desiredLocal := make(map[netip.Prefix]int)
-	for i, prefix := range nextNode.Prefixes {
-		desiredLocal[prefix.GetPrefix()] = i
-	}
-
-	for prefix, adv := range n.RouterState.Advertised {
-		if adv.NodeId != n.LocalCfg.Id {
-			continue
-		}
-		if _, ok := desiredLocal[prefix]; !ok {
-			if old, ok := currentLocal[prefix]; ok {
-				old.Stop()
-			}
-			delete(n.RouterState.Advertised, prefix)
-		}
-	}
-
-	for prefix, index := range desiredLocal {
-		desired := nextNode.Prefixes[index]
-		if current, ok := currentLocal[prefix]; ok && current.SameConfig(desired, &n.RouterTunables) {
-			desired = current
-			nextNode.Prefixes[index] = current
-		} else {
-			if current, ok := currentLocal[prefix]; ok {
-				current.Stop()
-			}
-			n.Log.Debug("starting prefix healthcheck", "prefix", prefix)
-			desired.Start(n.Log, &n.RouterTunables)
-		}
-		n.RouterState.Advertised[prefix] = state.Advertisement{
-			NodeId:   n.LocalCfg.Id,
-			Expiry:   maxConfigTime,
-			MetricFn: desired.GetMetric,
-			ExpiryFn: func() {
-				desired.Stop()
-			},
-		}
-	}
-}
-
-func (n *Nylon) startAdvertisedPrefixHealth() {
-	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
-		n.Log.Debug("starting prefix healthcheck", "prefix", ph.GetPrefix())
-		ph.Start(n.Log, &n.RouterTunables)
-	}
-}
-
-var maxConfigTime = time.Unix(1<<63-62135596801, 999999999)

@@ -21,7 +21,6 @@ import (
 	"github.com/encodeous/nylon/polyamide/tun"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
-	"github.com/gaissmai/bart"
 	"github.com/jellydator/ttlcache/v3"
 	slogmulti "github.com/samber/slog-multi"
 )
@@ -35,20 +34,22 @@ type Nylon struct {
 
 	// state
 	state.ConfigState
-	RouterState   *state.RouterState
-	AppliedSystem AppliedSystemState
-	PingBuf       *ttlcache.Cache[uint64, EpPing]
-	PeerMap       atomic.Pointer[map[state.NyPublicKey]state.NodeId]
+	RouterState      *state.RouterState
+	AppliedSystem    AppliedSystemState
+	PingBuf          *ttlcache.Cache[uint64, EpPing]
+	PeerMap          atomic.Pointer[map[state.NyPublicKey]state.NodeId]
+	DNSResolver      *state.DNSResolver
+	EndpointResolver *state.EndpointResolver
+	prefixHealth     map[netip.Prefix]advertisedPrefixHealth
 
 	router struct {
 		LastStarvationRequest time.Time
 		IO                    map[state.NodeId]*IOPending
 
-		// ForwardTable contains the full routing table
-		ForwardTable atomic.Pointer[bart.Table[RouteTableEntry]]
-		// ExitTable contains only routes to services hosted on this node
-		ExitTable atomic.Pointer[bart.Table[RouteTableEntry]]
-		log       *slog.Logger
+		// Tables is published atomically so forwarding and exit routes always
+		// belong to the same state generation.
+		Tables atomic.Pointer[ForwardingTables]
+		log    *slog.Logger
 	}
 
 	// runtime/application
@@ -81,6 +82,13 @@ func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, c
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	dispatch := make(chan func() error, 128)
+	err, runtimeCfg := ccfg.Clone()
+	if err != nil {
+		cancel(err)
+		return nil, err
+	}
+	state.ExpandCentralConfig(runtimeCfg)
+	dnsResolver := state.NewDNSResolver(ncfg.DnsResolvers)
 
 	var rt state.RouterTunables
 	if tunables != nil {
@@ -135,20 +143,22 @@ func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, c
 		RouterTunables: rt,
 		NylonOptions:   opts,
 		ConfigState: state.ConfigState{
-			CentralCfg: ccfg,
+			CentralCfg: *runtimeCfg,
 			LocalCfg:   ncfg,
 		},
-		Context:         ctx,
-		Cancel:          cancel,
-		DispatchChannel: dispatch,
-		Log:             logger,
-		ConfigPath:      configPath,
-		AuxConfig:       aux,
+		Context:          ctx,
+		Cancel:           cancel,
+		DispatchChannel:  dispatch,
+		Log:              logger,
+		ConfigPath:       configPath,
+		AuxConfig:        aux,
+		DNSResolver:      dnsResolver,
+		EndpointResolver: state.NewEndpointResolver(dnsResolver),
 	}
 
 	n.Log.Info("init modules")
 
-	err := n.Init()
+	err = n.Init()
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +176,6 @@ func (n *Nylon) Init() error {
 	if err != nil {
 		return err
 	}
-
-	state.SetResolvers(n.DnsResolvers)
 
 	if n.AppliedSystem.Peers == nil {
 		n.AppliedSystem.Peers = make(map[state.NodeId]state.NyPublicKey)
@@ -199,16 +207,20 @@ func (n *Nylon) Init() error {
 	}, n.ProbeDelay)
 	n.RepeatTask(func() error {
 		// refresh dynamic endpoints
+		seen := make(map[string]struct{})
 		for _, neigh := range n.RouterState.Neighbours {
 			for _, ep := range neigh.Eps {
-				if nep, ok := ep.(*state.NylonEndpoint); ok {
-					go func() {
-						_, err := nep.DynEP.Refresh(n.EndpointResolveExpiry)
-						if err != nil {
-							n.Log.Debug("failed to resolve endpoint", "ep", nep.DynEP.Value, "err", err.Error())
-						}
-					}()
+				address := ep.AsNylonEndpoint().Address
+				if _, ok := seen[address]; ok {
+					continue
 				}
+				seen[address] = struct{}{}
+				go func() {
+					_, err := n.EndpointResolver.Resolve(address, n.EndpointResolveExpiry)
+					if err != nil {
+						n.Log.Debug("failed to resolve endpoint", "ep", address, "err", err.Error())
+					}
+				}()
 			}
 		}
 		return nil
@@ -220,7 +232,7 @@ func (n *Nylon) Init() error {
 		return n.probeNew()
 	}, n.ProbeDiscoveryDelay)
 
-	n.startAdvertisedPrefixHealth()
+	n.reconcileAdvertisedPrefixes(&n.CentralCfg)
 
 	err = n.initPassiveClient()
 	if err != nil {
@@ -311,8 +323,8 @@ endLoop:
 
 func (n *Nylon) Cleanup() error {
 	n.PingBuf.Stop()
-	for _, ph := range n.GetNode(n.LocalCfg.Id).Prefixes {
-		ph.Stop()
+	for _, health := range n.prefixHealth {
+		health.monitor.Stop()
 	}
 
 	n.CleanupRouter()

@@ -198,7 +198,7 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) 
 		eps := make([]*protocol.EndpointInfo, 0)
 		routes := make([]*protocol.NeighRoute, 0)
 		if neigh != nil {
-			eps = buildEndpoints(neigh)
+			eps = n.buildEndpoints(neigh)
 			routes = buildNeighRoutes(neigh)
 		}
 		stat := wgStats[cfg.PubKey]
@@ -215,16 +215,16 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) 
 	return neighbours
 }
 
-func buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
+func (n *Nylon) buildEndpoints(neigh *state.Neighbour) []*protocol.EndpointInfo {
 	eps := make([]*protocol.EndpointInfo, 0, len(neigh.Eps))
 	for _, ep := range neigh.Eps {
 		nep := ep.AsNylonEndpoint()
 		var resolved *string
-		if ap, err := nep.DynEP.Get(); err == nil {
+		if ap, err := n.EndpointResolver.Get(nep.Address); err == nil {
 			resolved = new(ap.String())
 		}
 		eps = append(eps, &protocol.EndpointInfo{
-			Address:         nep.DynEP.Value,
+			Address:         nep.Address,
 			Resolved:        resolved,
 			Active:          ep.IsActive(),
 			RemoteInit:      ep.IsRemote(),
@@ -255,13 +255,14 @@ func buildNeighRoutes(neigh *state.Neighbour) []*protocol.NeighRoute {
 
 func buildRouteTables(n *Nylon) *protocol.RouteTables {
 	tables := &protocol.RouteTables{}
+	forwarding := n.router.Tables.Load()
 	for _, route := range n.RouterState.Routes {
 		tables.Selected = append(tables.Selected, selRouteProto(route))
 	}
 	slices.SortFunc(tables.Selected, func(a, b *protocol.SelRoute) int {
 		return comparePubRoute(a.PubRoute, b.PubRoute)
 	})
-	for prefix, route := range n.router.ForwardTable.Load().All() {
+	for prefix, route := range forwarding.Forward.All() {
 		tables.Forward = append(tables.Forward, &protocol.RouteTableEntry{
 			Prefix:    prefix.String(),
 			Nh:        string(route.Nh),
@@ -269,7 +270,7 @@ func buildRouteTables(n *Nylon) *protocol.RouteTables {
 		})
 	}
 	sortRouteTableEntries(tables.Forward)
-	for prefix, route := range n.router.ExitTable.Load().All() {
+	for prefix, route := range forwarding.Exit.All() {
 		tables.Exit = append(tables.Exit, &protocol.RouteTableEntry{
 			Prefix:    prefix.String(),
 			Nh:        string(route.Nh),
