@@ -1,11 +1,9 @@
 package core
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +15,10 @@ import (
 
 // fetches and unbundles central config from url
 func FetchConfig(repoStr string, key state.NyPublicKey, maxSize int64) (*state.CentralCfg, error) {
+	return fetchConfig(repoStr, key, maxSize, state.NewDNSResolver(nil))
+}
+
+func fetchConfig(repoStr string, key state.NyPublicKey, maxSize int64, resolver *state.DNSResolver) (*state.CentralCfg, error) {
 	repo, err := url.Parse(repoStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse repo URL %s: %w", repoStr, err)
@@ -32,24 +34,7 @@ func FetchConfig(repoStr string, key state.NyPublicKey, maxSize int64) (*state.C
 	} else if repo.Scheme == "http" || repo.Scheme == "https" {
 		client := &http.Client{
 			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network string, addr string) (conn net.Conn, err error) {
-					host, port, err := net.SplitHostPort(addr)
-					if err != nil {
-						return nil, err
-					}
-					addrs, err := state.ResolveName(ctx, host)
-					if err != nil {
-						return nil, err
-					}
-					for _, ip := range addrs {
-						var dialer net.Dialer
-						conn, err = dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-						if err == nil {
-							break
-						}
-					}
-					return
-				},
+				DialContext: resolver.DialContext,
 			},
 		}
 		res, err := client.Get(repo.String())
@@ -85,7 +70,7 @@ func checkForConfigUpdates(n *Nylon) error {
 	for _, repoStr := range repos {
 		go func(repo string) {
 			err := func() error {
-				config, err := FetchConfig(repo, key, n.MaxConfigSize)
+				config, err := fetchConfig(repo, key, n.MaxConfigSize, n.DNSResolver)
 				if err != nil {
 					return err
 				}
@@ -102,8 +87,11 @@ func checkForConfigUpdates(n *Nylon) error {
 					n.Log.Info("Found a new config update in repo", "repo", repo)
 					result, err := n.ApplyCentralConfig(config)
 					if err != nil {
-						n.Log.Error("failed to apply central config update", "repo", repo, "result", result, "err", err)
-						return nil
+						if result != ApplyApplied {
+							n.Log.Error("failed to apply central config update", "repo", repo, "result", result, "err", err)
+							return nil
+						}
+						n.Log.Warn("central config applied with incomplete runtime reconciliation; will retry", "repo", repo, "err", err)
 					}
 					if n.ConfigPath != "" {
 						bytes, err := yaml.Marshal(config)

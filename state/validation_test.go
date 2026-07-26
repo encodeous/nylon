@@ -89,6 +89,24 @@ func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
 	assert.NoError(t, CentralConfigValidator(cfg))
 }
 
+func TestCentralConfigValidator_Endpoint(t *testing.T) {
+	cfg := &CentralCfg{
+		Routers: []RouterCfg{{
+			NodeCfg: NodeCfg{Id: "node1"},
+			Endpoints: []string{
+				"example.com",
+				"example.com:57175",
+				"192.0.2.1",
+				"[2001:db8::1]:57175",
+			},
+		}},
+	}
+	assert.NoError(t, CentralConfigValidator(cfg))
+
+	cfg.Routers[0].Endpoints = []string{"http://example.com"}
+	assert.ErrorContains(t, CentralConfigValidator(cfg), "invalid endpoint")
+}
+
 func TestCentralConfigValidator_PassiveClientNonStaticPrefix(t *testing.T) {
 	cfg := &CentralCfg{
 		Clients: []ClientCfg{

@@ -537,8 +537,8 @@ func SimpleRouter(id string, pubKey state.NyPublicKey, nylonIP string, endpointI
 		},
 	}
 	if endpointIP != "" {
-		cfg.Endpoints = []*state.DynamicEndpoint{
-			state.NewDynamicEndpoint(fmt.Sprintf("%s:57175", endpointIP)),
+		cfg.Endpoints = []string{
+			fmt.Sprintf("%s:57175", endpointIP),
 		}
 	}
 	return cfg

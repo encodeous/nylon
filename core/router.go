@@ -21,6 +21,13 @@ type RouteTableEntry struct {
 	Blackhole bool
 }
 
+type ForwardingTables struct {
+	// Forward contains the full routing table.
+	Forward *bart.Table[RouteTableEntry]
+	// Exit contains only routes to services hosted on this node.
+	Exit *bart.Table[RouteTableEntry]
+}
+
 func (n *Nylon) GetNeighIO(neigh state.NodeId) *IOPending {
 	nio, ok := n.router.IO[neigh]
 	if !ok {
@@ -99,16 +106,16 @@ func (n *Nylon) UpdateNeighbour(neigh state.NodeId) {
 
 func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 	nh := route.Nh
-	nf := n.router.ForwardTable.Load().Clone()
-	ne := n.router.ExitTable.Load().Clone()
+	tables := n.router.Tables.Load()
+	nf := tables.Forward.Clone()
+	ne := tables.Exit.Clone()
 	if route.Metric == state.INF {
 		nf.Insert(prefix, RouteTableEntry{
 			Nh:        nh,
 			Blackhole: true,
 		})
 		ne.Delete(prefix)
-		n.router.ForwardTable.Store(nf)
-		n.router.ExitTable.Store(ne)
+		n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
 		return
 	}
 	peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(nh).PubKey))
@@ -124,17 +131,59 @@ func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 	} else {
 		ne.Delete(prefix)
 	}
-	n.router.ForwardTable.Store(nf)
-	n.router.ExitTable.Store(ne)
+	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
 }
 
 func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
-	nf := n.router.ForwardTable.Load().Clone()
-	ne := n.router.ExitTable.Load().Clone()
+	tables := n.router.Tables.Load()
+	nf := tables.Forward.Clone()
+	ne := tables.Exit.Clone()
 	nf.Delete(prefix)
 	ne.Delete(prefix)
-	n.router.ForwardTable.Store(nf)
-	n.router.ExitTable.Store(ne)
+	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
+}
+
+func (n *Nylon) rebindForwardingPeers() {
+	if n.Device == nil {
+		return
+	}
+
+	tables := n.router.Tables.Load()
+	if tables == nil {
+		return
+	}
+
+	peers := make(map[state.NodeId]*device.Peer)
+	for _, node := range n.CentralCfg.GetNodes() {
+		peers[node.Id] = n.Device.LookupPeer(device.NoisePublicKey(node.PubKey))
+	}
+
+	forward, forwardChanged := rebindRouteTablePeers(tables.Forward, peers)
+	exit, exitChanged := rebindRouteTablePeers(tables.Exit, peers)
+	if forwardChanged || exitChanged {
+		n.router.Tables.Store(&ForwardingTables{Forward: forward, Exit: exit})
+	}
+}
+
+func rebindRouteTablePeers(table *bart.Table[RouteTableEntry], peers map[state.NodeId]*device.Peer) (*bart.Table[RouteTableEntry], bool) {
+	next := table
+	changed := false
+	for prefix, entry := range table.All() {
+		if entry.Blackhole {
+			continue
+		}
+		peer := peers[entry.Nh]
+		if entry.Peer == peer {
+			continue
+		}
+		if !changed {
+			next = table.Clone()
+			changed = true
+		}
+		entry.Peer = peer
+		next.Insert(prefix, entry)
+	}
+	return next, changed
 }
 
 type IOPending struct {
@@ -169,8 +218,10 @@ func (n *Nylon) InitRouter() error {
 	n.router.log = n.Log.With("module", log.ScopeRouter)
 	n.router.log.Debug("init router")
 	n.router.IO = make(map[state.NodeId]*IOPending)
-	n.router.ForwardTable.Store(new(bart.Table[RouteTableEntry]{}))
-	n.router.ExitTable.Store(new(bart.Table[RouteTableEntry]{}))
+	n.router.Tables.Store(&ForwardingTables{
+		Forward: new(bart.Table[RouteTableEntry]),
+		Exit:    new(bart.Table[RouteTableEntry]),
+	})
 	n.RouterState = &state.RouterState{
 		RouterTunables: &n.RouterTunables,
 		Id:             n.LocalCfg.Id,
@@ -180,16 +231,6 @@ func (n *Nylon) InitRouter() error {
 		Neighbours:     make([]*state.Neighbour, 0),
 		Advertised:     make(map[netip.Prefix]state.Advertisement),
 	}
-	maxTime := time.Unix(1<<63-62135596801, 999999999)
-	for _, prefix := range n.GetRouter(n.LocalCfg.Id).Prefixes {
-		n.RouterState.Advertised[prefix.GetPrefix()] = state.Advertisement{
-			NodeId:        n.LocalCfg.Id,
-			Expiry:        maxTime,
-			IsPassiveHold: false,
-			MetricFn:      prefix.GetMetric,
-		}
-	}
-
 	n.router.log.Debug("schedule router tasks")
 
 	n.RepeatTask(func() error {
@@ -248,12 +289,17 @@ func (n *Nylon) updatePassiveClient(prefix state.PrefixHealthWrapper, node state
 		n.RouterState.SetSeqno(prefix.GetPrefix(), n.RouterState.GetSeqno(prefix.GetPrefix())+1)
 	}
 
-	// passive nodes may only have static prefixes, so we don't call prefix.Start()
+	metric, ok := prefix.StaticMetric()
+	if !ok {
+		return
+	}
 	n.RouterState.Advertised[prefix.GetPrefix()] = state.Advertisement{
 		NodeId:        node,
 		Expiry:        time.Now().Add(n.ClientKeepaliveInterval),
 		IsPassiveHold: passiveHold,
-		MetricFn:      prefix.GetMetric,
+		MetricFn: func() uint32 {
+			return metric
+		},
 		ExpiryFn: func() {
 			// we didn't start the prefix monitoring
 		},

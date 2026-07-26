@@ -53,7 +53,7 @@ type DataSource struct {
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
 	tunables := DefaultRouterTunables()
-	dep := NewEndpoint(NewDynamicEndpoint("127.0.0.1:0"), false, nil, &tunables)
+	dep := NewEndpoint("127.0.0.1:0", false, nil, &tunables)
 
 	truth := DataSource{
 		Name: "Truth",
@@ -207,7 +207,7 @@ func TestEndpointNormal(t *testing.T) {
 	assert.Less(t, len(distinctValues), int(time.Hour*2/time.Minute))
 }
 
-func TestDynamicEndpoint_Parse(t *testing.T) {
+func TestParseEndpoint(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
@@ -259,8 +259,7 @@ func TestDynamicEndpoint_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ep := NewDynamicEndpoint(tt.input)
-			host, port, err := ep.Parse()
+			host, port, err := parseEndpoint(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

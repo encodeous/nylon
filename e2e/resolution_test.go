@@ -52,8 +52,8 @@ _nylon._udp.srv.example.com. 0 IN SRV 10 10 57175 node2.example.com.
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")},
 				},
 				// Node 1's endpoint is a hostname
-				Endpoints: []*state.DynamicEndpoint{
-					state.NewDynamicEndpoint("example.com"),
+				Endpoints: []string{
+					"example.com",
 				},
 			},
 			{
@@ -63,8 +63,8 @@ _nylon._udp.srv.example.com. 0 IN SRV 10 10 57175 node2.example.com.
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
 				},
 				// Node 2's endpoint is an SRV record
-				Endpoints: []*state.DynamicEndpoint{
-					state.NewDynamicEndpoint("srv.example.com"),
+				Endpoints: []string{
+					"srv.example.com",
 				},
 			},
 		},
@@ -164,8 +164,8 @@ node2.example.com. 0 IN A %s
 					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
 				},
 				// Node 2's endpoint is a hostname
-				Endpoints: []*state.DynamicEndpoint{
-					state.NewDynamicEndpoint("node2.example.com"),
+				Endpoints: []string{
+					"node2.example.com",
 				},
 			},
 		},

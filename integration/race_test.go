@@ -59,18 +59,6 @@ func TestRapidToggleConfig(t *testing.T) {
 
 	a := vh.Nylons[vh.IndexOf("a")].Load()
 
-	// Break shared *DynamicEndpoint pointers from startup.
-	{
-		done := make(chan struct{})
-		a.Dispatch(func() error {
-			_, nc := a.CentralCfg.Clone()
-			a.CentralCfg = *nc
-			close(done)
-			return nil
-		})
-		<-done
-	}
-
 	// Send packets every 10ms to trigger ForwardTable.Lookup via TC filter.
 	stop := make(chan struct{})
 	go func() {

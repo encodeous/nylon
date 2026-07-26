@@ -58,7 +58,12 @@ func readCentralConfig(centralPath, nodePath string, tunables *state.RouterTunab
 			return nil, fmt.Errorf("central.yaml not found and node.yaml has no dist config")
 		}
 
-		cfg, err := FetchConfig(nodeCfg.Dist.Url, nodeCfg.Dist.Key, tunables.MaxConfigSize)
+		cfg, err := fetchConfig(
+			nodeCfg.Dist.Url,
+			nodeCfg.Dist.Key,
+			tunables.MaxConfigSize,
+			state.NewDNSResolver(nodeCfg.DnsResolvers),
+		)
 		if err != nil {
 			return nil, err
 		}

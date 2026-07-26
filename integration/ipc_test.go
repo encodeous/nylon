@@ -159,7 +159,7 @@ func TestIPCReloadConfig(t *testing.T) {
 	case resp := <-done:
 		assert.True(t, resp.Ok)
 		r := resp.GetReload()
-		assert.Contains(t, []protocol.ReloadResult{protocol.ReloadResult_APPLIED}, r.Result)
+		assert.Equal(t, protocol.ReloadResult_NOOP, r.Result)
 	case err := <-errs:
 		t.Fatal(err)
 	case <-time.After(10 * time.Second):
