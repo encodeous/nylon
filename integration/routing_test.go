@@ -69,6 +69,62 @@ func TestInProcessRouting(t *testing.T) {
 	vh.Stop()
 }
 
+func TestInProcessRoutingThroughTUNLessRelay(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	vh := &VirtualHarness{}
+	vh.UntrackedRouting = true
+	a1 := "192.168.1.1:1234"
+	vh.NewNode("a", "10.0.0.1/32")
+	b1 := "192.168.1.2:1234"
+	vh.NewNode("b", "10.0.0.2/32")
+	vh.Local[1].NoTun = true
+	c1 := "192.168.1.3:1234"
+	vh.NewNode("c", "10.0.0.3/32")
+	vh.Central.Graph = []string{
+		"a, b",
+		"b, c",
+	}
+	vh.Endpoints = map[string]state.NodeId{
+		a1: "a",
+		b1: "b",
+		c1: "c",
+	}
+	vh.AddLink(a1, b1)
+	vh.AddLink(b1, a1)
+	vh.AddLink(b1, c1)
+	vh.AddLink(c1, b1)
+
+	errs := vh.Start()
+	defer vh.Stop()
+
+	received := make(chan struct{}, 1)
+	vh.Net.SelfHandler = func(node state.NodeId, src, dst netip.Addr, data []byte) bool {
+		if node == "c" && src.String() == "10.0.0.1" && dst.String() == "10.0.0.3" && data[0] == 222 {
+			received <- struct{}{}
+		}
+		return true
+	}
+
+	go func() {
+		for {
+			select {
+			case <-vh.Context.Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+				vh.Net.Send("a", "10.0.0.1", "10.0.0.3", []byte{222}, 64)
+			}
+		}
+	}()
+
+	select {
+	case <-received:
+	case <-time.After(10 * time.Second):
+		t.Error("timed out waiting for packet through TUN-less relay")
+	case err := <-errs:
+		t.Error(err)
+	}
+}
+
 func TestTTL(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	vh := &VirtualHarness{}
