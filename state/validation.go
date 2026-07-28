@@ -32,6 +32,9 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 	if node.Key == [32]byte{} {
 		return fmt.Errorf("private key must not be empty")
 	}
+	if node.NoTun && node.UseSystemRouting {
+		return fmt.Errorf("no_tun cannot be used with use_system_routing")
+	}
 	if node.InterfaceName != "" {
 		err = NameValidator(node.InterfaceName)
 		if err != nil {

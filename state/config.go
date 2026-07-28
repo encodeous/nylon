@@ -49,22 +49,23 @@ type CentralCfg struct {
 // LocalCfg represents local node-level configuration
 type LocalCfg struct {
 	// Node Private Key
-	Key               NyPrivateKey
-	Id                NodeId                // unique id for this node
-	Port              uint16                // Address that the data plane can be accessed by
-	Dist              *LocalDistributionCfg `yaml:",omitempty"`                   // distribution configuration
-	UseSystemRouting  bool                  `yaml:"use_system_routing,omitempty"` // all packets from peers will come out of the TUN interface
-	NoNetConfigure    bool                  `yaml:"no_net_configure,omitempty"`   // do not configure system networking at all
-	DnsResolvers      []string              `yaml:"dns_resolvers,omitempty"`      // DNS resolvers used for endpoints and config repositories
-	InterfaceName     string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
-	LogPath           string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
+	Key              NyPrivateKey
+	Id               NodeId                // unique id for this node
+	Port             uint16                // Address that the data plane can be accessed by
+	Dist             *LocalDistributionCfg `yaml:",omitempty"`                   // distribution configuration
+	UseSystemRouting bool                  `yaml:"use_system_routing,omitempty"` // all packets from peers will come out of the TUN interface
+	NoTun            bool                  `yaml:"no_tun,omitempty"`             // run without creating a TUN interface (relay-only mode)
+	NoNetConfigure   bool                  `yaml:"no_net_configure,omitempty"`   // do not configure system networking at all
+	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // DNS resolvers used for endpoints and config repositories
+	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface
+	LogPath          string                `yaml:"log_path,omitempty"`           // if not empty, nylon will write to this file
 	ObservabilityAddr string                `yaml:"observability_addr,omitempty"` // HTTP address for metrics, health, readiness, and service discovery
-	UnexcludeIPs      []netip.Prefix        `yaml:"unexclude_ips,omitempty"`      // split tunnel, subtracts from centrally excluded ip ranges
-	ExcludeIPs        []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, adds to the centrally excluded ip ranges
-	PreUp             []string              `yaml:"pre_up,omitempty"`             // a list of commands executed in order before the nylon interface is brought up
-	PreDown           []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
-	PostUp            []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
-	PostDown          []string              `yaml:"post_down,omitempty"`          // a list of commands executed in order after the nylon interface is brought down
+	UnexcludeIPs     []netip.Prefix        `yaml:"unexclude_ips,omitempty"`      // split tunnel, subtracts from centrally excluded ip ranges
+	ExcludeIPs       []netip.Prefix        `yaml:"exclude_ips,omitempty"`        // split tunnel, adds to the centrally excluded ip ranges
+	PreUp            []string              `yaml:"pre_up,omitempty"`             // a list of commands executed in order before the nylon interface is brought up
+	PreDown          []string              `yaml:"pre_down,omitempty"`           // a list of commands executed in order before the nylon interface is brought down
+	PostUp           []string              `yaml:"post_up,omitempty"`            // a list of commands executed in order after the nylon interface is brought up
+	PostDown         []string              `yaml:"post_down,omitempty"`          // a list of commands executed in order after the nylon interface is brought down
 }
 
 func (c *CentralCfg) Clone() (error, *CentralCfg) {

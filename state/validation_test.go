@@ -55,6 +55,19 @@ func TestNodeConfigValidator_DnsResolver(t *testing.T) {
 	}))
 }
 
+func TestNodeConfigValidator_TunlessMode(t *testing.T) {
+	base := LocalCfg{
+		Id:    "relay",
+		Port:  57175,
+		Key:   [32]byte{1},
+		NoTun: true,
+	}
+	assert.NoError(t, NodeConfigValidator(nil, &base))
+
+	base.UseSystemRouting = true
+	assert.ErrorContains(t, NodeConfigValidator(nil, &base), "no_tun cannot be used with use_system_routing")
+}
+
 func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
 	cfg := &CentralCfg{
 		Routers: []RouterCfg{

@@ -28,7 +28,12 @@ func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, rea
 	itfName := "nylon-vn"
 
 	bind := vn.Bind(n.LocalCfg.Id)
-	tdev := vn.Tun(n.LocalCfg.Id)
+	var tdev tun.Device
+	if n.NoTun {
+		tdev = tun.NewDummyDevice(itfName)
+	} else {
+		tdev = vn.Tun(n.LocalCfg.Id)
+	}
 
 	wgLog := n.Log.With("module", log.ScopePolyamide)
 
@@ -47,7 +52,11 @@ func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, rea
 		},
 	})
 
-	n.Log.Info("Created WireGuard interface", "name", itfName)
+	if n.NoTun {
+		n.Log.Info("Created userspace-only WireGuard device", "name", itfName)
+	} else {
+		n.Log.Info("Created WireGuard interface", "name", itfName)
+	}
 	return dev, tdev, itfName, nil
 }
 
