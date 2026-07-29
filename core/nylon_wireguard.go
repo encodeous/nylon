@@ -67,7 +67,7 @@ listen_port=%d
 		}
 	}
 
-	if !n.NoNetConfigure {
+	if !n.NoNetConfigure && !n.NoTun {
 		for _, addr := range n.GetRouter(n.LocalCfg.Id).Addresses {
 			err := ConfigureAlias(n.Log, itfName, addr)
 			if err != nil {
@@ -235,7 +235,7 @@ func (n *Nylon) syncWireGuardEndpoints() error {
 }
 
 func (n *Nylon) SyncSystemState() error {
-	if n.NoNetConfigure {
+	if n.NoNetConfigure || n.NoTun {
 		return nil
 	}
 	return errors.Join(n.syncAliases(), n.syncSystemRoutes())

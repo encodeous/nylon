@@ -4,6 +4,7 @@ port: 57175 # Default: 57175 - UDP port that Nylon listens on
 
 # the following are optional
 use_system_routing: false # Default: false - all packets from peers will come out of the TUN interface
+no_tun: false # Default: false - run as a userspace-only relay without creating a TUN interface
 no_net_configure: false # Default: false - do not configure system networking at all
 log_path: "" # Default: "" - If set, Nylon will log to this file
 interface_name: "" # Default: "" - If set, Nylon will use this interface name instead of the default "nylon" or utunx on macOS
