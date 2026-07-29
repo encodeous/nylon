@@ -8,6 +8,7 @@ no_net_configure: false # Default: false - do not configure system networking at
 log_path: "" # Default: "" - If set, Nylon will log to this file
 interface_name: "" # Default: "" - If set, Nylon will use this interface name instead of the default "nylon" or utunx on macOS
 dns_resolvers: [] # Default: [] - If set (e.g ["1.1.1.1:53"]), nylon will use these DNS resolvers for its own queries
+observability_addr: "" # e.g. "0.0.0.0:9090" - enables /metrics, /healthz, /readyz, and /discovery
 dist: # Optional: If set, Nylon will bootstrap central.yaml from this URL if it does not exist already
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
