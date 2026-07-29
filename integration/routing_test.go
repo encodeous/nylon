@@ -77,7 +77,7 @@ func TestInProcessRoutingThroughTUNLessRelay(t *testing.T) {
 	vh.NewNode("a", "10.0.0.1/32")
 	b1 := "192.168.1.2:1234"
 	vh.NewNode("b", "10.0.0.2/32")
-	vh.Local[1].NoTun = true
+	vh.Local[vh.IndexOf("b")].NoTun = true
 	c1 := "192.168.1.3:1234"
 	vh.NewNode("c", "10.0.0.3/32")
 	vh.Central.Graph = []string{
