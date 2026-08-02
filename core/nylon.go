@@ -58,10 +58,11 @@ type Nylon struct {
 	ConfigPath      string
 
 	// resources
-	Tun       tun.Device
-	wgUapi    net.Listener
-	Interface string
-	Device    *device.Device
+	Tun           tun.Device
+	wgUapi        net.Listener
+	Interface     string
+	Device        *device.Device
+	observability *observabilityServer
 
 	// only used for debugging & tests
 	AuxConfig map[string]any
@@ -252,6 +253,10 @@ func (n *Nylon) Init() error {
 func (n *Nylon) Start() error {
 	n.Log.Info("init modules complete")
 
+	if err := n.startObservability(); err != nil {
+		return err
+	}
+
 	n.Log.Info("Nylon has been initialized. To gracefully exit, send SIGINT or Ctrl+C.")
 
 	c := make(chan os.Signal, 1)
@@ -322,6 +327,9 @@ endLoop:
 }
 
 func (n *Nylon) Cleanup() error {
+	if n.observability != nil {
+		n.observability.close()
+	}
 	n.PingBuf.Stop()
 	for _, health := range n.prefixHealth {
 		health.monitor.Stop()
