@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"regexp"
@@ -35,6 +36,11 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 		err = NameValidator(node.InterfaceName)
 		if err != nil {
 			return fmt.Errorf("interface name is invalid: %v", err)
+		}
+	}
+	if node.ObservabilityAddr != "" {
+		if _, _, err := net.SplitHostPort(node.ObservabilityAddr); err != nil {
+			return fmt.Errorf("observability address must be a valid host:port: %v", err)
 		}
 	}
 	if node.Dist != nil {
