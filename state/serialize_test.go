@@ -38,3 +38,11 @@ port: abcd
 	err := yaml.Unmarshal([]byte(x1), &y1)
 	assert.ErrorContains(t, err, "cannot unmarshal string")
 }
+
+func TestDeserializeRejectsWrongKeyLength(t *testing.T) {
+	var privateKey NyPrivateKey
+	assert.ErrorContains(t, privateKey.UnmarshalText([]byte("c2hvcnQ=")), "must decode to 32 bytes")
+
+	var publicKey NyPublicKey
+	assert.ErrorContains(t, publicKey.UnmarshalText([]byte("c2hvcnQ=")), "must decode to 32 bytes")
+}
