@@ -16,13 +16,18 @@ import (
 func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
 	itfName := n.InterfaceName // attempt to name the interface
 
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && !n.NoTun {
 		itfName = "utun"
 	}
 
-	tdev, err := tun.CreateTUN(itfName, device.DefaultMTU)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
+	var tdev tun.Device
+	if n.NoTun {
+		tdev = tun.NewDummyDevice(itfName)
+	} else {
+		tdev, err = tun.CreateTUN(itfName, device.DefaultMTU)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
+		}
 	}
 	realInterfaceName, err := tdev.Name()
 	if err == nil {
@@ -65,7 +70,11 @@ func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, rea
 		}()
 	}
 
-	n.Log.Info("Created WireGuard interface", "name", itfName)
+	if n.NoTun {
+		n.Log.Info("Created userspace-only WireGuard device", "name", itfName)
+	} else {
+		n.Log.Info("Created WireGuard interface", "name", itfName)
+	}
 	return dev, tdev, itfName, nil
 }
 
