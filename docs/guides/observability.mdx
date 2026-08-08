@@ -1,0 +1,101 @@
+---
+title: Observability
+description: Monitor nylon with Prometheus metrics, health checks, and service discovery.
+sidebar:
+  order: 5
+---
+
+Nylon can expose an HTTP server for Prometheus metrics, health checks, and service discovery.
+
+## Enable the server
+
+Set `observability_addr` in each node's `node.yaml`:
+
+```yaml title="node.yaml"
+observability_addr: "0.0.0.0:9090"
+```
+
+Restart nylon after changing the node configuration. You can then check the local node:
+
+```bash
+curl http://127.0.0.1:9090/healthz
+curl http://127.0.0.1:9090/readyz
+curl http://127.0.0.1:9090/metrics
+```
+
+:::caution
+The observability server does not provide authentication or TLS. Bind it to a trusted interface, or protect it with a firewall or authenticated reverse proxy. Avoid exposing it directly to the internet.
+:::
+
+## Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/healthz` | Returns `200 OK` while the daemon is running and `503 Service Unavailable` while it is shutting down. |
+| `/readyz` | Returns `200 OK` when nylon's internal event loop responds, or `503 Service Unavailable` if it cannot respond within one second. It does not check whether every peer is reachable. |
+| `/metrics` | Returns metrics in the Prometheus text exposition format. Returns `503 Service Unavailable` if nylon cannot collect a status snapshot within one second. |
+| `/discovery` | Returns Prometheus HTTP service-discovery targets for the addresses in `central.yaml`. |
+
+## Configure Prometheus
+
+For a single node, add a static scrape target:
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: nylon
+    static_configs:
+      - targets:
+          - "10.0.0.1:9090"
+```
+
+For a mesh, Prometheus can discover the node addresses from any nylon observability server:
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: nylon
+    http_sd_configs:
+      - url: "http://10.0.0.1:9090/discovery"
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [nylon_node_type]
+        regex: passive
+        action: drop
+```
+
+The discovery response uses every node address from `central.yaml`. Each target has a `nylon_node` label containing the node ID and a `nylon_node_type` label set to either `router` or `passive`. The example drops passive targets because they do not run the nylon daemon.
+
+Configure the same observability port on every router, and make sure Prometheus can reach their nylon addresses on that port.
+
+## Metrics
+
+All metric names start with `nylon_`.
+
+| Metric | Type | Labels | Description |
+| --- | --- | --- | --- |
+| `nylon_up` | Gauge | — | `1` when nylon can produce a metrics snapshot. |
+| `nylon_config_timestamp_seconds` | Gauge | — | Unix timestamp of the active central configuration. |
+| `nylon_neighbours` | Gauge | — | Number of configured neighbours. |
+| `nylon_active_endpoints` | Gauge | — | Number of active peer endpoints. |
+| `nylon_selected_routes` | Gauge | — | Number of selected Babel routes. |
+| `nylon_advertised_prefixes` | Gauge | — | Number of locally advertised prefixes. |
+| `nylon_wireguard_transmit_bytes_total` | Counter | — | WireGuard bytes transmitted by this node. |
+| `nylon_wireguard_receive_bytes_total` | Counter | — | WireGuard bytes received by this node. |
+| `nylon_wireguard_peer_transmit_bytes_total` | Counter | `peer` | WireGuard bytes transmitted to a peer. |
+| `nylon_wireguard_peer_receive_bytes_total` | Counter | `peer` | WireGuard bytes received from a peer. |
+| `nylon_wireguard_peer_latest_handshake_seconds` | Gauge | `peer` | Unix time of the peer's latest WireGuard handshake, or `0` before the first handshake. |
+| `nylon_endpoint_active` | Gauge | `peer`, `endpoint` | `1` when the endpoint is active, otherwise `0`. |
+| `nylon_endpoint_metric` | Gauge | `peer`, `endpoint` | Current Babel endpoint metric. |
+| `nylon_endpoint_rtt_seconds` | Gauge | `peer`, `endpoint` | Filtered endpoint round-trip time in seconds. |
+| `nylon_route_metric` | Gauge | `prefix`, `router`, `next_hop` | Metric of a selected Babel route. |
+
+For example, alert when a node cannot be scraped or when a peer has not completed a handshake in the last five minutes:
+
+```text
+up{job="nylon"} == 0
+```
+
+```text
+time() - nylon_wireguard_peer_latest_handshake_seconds > 300
+```
+
+The handshake metric is `0` before the first successful handshake, so this expression also selects peers that have never connected. When using it in an alerting rule, add `for: 5m` to avoid firing while nylon starts and establishes its initial peer connections.
