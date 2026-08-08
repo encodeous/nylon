@@ -33,17 +33,28 @@ func TestObservabilityHealth(t *testing.T) {
 func TestObservabilityDiscovery(t *testing.T) {
 	n := &Nylon{ConfigState: state.ConfigState{
 		LocalCfg: state.LocalCfg{ObservabilityAddr: "0.0.0.0:9090"},
-		CentralCfg: state.CentralCfg{Routers: []state.RouterCfg{{
-			NodeCfg: state.NodeCfg{
-				Id:        "alice",
-				Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("fd00::1")},
-			},
-		}}},
+		CentralCfg: state.CentralCfg{
+			Routers: []state.RouterCfg{{
+				NodeCfg: state.NodeCfg{
+					Id:        "alice",
+					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("fd00::1")},
+				},
+			}},
+			Clients: []state.ClientCfg{{
+				NodeCfg: state.NodeCfg{
+					Id:        "phone",
+					Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.2")},
+				},
+			}},
+		},
 	}}
 	rec := httptest.NewRecorder()
 	n.handleDiscovery(rec, httptest.NewRequest(http.MethodGet, "/discovery", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.JSONEq(t, `[{"targets":["10.0.0.1:9090","[fd00::1]:9090"],"labels":{"nylon_node":"alice"}}]`, rec.Body.String())
+	require.JSONEq(t, `[
+		{"targets":["10.0.0.1:9090","[fd00::1]:9090"],"labels":{"nylon_node":"alice","nylon_node_type":"router"}},
+		{"targets":["10.0.0.2:9090"],"labels":{"nylon_node":"phone","nylon_node_type":"passive"}}
+	]`, rec.Body.String())
 }
 
 func TestPrometheusMetrics(t *testing.T) {

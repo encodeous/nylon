@@ -144,9 +144,16 @@ func (n *Nylon) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 			targets = append(targets, net.JoinHostPort(addr.String(), port))
 		}
 		if len(targets) != 0 {
+			nodeType := "router"
+			if n.CentralCfg.IsClient(node.Id) {
+				nodeType = "passive"
+			}
 			groups = append(groups, discoveryGroup{
 				Targets: targets,
-				Labels:  map[string]string{"nylon_node": string(node.Id)},
+				Labels: map[string]string{
+					"nylon_node":      string(node.Id),
+					"nylon_node_type": nodeType,
+				},
 			})
 		}
 	}
