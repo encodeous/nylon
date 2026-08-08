@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
@@ -47,9 +48,18 @@ func TestObservabilityDiscovery(t *testing.T) {
 
 func TestPrometheusMetrics(t *testing.T) {
 	status := &protocol.StatusResponse{
-		Node: &protocol.NodeStatus{Stats: &protocol.NodeStats{TxBytes: 12}},
+		Node: &protocol.NodeStatus{
+			ConfigTimestamp: 1731117600 * int64(time.Second),
+			Stats:           &protocol.NodeStats{TxBytes: 12},
+		},
 		Neighbours: []*protocol.NeighbourInfo{
-			{PeerId: "bob", Wireguard: &protocol.WireGuardPeerStats{TxBytes: 7}},
+			{
+				PeerId: "bob",
+				Wireguard: &protocol.WireGuardPeerStats{
+					TxBytes:             7,
+					LatestHandshakeUnix: 1786226710556904600,
+				},
+			},
 			{PeerId: "eve", Wireguard: &protocol.WireGuardPeerStats{TxBytes: 5}},
 		},
 	}
@@ -57,6 +67,9 @@ func TestPrometheusMetrics(t *testing.T) {
 	writePrometheusMetrics(&buf, status)
 	output := buf.String()
 	require.Contains(t, output, "# TYPE nylon_wireguard_transmit_bytes_total counter")
+	require.Contains(t, output, "nylon_config_timestamp_seconds 1731117600\n")
 	require.Contains(t, output, `nylon_wireguard_peer_transmit_bytes_total{peer="bob"} 7`)
+	require.Contains(t, output, `nylon_wireguard_peer_latest_handshake_seconds{peer="bob"} 1786226710`)
+	require.NotContains(t, output, `nylon_wireguard_peer_latest_handshake_seconds{peer="bob"} 1.786`)
 	require.Equal(t, 1, strings.Count(output, "# HELP nylon_wireguard_peer_transmit_bytes_total "))
 }

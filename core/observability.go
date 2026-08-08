@@ -159,7 +159,7 @@ func writePrometheusMetrics(w io.Writer, status *protocol.StatusResponse) {
 	node := status.GetNode()
 	stats := node.GetStats()
 	metrics.metric("nylon_up", "Whether the nylon daemon is ready.", "gauge", nil, 1)
-	metrics.metric("nylon_config_timestamp_seconds", "Unix timestamp of the active central configuration.", "gauge", nil, float64(node.ConfigTimestamp)/float64(time.Second))
+	metrics.metric("nylon_config_timestamp_seconds", "Unix timestamp of the active central configuration.", "gauge", nil, float64(node.ConfigTimestamp/int64(time.Second)))
 	metrics.metric("nylon_neighbours", "Number of configured neighbours.", "gauge", nil, float64(stats.NeighbourCount))
 	metrics.metric("nylon_active_endpoints", "Number of active peer endpoints.", "gauge", nil, float64(stats.ActiveEndpointCount))
 	metrics.metric("nylon_selected_routes", "Number of selected Babel routes.", "gauge", nil, float64(stats.SelectedRouteCount))
@@ -174,7 +174,7 @@ func writePrometheusMetrics(w io.Writer, status *protocol.StatusResponse) {
 		metrics.metric("nylon_wireguard_peer_receive_bytes_total", "WireGuard bytes received from a peer.", "counter", labels, float64(wg.RxBytes))
 		handshake := float64(0)
 		if wg.LatestHandshakeUnix > 0 {
-			handshake = float64(wg.LatestHandshakeUnix) / float64(time.Second)
+			handshake = float64(wg.LatestHandshakeUnix / int64(time.Second))
 		}
 		metrics.metric("nylon_wireguard_peer_latest_handshake_seconds", "Unix time of the latest WireGuard handshake.", "gauge", labels, handshake)
 		for _, endpoint := range neigh.Endpoints {
@@ -225,5 +225,5 @@ func (m *metricWriter) metric(name, help, metricType string, labels map[string]s
 		}
 		_, _ = io.WriteString(m.w, "}")
 	}
-	_, _ = fmt.Fprintf(m.w, " %g\n", value)
+	_, _ = fmt.Fprintf(m.w, " %s\n", strconv.FormatFloat(value, 'f', -1, 64))
 }
