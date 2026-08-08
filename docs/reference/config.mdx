@@ -17,7 +17,7 @@ port: 57175 # UDP port nylon listens on
 # --- Optional fields below ---
 
 use_system_routing: false # if true, all peer packets exit via the TUN interface
-no_tun: false # if true, run as a userspace-only relay without creating a TUN interface (requires use_system_routing: false)
+no_tun: false # if true, run as a userspace-only relay without a TUN (requires use_system_routing: false and no addresses/prefixes for this node in central.yaml)
 no_net_configure: false # if true, nylon won't touch system routes or interfaces
 log_path: "" # write logs to this file (empty = stderr only)
 interface_name: "" # override the interface name (default: "nylon", or utunX on macOS)

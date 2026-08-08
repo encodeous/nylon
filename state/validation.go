@@ -66,8 +66,14 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 		}
 	}
 	// check that node is in central config
-	if central != nil && !central.IsNode(node.Id) {
-		return fmt.Errorf("node %s is not in central config", node.Id)
+	if central != nil {
+		centralNode := central.TryGetNode(node.Id)
+		if centralNode == nil {
+			return fmt.Errorf("node %s is not in central config", node.Id)
+		}
+		if node.NoTun && (len(centralNode.Addresses) != 0 || len(centralNode.Prefixes) != 0) {
+			return fmt.Errorf("no_tun node %s cannot advertise addresses or prefixes", node.Id)
+		}
 	}
 	return nil
 }

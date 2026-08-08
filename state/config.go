@@ -54,7 +54,7 @@ type LocalCfg struct {
 	Port             uint16                // Address that the data plane can be accessed by
 	Dist             *LocalDistributionCfg `yaml:",omitempty"`                   // distribution configuration
 	UseSystemRouting bool                  `yaml:"use_system_routing,omitempty"` // all packets from peers will come out of the TUN interface
-	NoTun            bool                  `yaml:"no_tun,omitempty"`             // run without creating a TUN interface (relay-only mode)
+	NoTun            bool                  `yaml:"no_tun,omitempty"`             // relay-only mode; requires no advertised addresses or prefixes
 	NoNetConfigure   bool                  `yaml:"no_net_configure,omitempty"`   // do not configure system networking at all
 	DnsResolvers     []string              `yaml:"dns_resolvers,omitempty"`      // DNS resolvers used for endpoints and config repositories
 	InterfaceName    string                `yaml:"interface_name,omitempty"`     // the name of the nylon interface

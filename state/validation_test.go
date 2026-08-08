@@ -66,6 +66,23 @@ func TestNodeConfigValidator_TunlessMode(t *testing.T) {
 
 	base.UseSystemRouting = true
 	assert.ErrorContains(t, NodeConfigValidator(nil, &base), "no_tun cannot be used with use_system_routing")
+
+	base.UseSystemRouting = false
+	central := CentralCfg{
+		Routers: []RouterCfg{{
+			NodeCfg: NodeCfg{Id: base.Id},
+		}},
+	}
+	assert.NoError(t, NodeConfigValidator(&central, &base))
+
+	central.Routers[0].Addresses = []netip.Addr{netip.MustParseAddr("10.0.0.1")}
+	assert.ErrorContains(t, NodeConfigValidator(&central, &base), "cannot advertise addresses or prefixes")
+
+	central.Routers[0].Addresses = nil
+	central.Routers[0].Prefixes = []PrefixHealthWrapper{{
+		PrefixHealth: &StaticPrefixHealth{Prefix: netip.MustParsePrefix("192.0.2.0/24")},
+	}}
+	assert.ErrorContains(t, NodeConfigValidator(&central, &base), "cannot advertise addresses or prefixes")
 }
 
 func TestCentralConfigValidator_OverlappingPrefix(t *testing.T) {
