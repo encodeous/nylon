@@ -30,17 +30,18 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
    On each node, generate `node.yaml` and a WireGuard keypair:
 
    ```bash
-   nylon init --id node-1
+   nylon init
    ```
 
-   This writes the private key to a user-readable-only config file and prints
-   the public key for the central configuration. Give each node a unique ID.
-   Use `nylon init --help` to see optional network, DNS, distribution, and hook
-   settings.
+   The interactive setup asks for a unique node ID and other common settings.
+   It writes the private key to a user-readable-only config file and prints the
+   public key for the central configuration. Advanced network, DNS,
+   distribution, and hook settings are available from the same setup flow.
 
    :::tip
-   Pass an existing WireGuard private key with `--key`, or use `nylon key` when
-   you only need to generate a keypair.
+   For automated setup, pass the node ID and any other settings as flags, such
+   as `nylon init --id node-1`. Pass an existing WireGuard private key with
+   `--key`, or use `nylon key` when you only need to generate a keypair.
    :::
 
    The generated file contains:
