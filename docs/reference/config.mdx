@@ -54,7 +54,9 @@ dist:
   # The distribution key is used to verify and decrypt sealed bundles.
   # Despite being called "public", treat it as a shared secret. It can decrypt your topology.
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
-  # Nylon polls these URLs every 10 seconds for config updates
+  # How often Nylon polls for config updates (optional, default: 10s)
+  poll_interval: 30s
+  # HTTP sources use cache freshness and conditional requests when supported
   repos:
     - file:central.nybundle          # local file
     - https://static.example.com/network1.nybundle # remote URL (HTTP GET)

@@ -56,6 +56,8 @@ type Nylon struct {
 	DispatchChannel chan func() error
 	Log             *slog.Logger
 	ConfigPath      string
+	configFetcher   *configFetcher
+	configPollDelay atomic.Int64
 
 	// resources
 	Tun           tun.Device
@@ -156,6 +158,8 @@ func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, c
 		DNSResolver:      dnsResolver,
 		EndpointResolver: state.NewEndpointResolver(dnsResolver),
 	}
+	n.configFetcher = newConfigFetcher(dnsResolver)
+	n.updateConfigPollDelay(&n.CentralCfg)
 
 	n.Log.Info("init modules")
 
@@ -245,7 +249,10 @@ func (n *Nylon) Init() error {
 		for _, repo := range n.CentralCfg.Dist.Repos {
 			n.Log.Info("config source", "repo", repo)
 		}
-		n.RepeatTask(func() error { return checkForConfigUpdates(n) }, n.CentralUpdateDelay)
+		n.RepeatTaskDynamic(
+			func() error { return checkForConfigUpdates(n) },
+			func() time.Duration { return time.Duration(n.configPollDelay.Load()) },
+		)
 	}
 	return nil
 }
@@ -329,6 +336,9 @@ endLoop:
 func (n *Nylon) Cleanup() error {
 	if n.observability != nil {
 		n.observability.close()
+	}
+	if n.configFetcher != nil {
+		n.configFetcher.client.CloseIdleConnections()
 	}
 	n.PingBuf.Stop()
 	for _, health := range n.prefixHealth {

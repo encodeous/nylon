@@ -38,6 +38,7 @@ func (n *Nylon) ApplyCentralConfig(cfg *state.CentralCfg) (ApplyResult, error) {
 	}
 	n.reconcileAdvertisedPrefixes(candidate)
 	n.CentralCfg = *candidate
+	n.updateConfigPollDelay(candidate)
 
 	// From here on the candidate is the accepted desired state. Failures while
 	// converging WireGuard or OS state are retryable and must not describe the

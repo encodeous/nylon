@@ -2,6 +2,8 @@ dist:
   # This is the central distribution public key. Although it is a "public" key, it is also used as a shared secret within the network, so that no outsiders can decrypt the distributed configuration.
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
   # Nylon will frequently check these repos/files for updates
+  # How often Nylon checks for updates. Defaults to 10s.
+  poll_interval: 10s
   repos:
     - file:central.nybundle # use local file system
     - https://static.example.com/network1.nybundle # GET from a server

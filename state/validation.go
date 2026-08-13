@@ -144,6 +144,9 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 	}
 
 	if cfg.Dist != nil {
+		if cfg.Dist.PollInterval != nil && *cfg.Dist.PollInterval <= 0 {
+			return fmt.Errorf("distribution poll_interval must be greater than 0")
+		}
 		// validate repos
 		for _, repo := range cfg.Dist.Repos {
 			_, err := url.Parse(repo)

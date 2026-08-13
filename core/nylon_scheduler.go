@@ -69,3 +69,26 @@ func (n *Nylon) repeatedTask(fun func() error, delay time.Duration) {
 func (n *Nylon) RepeatTask(fun func() error, delay time.Duration) {
 	go n.repeatedTask(fun, delay)
 }
+
+func (n *Nylon) repeatedTaskDynamic(fun func() error, delay func() time.Duration) {
+	// run immediately
+	n.Dispatch(fun)
+	for n.Context.Err() == nil {
+		timer := time.NewTimer(delay())
+		select {
+		case <-n.Context.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+			n.Dispatch(fun)
+		}
+	}
+}
+
+// RepeatTaskDynamic repeats fun using the latest delay returned after each run.
+// It is useful for schedules controlled by live-reloadable configuration.
+func (n *Nylon) RepeatTaskDynamic(fun func() error, delay func() time.Duration) {
+	go n.repeatedTaskDynamic(fun, delay)
+}

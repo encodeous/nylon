@@ -65,10 +65,15 @@ Despite being called a "public" key, the distribution key also acts as the share
    ```yaml title="central.yaml"
    dist:
      key: "<contents-of-dist.pub>"
+     poll_interval: 30s # optional; defaults to 10s
      repos:
        - "https://your-server.com/central.nybundle"
    ```
 
-   Nylon polls for updates every 10 seconds and applies them.
+   Nylon polls for updates every 10 seconds by default and applies them. Set
+   `poll_interval` to any positive duration such as `30s` or `2m` to change
+   that cadence. For HTTP repositories, Nylon reuses connections, honors
+   freshness headers, and uses `ETag` or `Last-Modified` validators to avoid
+   downloading an unchanged bundle.
 
 </Steps>
