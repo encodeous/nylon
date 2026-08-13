@@ -122,3 +122,16 @@ loop:
 		t.Fatalf("Expected 3 executions, got %d", count)
 	}
 }
+
+func TestSafeDynamicTaskDelay(t *testing.T) {
+	for _, delay := range []time.Duration{0, -time.Second} {
+		if got := safeDynamicTaskDelay(delay); got != dynamicTaskFallbackDelay {
+			t.Fatalf("safeDynamicTaskDelay(%s) = %s, want %s", delay, got, dynamicTaskFallbackDelay)
+		}
+	}
+
+	delay := 50 * time.Millisecond
+	if got := safeDynamicTaskDelay(delay); got != delay {
+		t.Fatalf("safeDynamicTaskDelay(%s) = %s", delay, got)
+	}
+}

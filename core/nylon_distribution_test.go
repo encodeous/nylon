@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -196,6 +198,16 @@ func TestConfigFetcherRejectsOversizedResponse(t *testing.T) {
 
 	fetcher := testConfigFetcher(handler)
 	_, err := fetcher.fetch(context.Background(), testConfigURL, key.Pubkey(), 4)
+	assert.ErrorContains(t, err, "config exceeds maximum size of 4 bytes")
+}
+
+func TestConfigFetcherRejectsOversizedFile(t *testing.T) {
+	_, key := testConfigBundle(t)
+	configPath := filepath.Join(t.TempDir(), "config.nybundle")
+	require.NoError(t, os.WriteFile(configPath, []byte("12345"), 0600))
+
+	fetcher := newConfigFetcher(state.NewDNSResolver(nil))
+	_, err := fetcher.fetch(context.Background(), "file:"+configPath, key.Pubkey(), 4)
 	assert.ErrorContains(t, err, "config exceeds maximum size of 4 bytes")
 }
 

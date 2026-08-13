@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const dynamicTaskFallbackDelay = time.Second
+
 func NewDispatchFuture[T any](n *Nylon, fun func() (T, error)) Future[T] {
 	future, complete := NewFuture[T]()
 	dispatch := func() error {
@@ -74,7 +76,7 @@ func (n *Nylon) repeatedTaskDynamic(fun func() error, delay func() time.Duration
 	// run immediately
 	n.Dispatch(fun)
 	for n.Context.Err() == nil {
-		timer := time.NewTimer(delay())
+		timer := time.NewTimer(safeDynamicTaskDelay(delay()))
 		select {
 		case <-n.Context.Done():
 			if !timer.Stop() {
@@ -85,6 +87,13 @@ func (n *Nylon) repeatedTaskDynamic(fun func() error, delay func() time.Duration
 			n.Dispatch(fun)
 		}
 	}
+}
+
+func safeDynamicTaskDelay(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return dynamicTaskFallbackDelay
+	}
+	return delay
 }
 
 // RepeatTaskDynamic repeats fun using the latest delay returned after each run.

@@ -107,6 +107,9 @@ func fetchConfig(repoStr string, key state.NyPublicKey, maxSize int64, resolver 
 }
 
 func (f *configFetcher) fetch(ctx context.Context, repoStr string, key state.NyPublicKey, maxSize int64) (configFetchResult, error) {
+	if maxSize <= 0 {
+		return configFetchResult{}, fmt.Errorf("maximum config size must be greater than 0")
+	}
 	repo, err := url.Parse(repoStr)
 	if err != nil {
 		return configFetchResult{}, fmt.Errorf("failed to parse repo URL %s: %w", repoStr, err)
@@ -118,7 +121,12 @@ func (f *configFetcher) fetch(ctx context.Context, repoStr string, key state.NyP
 		if filePath == "" {
 			filePath = repo.Path
 		}
-		body, err := os.ReadFile(filePath)
+		file, err := os.Open(filePath)
+		if err != nil {
+			return configFetchResult{}, fmt.Errorf("failed to read file %s: %w", filePath, err)
+		}
+		defer file.Close()
+		body, err := readLimitedConfig(file, maxSize)
 		if err != nil {
 			return configFetchResult{}, fmt.Errorf("failed to read file %s: %w", filePath, err)
 		}
@@ -132,10 +140,6 @@ func (f *configFetcher) fetch(ctx context.Context, repoStr string, key state.NyP
 }
 
 func (f *configFetcher) fetchHTTP(ctx context.Context, repo string, key state.NyPublicKey, maxSize int64) (configFetchResult, error) {
-	if maxSize <= 0 {
-		return configFetchResult{}, fmt.Errorf("maximum config size must be greater than 0")
-	}
-
 	entry := f.cacheEntry(repo, key)
 	if !entry.mu.TryLock() {
 		// A previous poll of this repository is still in flight. It will publish
