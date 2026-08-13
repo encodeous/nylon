@@ -35,8 +35,9 @@ type DistributionCfg struct {
 }
 
 type LocalDistributionCfg struct {
-	Key NyPublicKey
-	Url string
+	Key          NyPublicKey
+	Url          string
+	PollInterval *time.Duration `yaml:"poll_interval,omitempty"`
 }
 
 type CentralCfg struct {

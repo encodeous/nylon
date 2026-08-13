@@ -51,6 +51,9 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 		if err != nil {
 			return err
 		}
+		if node.Dist.PollInterval != nil && *node.Dist.PollInterval <= 0 {
+			return fmt.Errorf("distribution poll_interval must be greater than 0")
+		}
 	}
 	if len(node.DnsResolvers) != 0 {
 		for _, resolver := range node.DnsResolvers {

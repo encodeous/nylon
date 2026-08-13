@@ -209,3 +209,21 @@ func TestUpdateConfigPollDelay(t *testing.T) {
 	n.updateConfigPollDelay(&state.CentralCfg{Dist: &state.DistributionCfg{PollInterval: &interval}})
 	assert.Equal(t, interval, time.Duration(n.configPollDelay.Load()))
 }
+
+func TestNodePollIntervalOverridesCentralConfig(t *testing.T) {
+	tunables := state.DefaultRouterTunables()
+	centralInterval := 45 * time.Second
+	nodeInterval := 2 * time.Minute
+	n := &Nylon{
+		RouterTunables: tunables,
+		ConfigState: state.ConfigState{LocalCfg: state.LocalCfg{
+			Dist: &state.LocalDistributionCfg{PollInterval: &nodeInterval},
+		}},
+	}
+
+	n.updateConfigPollDelay(&state.CentralCfg{
+		Dist: &state.DistributionCfg{PollInterval: &centralInterval},
+	})
+
+	assert.Equal(t, nodeInterval, time.Duration(n.configPollDelay.Load()))
+}

@@ -28,6 +28,7 @@ observability_addr: "" # e.g. "0.0.0.0:9090"; enables /metrics, /healthz, /ready
 dist:
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY= # distribution public key
+  poll_interval: 2m # optional: override central.yaml's polling interval for this node
 
 # Split tunneling (per-node overrides)
 exclude_ips: # add to the central exclude list

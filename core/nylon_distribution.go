@@ -346,6 +346,9 @@ func (n *Nylon) updateConfigPollDelay(cfg *state.CentralCfg) {
 	if cfg != nil && cfg.Dist != nil && cfg.Dist.PollInterval != nil {
 		delay = *cfg.Dist.PollInterval
 	}
+	if n.LocalCfg.Dist != nil && n.LocalCfg.Dist.PollInterval != nil {
+		delay = *n.LocalCfg.Dist.PollInterval
+	}
 	n.configPollDelay.Store(int64(delay))
 }
 
