@@ -28,6 +28,7 @@ observability_addr: "" # e.g. "0.0.0.0:9090"; enables /metrics, /healthz, /ready
 dist:
   url: https://static.example.com/network1.nybundle
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY= # distribution public key
+  poll_interval: 2m # optional: override central.yaml's polling interval for this node
 
 # Split tunneling (per-node overrides)
 exclude_ips: # add to the central exclude list
@@ -54,7 +55,9 @@ dist:
   # The distribution key is used to verify and decrypt sealed bundles.
   # Despite being called "public", treat it as a shared secret. It can decrypt your topology.
   key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY=
-  # Nylon polls these URLs every 10 seconds for config updates
+  # How often Nylon polls for config updates (optional, default: 10s)
+  poll_interval: 30s
+  # HTTP sources use cache freshness and conditional requests when supported
   repos:
     - file:central.nybundle          # local file
     - https://static.example.com/network1.nybundle # remote URL (HTTP GET)
