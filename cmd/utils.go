@@ -58,6 +58,9 @@ var keyCmd = &cobra.Command{
 		}
 		fmt.Println(string(privKeyStr))
 		pubKeyStr, err := privKey.Pubkey().MarshalText()
+		if err != nil {
+			panic(err)
+		}
 		_, err = fmt.Fprintln(os.Stderr, string(pubKeyStr))
 		if err != nil {
 			panic(err)
