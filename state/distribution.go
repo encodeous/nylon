@@ -78,6 +78,9 @@ func BundleConfig(config string, rootKey NyPrivateKey) (string, error) {
 	cfg.Timestamp = time.Now().UnixNano()
 
 	plainText, err := yaml.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
 
 	bundle, err := SignBundle(plainText, rootKey)
 	if err != nil {

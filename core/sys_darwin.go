@@ -11,6 +11,9 @@ import (
 
 func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
 	fileUAPI, err := ipc.UAPIOpen(itfName)
+	if err != nil {
+		return nil, err
+	}
 
 	uapi, err := ipc.UAPIListen(itfName, fileUAPI)
 	if err != nil {
