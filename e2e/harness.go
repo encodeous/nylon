@@ -212,6 +212,23 @@ func (h *Harness) WaitForStatus(t *testing.T, nodeName string, check func(*proto
 	}
 }
 
+func (h *Harness) WaitForTCPListener(t *testing.T, nodeName string, port int) {
+	t.Helper()
+	deadline := time.Now().Add(WaitTimeout)
+	var stdout, stderr string
+	var err error
+	for {
+		stdout, stderr, err = h.Exec(nodeName, []string{"ss", "-H", "-ltn", "sport", "=", fmt.Sprintf(":%d", port)})
+		if err == nil && stdout != "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for TCP listener on node %s port %d: %v\nStdout: %s\nStderr: %s", nodeName, port, err, stdout, stderr)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func (h *Harness) ReadStatus(nodeName string) (*protocol.StatusResponse, error) {
 	stdout, _, err := h.Exec(nodeName, []string{"nylon", "status", "-i", "nylon0", "--json"})
 	if err != nil {
