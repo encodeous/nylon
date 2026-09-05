@@ -190,52 +190,43 @@ func (v *VirtualHarness) Start() chan error {
 	if v.LogLevel == nil {
 		v.LogLevel = new(slog.LevelDebug)
 	}
-	startDelay := 0 * time.Millisecond
-	for idx, rt := range v.Central.Routers {
-		sd := startDelay
-		go func() {
-			time.Sleep(sd)
-			labels := pprof.Labels("nylon node", string(rt.Id))
-			n, err := core.NewNylon(v.Central, v.Local[idx], *v.LogLevel, "", map[string]any{
-				"vnet": vn,
-			}, state.NylonOptions{DBG_log_wireguard: true}, v.Tunables)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			v.Nylons[idx].Store(n)
-			pprof.Do(context.Background(), labels, func(_ context.Context) {
-				cErr := n.Start()
-				if cErr != nil {
-					errChan <- cErr
-					return
-				}
-			})
-		}()
-		startDelay += time.Millisecond * 500 // add a tiny delay so they don't try to handshake at the exact same time
-	}
-	// wait for all routers to start
-	for {
-		started := true
-		for idx, _ := range v.Central.Routers {
-			if v.Nylons[idx].Load() == nil {
-				started = false
-				break
-			}
-		}
-		if started {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return errChan
-		case <-time.After(time.Millisecond * 50):
-		case err := <-errChan:
+	for idx := range v.Central.Routers {
+		n, err := core.NewNylon(v.Central, v.Local[idx], *v.LogLevel, "", map[string]any{
+			"vnet": vn,
+		}, state.NylonOptions{DBG_log_wireguard: true}, v.Tunables)
+		if err != nil {
 			errChan <- err
 			return errChan
 		}
+		v.Nylons[idx].Store(n)
 	}
 	v.Net.Ready()
+
+	startDelay := time.Duration(0)
+	for idx, rt := range v.Central.Routers {
+		sd := startDelay
+		n := v.Nylons[idx].Load()
+		go func() {
+			timer := time.NewTimer(sd)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+			}
+			labels := pprof.Labels("nylon node", string(rt.Id))
+			pprof.Do(context.Background(), labels, func(_ context.Context) {
+				if err := n.Start(); err != nil {
+					errChan <- err
+				}
+			})
+		}()
+		startDelay += 500 * time.Millisecond
+	}
 	return errChan
 }
 
