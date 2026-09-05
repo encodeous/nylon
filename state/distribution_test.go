@@ -1,9 +1,11 @@
 package state
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"encoding/base64"
+	"log/slog"
 	"net/netip"
 	"testing"
 	"time"
@@ -13,6 +15,27 @@ import (
 	"go.step.sm/crypto/x25519"
 	"golang.org/x/crypto/chacha20poly1305"
 )
+
+func TestBundleConfigWarnsWhenDistributionKeyDiffers(t *testing.T) {
+	signingKey := GenerateKey()
+	cfg := CentralCfg{
+		Dist: &DistributionCfg{
+			Key:   GenerateKey().Pubkey(),
+			Repos: []string{"https://example.com/bundle"},
+		},
+	}
+	txt, err := yaml.Marshal(cfg)
+	assert.NoError(t, err)
+
+	var logs bytes.Buffer
+	originalLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(originalLogger) })
+
+	_, err = BundleConfig(string(txt), signingKey)
+	assert.NoError(t, err)
+	assert.Contains(t, logs.String(), "bundled public key differs from the signing key")
+}
 
 func TestBundleUnbundle(t *testing.T) {
 	root := GenerateKey()
