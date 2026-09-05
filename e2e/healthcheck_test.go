@@ -117,6 +117,7 @@ func TestHealthcheckPing(t *testing.T) {
 	msg := "hello from node 3"
 	// listen on node 1
 	bg := h.ExecBackground("node1", []string{"nc", "-l", "8888"})
+	h.WaitForTCPListener(t, "node1", 8888)
 	// send on node 3
 	stdout, stderr, err = h.Exec("node3", []string{"bash", "-c", fmt.Sprintf("echo '%s' | nc -N 10.0.1.4 8888", msg)})
 	if err != nil {
