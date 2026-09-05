@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"runtime"
 	"slices"
 
 	"github.com/encodeous/nylon/polyamide/conn"
@@ -29,6 +28,9 @@ func (n *Nylon) initWireGuard() error {
 	n.Device = dev
 	n.Tun = tdev
 	n.Interface = itfName
+	if !n.NoTun && n.SystemRoutes == nil {
+		n.SystemRoutes = NewSystemRoutes(n.Log, n.Tun)
+	}
 
 	n.InstallTC()
 	n.Log.Info("installed nylon traffic control filter for polysock")
@@ -68,18 +70,12 @@ listen_port=%d
 	}
 
 	if !n.NoNetConfigure && !n.NoTun {
-		for _, addr := range n.GetRouter(n.LocalCfg.Id).Addresses {
-			err := ConfigureAlias(n.Log, itfName, addr)
-			if err != nil {
-				n.Log.Error("failed to configure alias", "err", err)
-			} else if !slices.Contains(n.AppliedSystem.Aliases, addr) {
-				n.AppliedSystem.Aliases = append(n.AppliedSystem.Aliases, addr)
-			}
-		}
-
 		err = InitInterface(n.Log, itfName)
 		if err != nil {
 			return err
+		}
+		if err := n.SyncSystemState(); err != nil {
+			n.Log.Warn("initial system networking reconciliation incomplete; will retry", "err", err)
 		}
 	}
 
@@ -103,17 +99,27 @@ listen_port=%d
 }
 
 func (n *Nylon) cleanupWireGuard() error {
-	// remove routes
-	for _, route := range n.AppliedSystem.Routes {
-		err := RemoveRoute(n.Log, n.Tun, n.Interface, route)
-		if err != nil {
-			n.Log.Error("failed to remove route", "err", err)
+	if !n.NoNetConfigure && !n.NoTun && n.SystemRoutes != nil {
+		if routes, err := n.SystemRoutes.InterfaceRoutes(n.Interface); err != nil {
+			n.Log.Error("failed to read routes during cleanup", "err", err)
+		} else {
+			for _, route := range routes {
+				if err := n.SystemRoutes.DeleteRoute(n.Interface, route); err != nil {
+					n.Log.Error("failed to remove route", "err", err)
+				}
+			}
 		}
-	}
-	for _, addr := range n.AppliedSystem.Aliases {
-		err := RemoveAlias(n.Log, n.Interface, addr)
-		if err != nil {
-			n.Log.Error("failed to remove alias", "err", err)
+		if addresses, err := n.SystemRoutes.InterfaceAddresses(n.Interface); err != nil {
+			n.Log.Error("failed to read addresses during cleanup", "err", err)
+		} else {
+			for _, address := range addresses {
+				if address.Addr().IsLinkLocalUnicast() {
+					continue
+				}
+				if err := n.SystemRoutes.DeleteAddress(n.Interface, address.Addr()); err != nil {
+					n.Log.Error("failed to remove alias", "err", err)
+				}
+			}
 		}
 	}
 	// run pre-down commands
@@ -243,47 +249,54 @@ func (n *Nylon) SyncSystemState() error {
 
 func (n *Nylon) syncAliases() error {
 	desired := n.GetRouter(n.LocalCfg.Id).Addresses
-	applied := slices.Clone(n.AppliedSystem.Aliases)
+	actualPrefixes, err := n.SystemRoutes.InterfaceAddresses(n.Interface)
+	if err != nil {
+		return fmt.Errorf("read interface addresses: %w", err)
+	}
+	actual := make([]netip.Addr, 0, len(actualPrefixes))
+	for _, prefix := range actualPrefixes {
+		actual = append(actual, prefix.Addr())
+	}
 	var syncErr error
 	// we must first add the new alias before removing the old ones, else the system might flush our routes
 	for _, newEntry := range desired {
-		if !slices.Contains(applied, newEntry) {
+		if !slices.Contains(actual, newEntry) {
 			n.Log.Debug("installing alias", "addr", newEntry.String())
-			err := ConfigureAlias(n.Log, n.Interface, newEntry)
+			err := n.SystemRoutes.AddAddress(n.Interface, newEntry)
 			if err != nil {
 				n.Log.Error("failed to configure alias", "err", err)
 				syncErr = errors.Join(syncErr, fmt.Errorf("install alias %s: %w", newEntry, err))
 				continue
 			}
-			applied = append(applied, newEntry)
+			actual = append(actual, newEntry)
 		}
 	}
-	hadAliases := len(applied) != 0
-	for _, oldEntry := range slices.Clone(applied) {
+	for _, oldEntry := range slices.Clone(actual) {
+		if oldEntry.IsLinkLocalUnicast() {
+			continue
+		}
 		if !slices.Contains(desired, oldEntry) {
 			n.Log.Debug("removing old alias", "addr", oldEntry.String())
-			err := RemoveAlias(n.Log, n.Interface, oldEntry)
+			err := n.SystemRoutes.DeleteAddress(n.Interface, oldEntry)
 			if err != nil {
 				n.Log.Error("failed to remove alias", "err", err)
 				syncErr = errors.Join(syncErr, fmt.Errorf("remove alias %s: %w", oldEntry, err))
 				continue
 			}
-			applied = slices.DeleteFunc(applied, func(addr netip.Addr) bool {
+			actual = slices.DeleteFunc(actual, func(addr netip.Addr) bool {
 				return addr == oldEntry
 			})
 		}
 	}
-	// special case for linux: if all aliases are removed, the kernel will also flush the routes
-	if hadAliases && len(applied) == 0 && runtime.GOOS == "linux" {
-		n.AppliedSystem.Routes = nil
-	}
-	n.AppliedSystem.Aliases = applied
 	return syncErr
 }
 
 func (n *Nylon) syncSystemRoutes() error {
 	newEntries := n.ComputeSysRouteTable()
-	applied := slices.Clone(n.AppliedSystem.Routes)
+	applied, err := n.SystemRoutes.InterfaceRoutes(n.Interface)
+	if err != nil {
+		return fmt.Errorf("read interface routes: %w", err)
+	}
 	var syncErr error
 	// Install new routes before removing old ones so a partial reconciliation
 	// preserves as much connectivity as possible.
@@ -291,7 +304,7 @@ func (n *Nylon) syncSystemRoutes() error {
 		if !slices.Contains(applied, newEntry) {
 			// install route
 			n.Log.Debug("installing new route", "prefix", newEntry.String())
-			err := ConfigureRoute(n.Log, n.Tun, n.Interface, newEntry)
+			err := n.SystemRoutes.AddRoute(n.Interface, newEntry)
 			if err != nil {
 				n.Log.Error("failed to configure route", "err", err)
 				syncErr = errors.Join(syncErr, fmt.Errorf("install route %s: %w", newEntry, err))
@@ -304,7 +317,7 @@ func (n *Nylon) syncSystemRoutes() error {
 		if !slices.Contains(newEntries, oldEntry) {
 			// uninstall route
 			n.Log.Debug("removing old route", "prefix", oldEntry.String())
-			err := RemoveRoute(n.Log, n.Tun, n.Interface, oldEntry)
+			err := n.SystemRoutes.DeleteRoute(n.Interface, oldEntry)
 			if err != nil {
 				n.Log.Error("failed to remove route", "err", err)
 				syncErr = errors.Join(syncErr, fmt.Errorf("remove route %s: %w", oldEntry, err))
@@ -315,6 +328,5 @@ func (n *Nylon) syncSystemRoutes() error {
 			})
 		}
 	}
-	n.AppliedSystem.Routes = applied
 	return syncErr
 }
