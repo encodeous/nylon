@@ -190,8 +190,9 @@ health.service.test. 0 IN A %s
 		},
 	}
 
-	// Configure Backup with Static check (Metric 1000)
-	backupMetric := uint32(1000)
+	// Keep the backup more expensive even with the initial one-second link
+	// metric, CI latency variation, and the 10% route-switch deadband.
+	backupMetric := state.DurationToMetric(10 * time.Second)
 	central.Routers[2].Prefixes = []state.PrefixHealthWrapper{
 		{
 			&state.StaticPrefixHealth{
@@ -229,7 +230,7 @@ health.service.test. 0 IN A %s
 
 	// A. Initial state: HTTP server is DOWN on primary.
 	// Primary health check should fail (Metric INF).
-	// Client should route to Backup (Metric 1000).
+	// Client should route to Backup.
 
 	t.Log("Step A: Waiting for routing to fallback (Primary DOWN)")
 	h.WaitForStatus(t, "client", func(status *protocol.StatusResponse) bool {
@@ -246,7 +247,16 @@ health.service.test. 0 IN A %s
 	// C. Wait for Primary to become healthy
 	// Primary should advertise Metric 10.
 	// Client should switch to Primary.
-	t.Log("Step C: Waiting for routing to switch to Primary (Primary UP)")
+	t.Log("Step C: Waiting for Primary to advertise healthy Metric 10")
+	h.WaitForStatus(t, "primary", func(status *protocol.StatusResponse) bool {
+		for _, prefix := range status.GetNode().GetAdvertised() {
+			if prefix.GetPrefix() == servicePrefixStr && prefix.GetMetric() == 10 {
+				return true
+			}
+		}
+		return false
+	})
+	t.Log("Waiting for routing to switch to Primary (Primary UP)")
 	h.WaitForStatus(t, "client", func(status *protocol.StatusResponse) bool {
 		return HasSelectedRoute(status, "10.0.3.1/32", "primary", "primary")
 	})

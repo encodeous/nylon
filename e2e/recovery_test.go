@@ -109,9 +109,18 @@ func TestRecoveryExample(t *testing.T) {
 	}
 
 	// 6. Wait for recovery
+	defer func() {
+		if t.Failed() {
+			for _, name := range nodeNames {
+				stdout, stderr, err := h.Exec(name, []string{"nylon", "status", "-i", "nylon0", "--json"})
+				t.Logf("Recovery status for %s (error: %v):\n%s\n%s", name, err, stdout, stderr)
+			}
+		}
+	}()
 	t.Log("Waiting for recovery (rerouting)...")
 	// Start a background pinger to trigger routing
 	stopPinger := make(chan struct{})
+	defer close(stopPinger)
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -125,13 +134,19 @@ func TestRecoveryExample(t *testing.T) {
 		}
 	}()
 	h.WaitForTrace(alice, fmt.Sprintf("Fwd packet: %s -> %s, via %s", nylonIPs[alice], nylonIPs[bob], vps))
-	close(stopPinger)
 
-	t.Log("Recovery successful! Traffic rerouted via VPS.")
-
-	// Final connectivity check
-	stdout, stderr, err = h.Exec(alice, []string{"ping", "-c", "3", nylonIPs[bob]})
-	if err != nil {
-		t.Fatalf("Post-recovery ping failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+	// A forwarding trace only establishes Alice's next hop. Wait for the
+	// remaining hops and the return path to recover before asserting delivery.
+	deadline := time.Now().Add(WaitTimeout)
+	for {
+		stdout, stderr, err = h.Exec(alice, []string{"ping", "-c", "3", "-W", "1", "-w", "4", nylonIPs[bob]})
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Timed out waiting for post-recovery connectivity: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+		}
+		time.Sleep(time.Second)
 	}
+	t.Log("Recovery successful! Traffic rerouted via VPS and connectivity restored.")
 }
