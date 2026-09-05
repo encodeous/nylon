@@ -64,20 +64,7 @@ func checkForConfigUpdates(n *Nylon) error {
 	if n.CentralCfg.Dist == nil {
 		return errors.New("nylon is not configured for automatic config distribution")
 	}
-	// Prefer the local (node-level) dist key from node.yaml.
-	// The central config's Dist.Key may be a zero-value placeholder
-	// (AAAAAAAAAAAAAAAAAAAAAA==) because BundleConfig re-marshals the
-	// CentralCfg, serializing the zero-value Key field when it was not
-	// explicitly set in the source central.yaml. Using it for bundle
-	// verification always fails with chacha20poly1305: message authentication
-	// failed.
 	key := n.CentralCfg.Dist.Key
-	if n.LocalCfg.Dist != nil && n.LocalCfg.Dist.Key != (state.NyPublicKey{}) {
-		key = n.LocalCfg.Dist.Key
-	}
-	if key == (state.NyPublicKey{}) {
-		return errors.New("no valid dist key configured for bundle verification")
-	}
 	currentTimestamp := n.Timestamp
 	repos := slices.Clone(n.CentralCfg.Dist.Repos)
 	for _, repoStr := range repos {

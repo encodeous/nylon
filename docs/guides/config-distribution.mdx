@@ -72,3 +72,7 @@ Despite being called a "public" key, the distribution key also acts as the share
    Nylon polls for updates every 10 seconds and applies them.
 
 </Steps>
+
+## Key rotation
+
+When `dist` is configured, `dist.key` must be set to a nonzero public key. To rotate it, put the new public key in `central.yaml` and sign that bundle with the old private key. After nodes apply the bundle, sign subsequent updates with the new private key.

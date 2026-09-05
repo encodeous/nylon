@@ -178,6 +178,48 @@ func TestDistribution(t *testing.T) {
 	t.Logf("Successfully updated to timestamp %d.", verifyCfg.Timestamp)
 }
 
+func TestDistributionKeyRotation(t *testing.T) {
+	t.Parallel()
+	h, repoContainer, runDir, oldPrivateKey, _, nodeId, originalTimestamp := startDistributedSingleNode(t)
+	ctx := context.Background()
+	newPrivateKey := state.GenerateKey()
+	newPublicKey := newPrivateKey.Pubkey()
+
+	transitionCfg := readCentralConfig(t, h, nodeId)
+	transitionCfg.Dist.Key = newPublicKey
+	time.Sleep(time.Second)
+	transitionPath, transitionTimestamp := writeBundle(
+		t, runDir, "bundle-key-rotation", transitionCfg, oldPrivateKey,
+	)
+	if transitionTimestamp <= originalTimestamp {
+		t.Fatalf("transition timestamp %d must be newer than original timestamp %d", transitionTimestamp, originalTimestamp)
+	}
+	if err := repoContainer.CopyFileToContainer(ctx, transitionPath, "/data/bundle", 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	appliedTransition := waitForCentralTimestamp(t, h, nodeId, transitionTimestamp)
+	if appliedTransition.Dist == nil || appliedTransition.Dist.Key != newPublicKey {
+		t.Fatal("transition bundle did not install the new distribution key")
+	}
+
+	time.Sleep(time.Second)
+	rotatedPath, rotatedTimestamp := writeBundle(
+		t, runDir, "bundle-after-key-rotation", appliedTransition, newPrivateKey,
+	)
+	if rotatedTimestamp <= transitionTimestamp {
+		t.Fatalf("rotated timestamp %d must be newer than transition timestamp %d", rotatedTimestamp, transitionTimestamp)
+	}
+	if err := repoContainer.CopyFileToContainer(ctx, rotatedPath, "/data/bundle", 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	appliedRotated := waitForCentralTimestamp(t, h, nodeId, rotatedTimestamp)
+	if appliedRotated.Dist == nil || appliedRotated.Dist.Key != newPublicKey {
+		t.Fatal("bundle signed with the rotated key did not preserve the new distribution key")
+	}
+}
+
 func TestDistributionRejectsLocalNodeRemoval(t *testing.T) {
 	t.Parallel()
 	h, repoContainer, runDir, privKey, pubKey, nodeId, originalTimestamp := startDistributedSingleNode(t)
@@ -361,6 +403,11 @@ func assertCentralTimestampStays(t *testing.T, h *Harness, nodeId state.NodeId, 
 
 func readCentralTimestamp(t *testing.T, h *Harness, nodeId state.NodeId) int64 {
 	t.Helper()
+	return readCentralConfig(t, h, nodeId).Timestamp
+}
+
+func readCentralConfig(t *testing.T, h *Harness, nodeId state.NodeId) state.CentralCfg {
+	t.Helper()
 	stdout, _, err := h.Exec(string(nodeId), []string{"cat", "/app/config/central.yaml"})
 	if err != nil {
 		t.Fatal(err)
@@ -369,5 +416,20 @@ func readCentralTimestamp(t *testing.T, h *Harness, nodeId state.NodeId) int64 {
 	if err := yaml.Unmarshal([]byte(stdout), &cfg); err != nil {
 		t.Fatalf("Failed to parse config from node: %v", err)
 	}
-	return cfg.Timestamp
+	return cfg
+}
+
+func waitForCentralTimestamp(t *testing.T, h *Harness, nodeId state.NodeId, expected int64) state.CentralCfg {
+	t.Helper()
+	deadline := time.Now().Add(WaitTimeout)
+	for {
+		cfg := readCentralConfig(t, h, nodeId)
+		if cfg.Timestamp == expected {
+			return cfg
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for central config timestamp %d; got %d", expected, cfg.Timestamp)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }

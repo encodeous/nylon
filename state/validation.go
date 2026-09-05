@@ -47,6 +47,9 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 		}
 	}
 	if node.Dist != nil {
+		if node.Dist.Key == (NyPublicKey{}) {
+			return fmt.Errorf("dist.key must not be empty")
+		}
 		_, err := url.Parse(node.Dist.Url)
 		if err != nil {
 			return err
@@ -144,6 +147,9 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 	}
 
 	if cfg.Dist != nil {
+		if cfg.Dist.Key == (NyPublicKey{}) {
+			return fmt.Errorf("dist.key must not be empty")
+		}
 		// validate repos
 		for _, repo := range cfg.Dist.Repos {
 			_, err := url.Parse(repo)
