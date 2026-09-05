@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -74,6 +75,9 @@ func BundleConfig(config string, rootKey NyPrivateKey) (string, error) {
 	err = CentralConfigValidator(&cfg)
 	if err != nil {
 		return "", err
+	}
+	if cfg.Dist != nil && cfg.Dist.Key != rootKey.Pubkey() {
+		slog.Warn("bundled public key differs from the signing key, check if this is intended!")
 	}
 	cfg.Timestamp = time.Now().UnixNano()
 
