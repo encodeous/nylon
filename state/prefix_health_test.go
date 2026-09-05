@@ -115,6 +115,20 @@ delay: 5s
 	}
 }
 
+func TestHTTPPrefixHealthMetricOverridePreservesFailures(t *testing.T) {
+	monitor := &httpPrefixHealthMonitor{hasMetricOverride: true, metricOverride: 10}
+	for _, metric := range []uint32{INF, 250, INF} {
+		monitor.lastMetric.Store(metric)
+		want := uint32(10)
+		if metric == INF {
+			want = INF
+		}
+		if got := monitor.GetMetric(); got != want {
+			t.Fatalf("health metric %d: got %d, want %d", metric, got, want)
+		}
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

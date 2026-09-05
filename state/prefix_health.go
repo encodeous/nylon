@@ -282,10 +282,14 @@ type httpPrefixHealthMonitor struct {
 }
 
 func (h *httpPrefixHealthMonitor) GetMetric() uint32 {
+	metric := h.lastMetric.Load()
+	if metric == INF {
+		return INF
+	}
 	if h.hasMetricOverride {
 		return h.metricOverride
 	}
-	return h.lastMetric.Load()
+	return metric
 }
 
 func (h *httpPrefixHealthMonitor) Stop() {
