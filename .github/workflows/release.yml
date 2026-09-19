@@ -8,6 +8,9 @@ permissions:
   contents: write
   packages: write
 
+env:
+  CGO_ENABLED: "0"
+
 jobs:
   release-unix:
     name: Release Go Binary (Unix)
