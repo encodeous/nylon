@@ -61,3 +61,17 @@ jobs:
           go run gotest.tools/gotestsum@latest -- \
             -tags=e2e ./e2e/... \
             -parallel ${{ steps.cpu.outputs.cores }}
+  e2e_cgo_disabled:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run CGO-disabled e2e smoke test
+        env:
+          CGO_ENABLED: "0"
+        run: go run gotest.tools/gotestsum@latest -- -count=1 -tags=e2e ./e2e/... -run '^TestConnectivity$'
