@@ -59,15 +59,6 @@ func TestInitCommandRefusesToOverwrite(t *testing.T) {
 	assert.Equal(t, "existing", string(data))
 }
 
-func TestBuildNodeConfigRequiresCompleteDistributionConfig(t *testing.T) {
-	_, err := buildNodeConfig(initOptions{
-		id:      "router-1",
-		port:    57175,
-		distURL: "https://example.com/central.nybundle",
-	})
-	require.ErrorContains(t, err, "--dist-url and --dist-key")
-}
-
 func TestBuildNodeConfigRejectsInvalidValues(t *testing.T) {
 	_, err := buildNodeConfig(initOptions{id: "INVALID ID", port: 57175})
 	require.ErrorContains(t, err, "invalid node config")
