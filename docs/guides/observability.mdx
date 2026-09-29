@@ -21,6 +21,7 @@ Restart nylon after changing the node configuration. You can then check the loca
 curl http://127.0.0.1:9090/healthz
 curl http://127.0.0.1:9090/readyz
 curl http://127.0.0.1:9090/metrics
+curl http://127.0.0.1:9090/status
 ```
 
 :::caution
@@ -34,6 +35,7 @@ The observability server does not provide authentication or TLS. Bind it to a tr
 | `/healthz` | Returns `200 OK` while the daemon is running and `503 Service Unavailable` while it is shutting down. |
 | `/readyz` | Returns `200 OK` when nylon's internal event loop responds, or `503 Service Unavailable` if it cannot respond within one second. It does not check whether every peer is reachable. |
 | `/metrics` | Returns metrics in the Prometheus text exposition format. Returns `503 Service Unavailable` if nylon cannot collect a status snapshot within one second. |
+| `/status` | Returns the node's status as JSON, the same object `nylon status --json` prints under `status`. Returns `503 Service Unavailable` if nylon cannot collect a snapshot within one second. |
 | `/discovery` | Returns Prometheus HTTP service-discovery targets for the addresses in `central.yaml`. |
 
 ## Configure Prometheus

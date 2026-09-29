@@ -44,6 +44,7 @@ func (n *Nylon) startObservability() error {
 	mux.HandleFunc("/readyz", n.handleReady)
 	mux.HandleFunc("/metrics", n.handleMetrics)
 	mux.HandleFunc("/discovery", n.handleDiscovery)
+	mux.HandleFunc("/status", n.handleStatusJSON)
 
 	obs := &observabilityServer{
 		listener: listener,
@@ -129,6 +130,23 @@ func (n *Nylon) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	writePrometheusMetrics(w, status)
+}
+
+func (n *Nylon) handleStatusJSON(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), observabilityTimeout)
+	defer cancel()
+	status, err := n.statusSnapshot(ctx)
+	if err != nil {
+		http.Error(w, "status unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	data, err := pjMarshal.Marshal(status)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
 }
 
 func (n *Nylon) handleDiscovery(w http.ResponseWriter, _ *http.Request) {

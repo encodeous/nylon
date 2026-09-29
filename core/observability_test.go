@@ -84,3 +84,14 @@ func TestPrometheusMetrics(t *testing.T) {
 	require.NotContains(t, output, `nylon_wireguard_peer_latest_handshake_seconds{peer="bob"} 1.786`)
 	require.Equal(t, 1, strings.Count(output, "# HELP nylon_wireguard_peer_transmit_bytes_total "))
 }
+
+func TestObservabilityStatusUnavailable(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	// nothing runs the dispatch loop, so the snapshot times out
+	n := &Nylon{Context: ctx, DispatchChannel: make(chan func() error)}
+
+	rec := httptest.NewRecorder()
+	n.handleStatusJSON(rec, httptest.NewRequest(http.MethodGet, "/status", nil))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
