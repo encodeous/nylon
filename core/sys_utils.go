@@ -13,10 +13,15 @@ func ExecSplit(logger *slog.Logger, command string) error {
 }
 
 func Exec(logger *slog.Logger, name string, arg ...string) error {
+	_, err := ExecOutput(logger, name, arg...)
+	return err
+}
+
+func ExecOutput(logger *slog.Logger, name string, arg ...string) ([]byte, error) {
 	out, err := exec.Command(name, arg...).CombinedOutput()
 	logger.Debug("exec command", "cmd", name, "arg", arg, "out", string(out))
 	if err != nil {
-		return fmt.Errorf("error executing command: %s %s. %w. Output: %s", name, arg, err, out)
+		return nil, fmt.Errorf("error executing command: %s %s. %w. Output: %s", name, arg, err, out)
 	}
-	return nil
+	return out, nil
 }

@@ -62,6 +62,7 @@ type Nylon struct {
 	wgUapi        net.Listener
 	Interface     string
 	Device        *device.Device
+	SystemRoutes  SystemRoutes
 	observability *observabilityServer
 
 	// only used for debugging & tests
@@ -74,9 +75,7 @@ type Nylon struct {
 }
 
 type AppliedSystemState struct {
-	Routes  []netip.Prefix
-	Aliases []netip.Addr
-	Peers   map[state.NodeId]state.NyPublicKey
+	Peers map[state.NodeId]state.NyPublicKey
 }
 
 func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, opts state.NylonOptions, tunables *state.RouterTunables) (*Nylon, error) {
