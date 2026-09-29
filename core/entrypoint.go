@@ -32,72 +32,25 @@ func setupDebugging(opts state.NylonOptions) {
 	}
 }
 
-func readCentralConfig(centralPath, nodePath string, tunables *state.RouterTunables) (*state.CentralCfg, error) {
+func readCentralConfig(centralPath string) (*state.CentralCfg, error) {
 	var centralCfg state.CentralCfg
 
 	file, err := os.ReadFile(centralPath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-		// fallback to using dist from node config
-
-		var nodeCfg state.LocalCfg
-
-		file, err = os.ReadFile(nodePath)
-		if err != nil {
-			return nil, fmt.Errorf("central.yaml not found and failed to read node.yaml: %w", err)
-		}
-
-		err = yaml.Unmarshal(file, &nodeCfg)
-		if err != nil {
-			return nil, err
-		}
-
-		if nodeCfg.Dist == nil {
-			return nil, fmt.Errorf("central.yaml not found and node.yaml has no dist config")
-		}
-
-		cfg, err := fetchConfig(
-			nodeCfg.Dist.Url,
-			nodeCfg.Dist.Key,
-			tunables.MaxConfigSize,
-			state.NewDNSResolver(nodeCfg.DnsResolvers),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		bytes, err := yaml.Marshal(cfg)
-		if err != nil {
-			return nil, err
-		}
-		err = os.WriteFile(centralPath, bytes, 0600)
-		if err != nil {
-			return nil, err
-		}
-
-		centralCfg = *cfg
-	} else {
-		err = yaml.Unmarshal(file, &centralCfg)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
+	if err = yaml.Unmarshal(file, &centralCfg); err != nil {
+		return nil, err
 	}
 	return &centralCfg, nil
 }
 
 func readNodeConfig(nodePath string) (*state.LocalCfg, error) {
-	var nodeCfg state.LocalCfg
 	file, err := os.ReadFile(nodePath)
 	if err != nil {
 		return nil, err
 	}
-	err = yaml.Unmarshal(file, &nodeCfg)
-	if err != nil {
-		return nil, err
-	}
-	return &nodeCfg, nil
+	return state.ParseLocalConfig(file)
 }
 
 func fatal(msg string, err error) {
@@ -113,8 +66,7 @@ func Bootstrap(centralPath, nodePath, logPath string, verbose bool, opts state.N
 		level = slog.LevelDebug
 	}
 
-	tunables := state.DefaultRouterTunables()
-	centralCfg, err := readCentralConfig(centralPath, nodePath, &tunables)
+	centralCfg, err := readCentralConfig(centralPath)
 	if err != nil {
 		fatal("failed to read central config", err)
 	}

@@ -100,10 +100,6 @@ func TestDistribution(t *testing.T) {
 
 	// Write node.yaml
 	nodeCfg := SimpleLocal(nodeId, nodeKey)
-	nodeCfg.Dist = &state.LocalDistributionCfg{
-		Key: pubKey,
-		Url: "http://repo:80/bundle",
-	}
 	nodeConfigPath := h.WriteConfig(runDir, "node.yaml", nodeCfg)
 
 	t.Log("Starting Nylon Node...")
@@ -293,10 +289,6 @@ func startDistributedSingleNode(t *testing.T) (*Harness, testcontainers.Containe
 	repoContainer := startBundleRepo(t, h, ctx, bundlePath)
 	centralConfigPath := h.WriteConfig(runDir, "central.yaml", withTimestamp(cfg, timestamp))
 	nodeCfg := SimpleLocal(string(nodeId), nodeKey)
-	nodeCfg.Dist = &state.LocalDistributionCfg{
-		Key: pubKey,
-		Url: "http://repo:80/bundle",
-	}
 	nodeConfigPath := h.WriteConfig(runDir, "node.yaml", nodeCfg)
 
 	h.StartNodes(NodeSpec{

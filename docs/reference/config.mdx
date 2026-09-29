@@ -24,11 +24,6 @@ interface_name: "" # override the interface name (default: "nylon", or utunX on 
 dns_resolvers: [] # DNS servers for nylon's own lookups, e.g. ["1.1.1.1:53"]
 observability_addr: "" # e.g. "0.0.0.0:9090"; enables /metrics, /healthz, /readyz, and /discovery
 
-# Bootstrap: fetch central.yaml from a remote bundle on first start
-dist:
-  url: https://static.example.com/network1.nybundle
-  key: 7PaN6DmAayz4KnDnsXSXJH+Oy0TFGeoM4FEbQfLriVY= # distribution public key
-
 # Split tunneling (per-node overrides)
 exclude_ips: # add to the central exclude list
   - 192.168.0.0/24
