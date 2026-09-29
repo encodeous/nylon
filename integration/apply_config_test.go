@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"

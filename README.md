@@ -5,7 +5,7 @@
 
 Nylon is a self-healing WireGuard mesh that routes around failures. If a link goes down, nylon reroutes traffic through the next-best path in seconds. No manual intervention, no central coordination servers, just like how a real network should be :)
 
-Under the hood, nylon implements the [Babel routing protocol (RFC 8966)](https://datatracker.ietf.org/doc/html/rfc8966) on top of a [modified wireguard-go](https://github.com/encodeous/nylon/tree/main/polyamide), using measured latency as the routing metric. 
+Under the hood, nylon implements the [Babel routing protocol (RFC 8966)](https://datatracker.ietf.org/doc/html/rfc8966) on top of a [modified wireguard-go](https://github.com/encodeous/nylon/tree/main/polyamide/transports/wireguard), using measured latency as the routing metric.
 
 Nylon targets under 10 seconds of convergence time after a link failure, as you can see in the demo below.
 

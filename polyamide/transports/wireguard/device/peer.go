@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/perf"
-	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 )
 
 type Peer struct {

@@ -9,10 +9,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/ipc"
-	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"os"
 	"os/signal"
 	"runtime"

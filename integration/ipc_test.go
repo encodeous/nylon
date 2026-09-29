@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"

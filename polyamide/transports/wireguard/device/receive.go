@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/perf"
-	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

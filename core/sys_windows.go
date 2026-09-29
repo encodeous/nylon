@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/encodeous/nylon/polyamide/ipc"
-	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
 

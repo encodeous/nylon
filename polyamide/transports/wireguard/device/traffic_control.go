@@ -3,7 +3,7 @@ package device
 import (
 	"slices"
 
-	"github.com/encodeous/nylon/polyamide/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 )
 
 // polyamide traffic control provides a facility to re-order, manipulate, and redirect packets between nylon/polyamide nodes

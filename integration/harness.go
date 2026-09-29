@@ -18,11 +18,11 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/conn/bindtest"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/tun"
-	"github.com/encodeous/nylon/polyamide/tun/tuntest"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn/bindtest"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun/tuntest"
 	"github.com/encodeous/nylon/state"
 )
 

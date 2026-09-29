@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 )
 
 func (k NyPrivateKey) MarshalText() ([]byte, error) {

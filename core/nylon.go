@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/perf"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	"github.com/jellydator/ttlcache/v3"

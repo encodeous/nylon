@@ -8,7 +8,7 @@ package device
 import (
 	"fmt"
 
-	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 )
 
 const DefaultMTU = 1420

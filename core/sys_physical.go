@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/encodeous/nylon/log"
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/device"
-	"github.com/encodeous/nylon/polyamide/tun"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 )
 
 func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {

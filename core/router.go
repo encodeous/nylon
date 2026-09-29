@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/gaissmai/bart"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/proto"

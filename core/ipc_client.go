@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 
-	"github.com/encodeous/nylon/polyamide/ipc"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
 	"github.com/encodeous/nylon/protocol"
 )
 

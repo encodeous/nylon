@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/encodeous/nylon/polyamide/conn"
-	"github.com/encodeous/nylon/polyamide/device"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/jellydator/ttlcache/v3"
