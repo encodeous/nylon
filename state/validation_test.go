@@ -55,16 +55,6 @@ func TestNodeConfigValidator_DnsResolver(t *testing.T) {
 	}))
 }
 
-func TestNodeConfigValidator_RejectsEmptyDistributionKey(t *testing.T) {
-	err := NodeConfigValidator(nil, &LocalCfg{
-		Id:   "valid-node",
-		Port: 5,
-		Key:  [32]byte{1},
-		Dist: &LocalDistributionCfg{Url: "https://example.com/bundle"},
-	})
-	assert.ErrorContains(t, err, "dist.key must not be empty")
-}
-
 func TestCentralConfigValidator_RejectsEmptyDistributionKey(t *testing.T) {
 	err := CentralConfigValidator(&CentralCfg{
 		Dist: &DistributionCfg{Repos: []string{"https://example.com/bundle"}},

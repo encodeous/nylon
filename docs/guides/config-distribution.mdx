@@ -50,17 +50,7 @@ Despite being called a "public" key, the distribution key also acts as the share
 
 4. ### Configure Nodes
 
-   #### Initial Bootstrap (`node.yaml`)
-   Nodes fetch their first central config using the `dist` block:
-
-   ```yaml title="node.yaml"
-   dist:
-     url: "https://your-server.com/central.nybundle"
-     key: "<contents-of-dist.pub>"
-   ```
-
-   #### Automatic Updates (`central.yaml`)
-   Once bootstrapped, nodes poll the repositories defined in `central.yaml`:
+   Place `central.yaml` on each node before its first start. Nodes then poll the repositories defined in `central.yaml`:
 
    ```yaml title="central.yaml"
    dist:

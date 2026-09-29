@@ -33,7 +33,6 @@ var verifyCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		var ncfg state.LocalCfg
 		nodePath, _ := cmd.Flags().GetString("node")
 		if nodePath != "" {
 			nData, err := os.ReadFile(nodePath)
@@ -41,11 +40,12 @@ var verifyCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				os.Exit(1)
 			}
-			if err := yaml.Unmarshal(nData, &ncfg); err != nil {
+			ncfg, err := state.ParseLocalConfig(nData)
+			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				os.Exit(1)
 			}
-			if err := state.NodeConfigValidator(&cfg, &ncfg); err != nil {
+			if err := state.NodeConfigValidator(&cfg, ncfg); err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				os.Exit(1)
 			}

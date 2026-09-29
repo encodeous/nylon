@@ -22,8 +22,6 @@ type initOptions struct {
 	dnsResolvers     []string
 	interfaceName    string
 	logPath          string
-	distURL          string
-	distKey          string
 	unexcludeIPs     []string
 	excludeIPs       []string
 	preUp            []string
@@ -95,8 +93,6 @@ func newInitCmd() *cobra.Command {
 	flags.StringSliceVar(&opts.dnsResolvers, "dns-resolver", nil, "DNS resolver in ip:port form (repeatable)")
 	flags.StringVar(&opts.interfaceName, "interface-name", "", "Nylon interface name")
 	flags.StringVar(&opts.logPath, "log-path", "", "Log file path")
-	flags.StringVar(&opts.distURL, "dist-url", "", "Configuration distribution URL")
-	flags.StringVar(&opts.distKey, "dist-key", "", "Configuration distribution shared key")
 	flags.StringSliceVar(&opts.unexcludeIPs, "unexclude-ip", nil, "Centrally excluded IP prefix to include (repeatable)")
 	flags.StringSliceVar(&opts.excludeIPs, "exclude-ip", nil, "IP prefix to exclude (repeatable)")
 	flags.StringSliceVar(&opts.preUp, "pre-up", nil, "Command to run before interface startup (repeatable)")
@@ -135,17 +131,6 @@ func buildNodeConfig(opts initOptions) (*state.LocalCfg, error) {
 	}
 	if cfg.ExcludeIPs, err = parsePrefixes(opts.excludeIPs); err != nil {
 		return nil, fmt.Errorf("invalid --exclude-ip: %w", err)
-	}
-
-	if (opts.distURL == "") != (opts.distKey == "") {
-		return nil, errors.New("--dist-url and --dist-key must be provided together")
-	}
-	if opts.distURL != "" {
-		var key state.NyPublicKey
-		if err := key.UnmarshalText([]byte(opts.distKey)); err != nil {
-			return nil, fmt.Errorf("invalid distribution key: %w", err)
-		}
-		cfg.Dist = &state.LocalDistributionCfg{Url: opts.distURL, Key: key}
 	}
 
 	if err := state.NodeConfigValidator(nil, cfg); err != nil {

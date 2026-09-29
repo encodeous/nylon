@@ -46,15 +46,6 @@ func NodeConfigValidator(central *CentralCfg, node *LocalCfg) error {
 			return fmt.Errorf("observability address must be a valid host:port: %v", err)
 		}
 	}
-	if node.Dist != nil {
-		if node.Dist.Key == (NyPublicKey{}) {
-			return fmt.Errorf("dist.key must not be empty")
-		}
-		_, err := url.Parse(node.Dist.Url)
-		if err != nil {
-			return err
-		}
-	}
 	if len(node.DnsResolvers) != 0 {
 		for _, resolver := range node.DnsResolvers {
 			if _, err := netip.ParseAddrPort(resolver); err != nil {
