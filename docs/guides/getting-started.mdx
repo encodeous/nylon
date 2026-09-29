@@ -25,38 +25,34 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
 
 <Steps>
 
-1. ### Generate Keypairs
+1. ### Create Node Configuration
 
-   On each node, generate a WireGuard keypair:
+   On each node, generate `node.yaml` and a WireGuard keypair:
 
    ```bash
-   nylon key
+   nylon init
    ```
 
-   This will output two keys (example):
-
-   ```
-   kPoLiC4+Nh9AoQGiBmJTh+8BUqCMsa6Zdr4M0Xz5bX0=
-   9Z1HGi7eip6GdQezqy3Vc7Er76ZgTfryda9wvHUgWzk=
-   ```
-
-   The first key (stdout) is your private key, and the second key (stderr) is your public key. Keep the private key safe, and note down the public key for the next step.
+   The interactive setup asks for a unique node ID and other common settings.
+   It writes the private key to a user-readable-only config file and prints the
+   public key for the central configuration. Advanced network, DNS,
+   distribution, and hook settings are available from the same setup flow.
 
    :::tip
-   If you already have a WireGuard keypair, you can use that interchangeably with nylon.
+   For automated setup, pass the node ID and any other settings as flags, such
+   as `nylon init --id node-1`. Pass an existing WireGuard private key with
+   `--key`, or use `nylon key` when you only need to generate a keypair.
    :::
 
-2. ### Create Node Configuration
-
-   On each node, create a `node.yaml` file. Replace `<YOUR_PRIVATE_KEY>` with the private key generated in step 1.
+   The generated file contains:
 
    ```yaml title="node.yaml"
-   id: node-1 # Give each node a unique ID (e.g., node-1, node-2)
-   key: <YOUR_PRIVATE_KEY>
+   key: <GENERATED_PRIVATE_KEY>
+   id: node-1
    port: 57175
    ```
 
-3. ### Create Central Configuration
+2. ### Create Central Configuration
 
    The `central.yaml` file defines the topology of your network. Create one file and share it across all nodes.
 
