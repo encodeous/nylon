@@ -127,11 +127,17 @@ message NodeStatus {
   NodeStats stats = 9;
 }
 
+message NodeInfo {
+  string node_id = 1;
+  repeated string addresses = 2;
+}
+
 message StatusResponse {
   NodeStatus node = 1;
   repeated NeighbourInfo neighbours = 2;
   RouteTables routes = 3;
   repeated FeasibilityDistance feasibility_distances = 4;
+  repeated NodeInfo nodes = 5;
 }
 
 enum EndpointProbeStatus {

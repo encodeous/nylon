@@ -1316,19 +1316,72 @@ func (x *NodeStatus) GetStats() *NodeStats {
 	return nil
 }
 
+type NodeInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Addresses     []string               `protobuf:"bytes,2,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeInfo) Reset() {
+	*x = NodeInfo{}
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeInfo) ProtoMessage() {}
+
+func (x *NodeInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
+func (*NodeInfo) Descriptor() ([]byte, []int) {
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *NodeInfo) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetAddresses() []string {
+	if x != nil {
+		return x.Addresses
+	}
+	return nil
+}
+
 type StatusResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	Node                 *NodeStatus            `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
 	Neighbours           []*NeighbourInfo       `protobuf:"bytes,2,rep,name=neighbours,proto3" json:"neighbours,omitempty"`
 	Routes               *RouteTables           `protobuf:"bytes,3,opt,name=routes,proto3" json:"routes,omitempty"`
 	FeasibilityDistances []*FeasibilityDistance `protobuf:"bytes,4,rep,name=feasibility_distances,json=feasibilityDistances,proto3" json:"feasibility_distances,omitempty"`
+	Nodes                []*NodeInfo            `protobuf:"bytes,5,rep,name=nodes,proto3" json:"nodes,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[19]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1340,7 +1393,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[19]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1353,7 +1406,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{19}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *StatusResponse) GetNode() *NodeStatus {
@@ -1384,6 +1437,13 @@ func (x *StatusResponse) GetFeasibilityDistances() []*FeasibilityDistance {
 	return nil
 }
 
+func (x *StatusResponse) GetNodes() []*NodeInfo {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
 type EndpointProbeResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
@@ -1396,7 +1456,7 @@ type EndpointProbeResult struct {
 
 func (x *EndpointProbeResult) Reset() {
 	*x = EndpointProbeResult{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[20]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1468,7 @@ func (x *EndpointProbeResult) String() string {
 func (*EndpointProbeResult) ProtoMessage() {}
 
 func (x *EndpointProbeResult) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[20]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1481,7 @@ func (x *EndpointProbeResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointProbeResult.ProtoReflect.Descriptor instead.
 func (*EndpointProbeResult) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{20}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *EndpointProbeResult) GetAddress() string {
@@ -1461,7 +1521,7 @@ type ProbeResponse struct {
 
 func (x *ProbeResponse) Reset() {
 	*x = ProbeResponse{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[21]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1473,7 +1533,7 @@ func (x *ProbeResponse) String() string {
 func (*ProbeResponse) ProtoMessage() {}
 
 func (x *ProbeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[21]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1486,7 +1546,7 @@ func (x *ProbeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeResponse.ProtoReflect.Descriptor instead.
 func (*ProbeResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{21}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ProbeResponse) GetResults() []*EndpointProbeResult {
@@ -1506,7 +1566,7 @@ type ReloadResponse struct {
 
 func (x *ReloadResponse) Reset() {
 	*x = ReloadResponse{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[22]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1518,7 +1578,7 @@ func (x *ReloadResponse) String() string {
 func (*ReloadResponse) ProtoMessage() {}
 
 func (x *ReloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[22]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1531,7 +1591,7 @@ func (x *ReloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadResponse.ProtoReflect.Descriptor instead.
 func (*ReloadResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{22}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ReloadResponse) GetResult() ReloadResult {
@@ -1557,7 +1617,7 @@ type TraceEvent struct {
 
 func (x *TraceEvent) Reset() {
 	*x = TraceEvent{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[23]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1569,7 +1629,7 @@ func (x *TraceEvent) String() string {
 func (*TraceEvent) ProtoMessage() {}
 
 func (x *TraceEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[23]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1582,7 +1642,7 @@ func (x *TraceEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraceEvent.ProtoReflect.Descriptor instead.
 func (*TraceEvent) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{23}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *TraceEvent) GetLine() string {
@@ -1607,7 +1667,7 @@ type IpcRequest struct {
 
 func (x *IpcRequest) Reset() {
 	*x = IpcRequest{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[24]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +1679,7 @@ func (x *IpcRequest) String() string {
 func (*IpcRequest) ProtoMessage() {}
 
 func (x *IpcRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[24]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +1692,7 @@ func (x *IpcRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IpcRequest.ProtoReflect.Descriptor instead.
 func (*IpcRequest) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{24}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *IpcRequest) GetRequest() isIpcRequest_Request {
@@ -1723,7 +1783,7 @@ type IpcResponse struct {
 
 func (x *IpcResponse) Reset() {
 	*x = IpcResponse{}
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[25]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1795,7 @@ func (x *IpcResponse) String() string {
 func (*IpcResponse) ProtoMessage() {}
 
 func (x *IpcResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_nylon_ipc_proto_msgTypes[25]
+	mi := &file_protocol_nylon_ipc_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1808,7 @@ func (x *IpcResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IpcResponse.ProtoReflect.Descriptor instead.
 func (*IpcResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{25}
+	return file_protocol_nylon_ipc_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *IpcResponse) GetOk() bool {
@@ -1937,14 +1997,18 @@ const file_protocol_nylon_ipc_proto_rawDesc = "" +
 	"advertised\x18\a \x03(\v2\x14.proto.AdvertisementR\n" +
 	"advertised\x12)\n" +
 	"\x06seqnos\x18\b \x03(\v2\x11.proto.SeqnoEntryR\x06seqnos\x12&\n" +
-	"\x05stats\x18\t \x01(\v2\x10.proto.NodeStatsR\x05stats\"\xea\x01\n" +
+	"\x05stats\x18\t \x01(\v2\x10.proto.NodeStatsR\x05stats\"A\n" +
+	"\bNodeInfo\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1c\n" +
+	"\taddresses\x18\x02 \x03(\tR\taddresses\"\x91\x02\n" +
 	"\x0eStatusResponse\x12%\n" +
 	"\x04node\x18\x01 \x01(\v2\x11.proto.NodeStatusR\x04node\x124\n" +
 	"\n" +
 	"neighbours\x18\x02 \x03(\v2\x14.proto.NeighbourInfoR\n" +
 	"neighbours\x12*\n" +
 	"\x06routes\x18\x03 \x01(\v2\x12.proto.RouteTablesR\x06routes\x12O\n" +
-	"\x15feasibility_distances\x18\x04 \x03(\v2\x1a.proto.FeasibilityDistanceR\x14feasibilityDistances\"\xb0\x01\n" +
+	"\x15feasibility_distances\x18\x04 \x03(\v2\x1a.proto.FeasibilityDistanceR\x14feasibilityDistances\x12%\n" +
+	"\x05nodes\x18\x05 \x03(\v2\x0f.proto.NodeInfoR\x05nodes\"\xb0\x01\n" +
 	"\x13EndpointProbeResult\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1f\n" +
 	"\bresolved\x18\x04 \x01(\tH\x00R\bresolved\x88\x01\x01\x122\n" +
@@ -2001,7 +2065,7 @@ func file_protocol_nylon_ipc_proto_rawDescGZIP() []byte {
 }
 
 var file_protocol_nylon_ipc_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_protocol_nylon_ipc_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_protocol_nylon_ipc_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_protocol_nylon_ipc_proto_goTypes = []any{
 	(ReloadResult)(0),           // 0: proto.ReloadResult
 	(EndpointProbeStatus)(0),    // 1: proto.EndpointProbeStatus
@@ -2024,13 +2088,14 @@ var file_protocol_nylon_ipc_proto_goTypes = []any{
 	(*FeasibilityDistance)(nil), // 18: proto.FeasibilityDistance
 	(*NodeStats)(nil),           // 19: proto.NodeStats
 	(*NodeStatus)(nil),          // 20: proto.NodeStatus
-	(*StatusResponse)(nil),      // 21: proto.StatusResponse
-	(*EndpointProbeResult)(nil), // 22: proto.EndpointProbeResult
-	(*ProbeResponse)(nil),       // 23: proto.ProbeResponse
-	(*ReloadResponse)(nil),      // 24: proto.ReloadResponse
-	(*TraceEvent)(nil),          // 25: proto.TraceEvent
-	(*IpcRequest)(nil),          // 26: proto.IpcRequest
-	(*IpcResponse)(nil),         // 27: proto.IpcResponse
+	(*NodeInfo)(nil),            // 21: proto.NodeInfo
+	(*StatusResponse)(nil),      // 22: proto.StatusResponse
+	(*EndpointProbeResult)(nil), // 23: proto.EndpointProbeResult
+	(*ProbeResponse)(nil),       // 24: proto.ProbeResponse
+	(*ReloadResponse)(nil),      // 25: proto.ReloadResponse
+	(*TraceEvent)(nil),          // 26: proto.TraceEvent
+	(*IpcRequest)(nil),          // 27: proto.IpcRequest
+	(*IpcResponse)(nil),         // 28: proto.IpcResponse
 }
 var file_protocol_nylon_ipc_proto_depIdxs = []int32{
 	6,  // 0: proto.PubRoute.source:type_name -> proto.Source
@@ -2053,22 +2118,23 @@ var file_protocol_nylon_ipc_proto_depIdxs = []int32{
 	14, // 17: proto.StatusResponse.neighbours:type_name -> proto.NeighbourInfo
 	16, // 18: proto.StatusResponse.routes:type_name -> proto.RouteTables
 	18, // 19: proto.StatusResponse.feasibility_distances:type_name -> proto.FeasibilityDistance
-	1,  // 20: proto.EndpointProbeResult.status:type_name -> proto.EndpointProbeStatus
-	22, // 21: proto.ProbeResponse.results:type_name -> proto.EndpointProbeResult
-	0,  // 22: proto.ReloadResponse.result:type_name -> proto.ReloadResult
-	2,  // 23: proto.IpcRequest.status:type_name -> proto.StatusRequest
-	3,  // 24: proto.IpcRequest.probe:type_name -> proto.ProbeRequest
-	4,  // 25: proto.IpcRequest.reload:type_name -> proto.ReloadRequest
-	5,  // 26: proto.IpcRequest.trace:type_name -> proto.TraceRequest
-	21, // 27: proto.IpcResponse.status:type_name -> proto.StatusResponse
-	23, // 28: proto.IpcResponse.probe:type_name -> proto.ProbeResponse
-	24, // 29: proto.IpcResponse.reload:type_name -> proto.ReloadResponse
-	25, // 30: proto.IpcResponse.trace:type_name -> proto.TraceEvent
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	21, // 20: proto.StatusResponse.nodes:type_name -> proto.NodeInfo
+	1,  // 21: proto.EndpointProbeResult.status:type_name -> proto.EndpointProbeStatus
+	23, // 22: proto.ProbeResponse.results:type_name -> proto.EndpointProbeResult
+	0,  // 23: proto.ReloadResponse.result:type_name -> proto.ReloadResult
+	2,  // 24: proto.IpcRequest.status:type_name -> proto.StatusRequest
+	3,  // 25: proto.IpcRequest.probe:type_name -> proto.ProbeRequest
+	4,  // 26: proto.IpcRequest.reload:type_name -> proto.ReloadRequest
+	5,  // 27: proto.IpcRequest.trace:type_name -> proto.TraceRequest
+	22, // 28: proto.IpcResponse.status:type_name -> proto.StatusResponse
+	24, // 29: proto.IpcResponse.probe:type_name -> proto.ProbeResponse
+	25, // 30: proto.IpcResponse.reload:type_name -> proto.ReloadResponse
+	26, // 31: proto.IpcResponse.trace:type_name -> proto.TraceEvent
+	32, // [32:32] is the sub-list for method output_type
+	32, // [32:32] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_protocol_nylon_ipc_proto_init() }
@@ -2078,14 +2144,14 @@ func file_protocol_nylon_ipc_proto_init() {
 	}
 	file_protocol_nylon_ipc_proto_msgTypes[10].OneofWrappers = []any{}
 	file_protocol_nylon_ipc_proto_msgTypes[11].OneofWrappers = []any{}
-	file_protocol_nylon_ipc_proto_msgTypes[20].OneofWrappers = []any{}
-	file_protocol_nylon_ipc_proto_msgTypes[24].OneofWrappers = []any{
+	file_protocol_nylon_ipc_proto_msgTypes[21].OneofWrappers = []any{}
+	file_protocol_nylon_ipc_proto_msgTypes[25].OneofWrappers = []any{
 		(*IpcRequest_Status)(nil),
 		(*IpcRequest_Probe)(nil),
 		(*IpcRequest_Reload)(nil),
 		(*IpcRequest_Trace)(nil),
 	}
-	file_protocol_nylon_ipc_proto_msgTypes[25].OneofWrappers = []any{
+	file_protocol_nylon_ipc_proto_msgTypes[26].OneofWrappers = []any{
 		(*IpcResponse_Status)(nil),
 		(*IpcResponse_Probe)(nil),
 		(*IpcResponse_Reload)(nil),
@@ -2097,7 +2163,7 @@ func file_protocol_nylon_ipc_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_nylon_ipc_proto_rawDesc), len(file_protocol_nylon_ipc_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   26,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

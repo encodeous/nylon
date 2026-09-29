@@ -155,6 +155,7 @@ func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
 			Neighbours:           buildNeighbours(n, wgStats),
 			Routes:               buildRouteTables(n),
 			FeasibilityDistances: buildFeasibilityDistances(n),
+			Nodes:                buildNodes(n),
 		}},
 	}
 }
@@ -296,6 +297,18 @@ func buildFeasibilityDistances(n *Nylon) []*protocol.FeasibilityDistance {
 		return cmp.Compare(a.Source.NodeId, b.Source.NodeId)
 	})
 	return entries
+}
+
+func buildNodes(n *Nylon) []*protocol.NodeInfo {
+	nodes := make([]*protocol.NodeInfo, 0)
+	for _, node := range n.CentralCfg.GetNodes() {
+		addrs := make([]string, 0, len(node.Addresses))
+		for _, addr := range node.Addresses {
+			addrs = append(addrs, addr.String())
+		}
+		nodes = append(nodes, &protocol.NodeInfo{NodeId: string(node.Id), Addresses: addrs})
+	}
+	return nodes
 }
 
 func advertisementsForNode(n *Nylon, id state.NodeId) []*protocol.Advertisement {
