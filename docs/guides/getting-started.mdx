@@ -129,9 +129,9 @@ This creates `node.yaml` and `central.yaml` if they are missing, prints a setup 
 nylon init --connect <first-node-ip> --token <setup-token>
 ```
 
-The new node generates its key, is added to `central.yaml` with the next free address and connected to the serving node, and receives a copy of the updated `central.yaml`. The node ID defaults to the hostname; pass `--id` to choose another. The exchange is encrypted with the token, and the token can only be used once.
+The new node generates its key, is added to the central configuration with the next free address and connected to the serving node, and receives a copy of the updated configuration. The node ID defaults to the hostname; pass `--id` to choose another. The exchange is encrypted with the token, and the token can only be used once.
 
-Afterwards, run `nylon reload` on the serving node if nylon is already running, and distribute the updated `central.yaml` to any other nodes. If the network uses [Config Distribution](/guides/config-distribution), the serving node's `central.yaml` is the unencrypted copy of the bundle: reseal it with `nylon seal` and publish it, otherwise the next bundle will overwrite the change.
+The serving node keeps its own `central.yaml` unchanged, so it stays in sync with the rest of the network, and writes the updated configuration to `central.join.yaml` instead. The new node can connect once that configuration is distributed: copy it to every node as `central.yaml` and run `nylon reload`, or, if the network uses [Config Distribution](/guides/config-distribution), seal it with `nylon seal` and publish the bundle. The serving node prints the exact steps.
 
 ## Next Steps
 

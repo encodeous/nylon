@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,9 +47,19 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 	if err != nil {
 		return err
 	}
-	central, err := loadOrInitCentral(opts.central, node)
+	central, existed, err := loadOrInitCentral(opts.central, node)
 	if err != nil {
 		return err
+	}
+	// an existing network keeps its central config until the join is distributed
+	outPath := opts.central
+	if existed {
+		outPath = joinConfigPath(opts.central)
+		if !opts.force {
+			if err = checkPendingJoin(outPath, central); err != nil {
+				return err
+			}
+		}
 	}
 
 	raw := make([]byte, 16)
@@ -102,10 +113,10 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 			}
 			data, err := yaml.Marshal(updated)
 			if err == nil {
-				err = os.WriteFile(opts.central, data, 0o600)
+				err = os.WriteFile(outPath, data, 0o600)
 			}
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Error: write %s: %v\n", opts.central, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Error: write %s: %v\n", outPath, err)
 				http.Error(w, "failed to update central config", http.StatusInternalServerError)
 				return
 			}
@@ -128,14 +139,16 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 	defer cancel()
 	_ = srv.Shutdown(ctx)
 
-	fmt.Fprintf(out, "\nNode %s joined with address %v, updated %s\n", req.Id, central.GetNode(req.Id).Addresses, opts.central)
-	fmt.Fprintln(out, "Start nylon, or run `nylon reload` if it is already running with this config")
-	if central.Dist != nil {
-		// central.yaml is the unencrypted copy of the bundle so it can be resealed directly
-		fmt.Fprintf(out, "\nThis network uses config distribution. Seal the updated config and publish it to %s,\notherwise the next bundle will overwrite this change:\n\n  nylon seal -c %s -k %s -o %s\n",
-			strings.Join(central.Dist.Repos, ", "), opts.central, DefaultKeyPath, DefaultBundlePath)
-	} else if len(central.GetNodes()) > 2 {
-		fmt.Fprintf(out, "Copy %s to the other nodes (or seal and publish it) so they learn about %s\n", opts.central, req.Id)
+	addrs := central.GetNode(req.Id).Addresses
+	switch {
+	case !existed:
+		fmt.Fprintf(out, "\nNode %s joined with address %v, created %s\nStart nylon to connect to it\n", req.Id, addrs, outPath)
+	case central.Dist != nil:
+		fmt.Fprintf(out, "\nNode %s joined with address %v, wrote the updated config to %s\nSeal it and publish it to %s, %s can connect once the bundle is distributed:\n\n  nylon seal -c %s -k %s -o %s\n",
+			req.Id, addrs, outPath, strings.Join(central.Dist.Repos, ", "), req.Id, outPath, DefaultKeyPath, DefaultBundlePath)
+	default:
+		fmt.Fprintf(out, "\nNode %s joined with address %v, wrote the updated config to %s\nCopy it to every node (including this one) as %s and run `nylon reload`, %s can connect once it is distributed\n",
+			req.Id, addrs, outPath, filepath.Base(opts.central), req.Id)
 	}
 	return nil
 }
@@ -167,15 +180,16 @@ func loadOrInitNode(cmd *cobra.Command, opts initOptions) (*state.LocalCfg, erro
 	return cfg, nil
 }
 
-func loadOrInitCentral(path string, node *state.LocalCfg) (*state.CentralCfg, error) {
+func loadOrInitCentral(path string, node *state.LocalCfg) (*state.CentralCfg, bool, error) {
 	cfg := &state.CentralCfg{}
 	data, err := os.ReadFile(path)
-	if err == nil {
+	existed := err == nil
+	if existed {
 		if err = yaml.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
+			return nil, false, fmt.Errorf("parse %s: %w", path, err)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
 	}
 	if cfg.TryGetNode(node.Id) == nil {
 		cfg.Routers = append(cfg.Routers, state.RouterCfg{NodeCfg: state.NodeCfg{
@@ -185,12 +199,38 @@ func loadOrInitCentral(path string, node *state.LocalCfg) (*state.CentralCfg, er
 		}})
 	}
 	if err = state.CentralConfigValidator(cfg); err != nil {
-		return nil, fmt.Errorf("invalid central config: %w", err)
+		return nil, false, fmt.Errorf("invalid central config: %w", err)
 	}
 	if err = state.NodeConfigValidator(cfg, node); err != nil {
-		return nil, fmt.Errorf("invalid node config: %w", err)
+		return nil, false, fmt.Errorf("invalid node config: %w", err)
 	}
-	return cfg, nil
+	return cfg, existed, nil
+}
+
+func joinConfigPath(central string) string {
+	ext := filepath.Ext(central)
+	return strings.TrimSuffix(central, ext) + ".join" + ext
+}
+
+// a previous join is distributed once all its nodes reach central config
+func checkPendingJoin(path string, central *state.CentralCfg) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	var pending state.CentralCfg
+	if err = yaml.Unmarshal(data, &pending); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	for _, n := range pending.GetNodes() {
+		if !central.IsNode(n.Id) {
+			return fmt.Errorf("%s has an undistributed join for %s, distribute it first (or use --force to discard it)", path, n.Id)
+		}
+	}
+	return nil
 }
 
 func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest, host string) (*state.CentralCfg, error) {
@@ -223,6 +263,12 @@ func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest,
 	}
 	if err = state.CentralConfigValidator(cfg); err != nil {
 		return nil, err
+	}
+	// the joiner has no endpoint of its own so it must be able to dial a peer
+	if !slices.ContainsFunc(cfg.GetPeers(req.Id), func(p state.NodeId) bool {
+		return cfg.IsRouter(p) && len(cfg.GetRouter(p).Endpoints) != 0
+	}) {
+		return nil, fmt.Errorf("%s would have no peer with an endpoint to connect to", req.Id)
 	}
 	return cfg, nil
 }
