@@ -3,14 +3,11 @@ import SwiftUI
 
 @main
 struct MenuApp: App {
-    @StateObject private var store: NodeStore
+    @StateObject private var store = NodeStore()
 
     init() {
         // menu bar only; without an app bundle it would otherwise start background-only
         NSApplication.shared.setActivationPolicy(.accessory)
-        // `NylonApp -central <path>` lands in UserDefaults' argument domain, like `nylon run -c`
-        let path = UserDefaults.standard.string(forKey: "central") ?? "central.yaml"
-        _store = StateObject(wrappedValue: NodeStore(path: path))
     }
 
     var body: some Scene {
