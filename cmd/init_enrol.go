@@ -31,8 +31,31 @@ const (
 )
 
 type joinRequest struct {
-	Id     state.NodeId
-	PubKey state.NyPublicKey
+	Id        state.NodeId
+	PubKey    state.NyPublicKey
+	Addresses []netip.Addr   `yaml:",omitempty"`
+	Prefixes  []netip.Prefix `yaml:",omitempty"`
+}
+
+// address and prefix flags describe this node's entry in central config
+func entryFlags(opts initOptions) ([]netip.Addr, []netip.Prefix, error) {
+	addrs, err := parseAddrs(opts.addresses)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid --address: %w", err)
+	}
+	prefixes, err := parsePrefixes(opts.prefixes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid --prefix: %w", err)
+	}
+	return addrs, prefixes, nil
+}
+
+func staticPrefixes(prefixes []netip.Prefix) []state.PrefixHealthWrapper {
+	res := make([]state.PrefixHealthWrapper, 0, len(prefixes))
+	for _, p := range prefixes {
+		res = append(res, state.PrefixHealthWrapper{PrefixHealth: &state.StaticPrefixHealth{Prefix: p}})
+	}
+	return res
 }
 
 // token doubles as the shared secret sealing both directions of the exchange
@@ -47,7 +70,7 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 	if err != nil {
 		return err
 	}
-	central, existed, err := loadOrInitCentral(opts.central, node)
+	central, existed, err := loadOrInitCentral(opts, node)
 	if err != nil {
 		return err
 	}
@@ -139,16 +162,16 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 	defer cancel()
 	_ = srv.Shutdown(ctx)
 
-	addrs := central.GetNode(req.Id).Addresses
+	fmt.Fprintf(out, "\nNode %s joined with address %v, wrote %s\nIt has no connections yet, add it to graph (e.g. `%s, %s`) then:\n",
+		req.Id, central.GetNode(req.Id).Addresses, outPath, node.Id, req.Id)
 	switch {
 	case !existed:
-		fmt.Fprintf(out, "\nNode %s joined with address %v, created %s\nStart nylon to connect to it\n", req.Id, addrs, outPath)
+		fmt.Fprintln(out, "Start nylon")
 	case central.Dist != nil:
-		fmt.Fprintf(out, "\nNode %s joined with address %v, wrote the updated config to %s\nSeal it and publish it to %s, %s can connect once the bundle is distributed:\n\n  nylon seal -c %s -k %s -o %s\n",
-			req.Id, addrs, outPath, strings.Join(central.Dist.Repos, ", "), req.Id, outPath, DefaultKeyPath, DefaultBundlePath)
+		fmt.Fprintf(out, "Seal it and publish it to %s:\n\n  nylon seal -c %s -k %s -o %s\n",
+			strings.Join(central.Dist.Repos, ", "), outPath, DefaultKeyPath, DefaultBundlePath)
 	default:
-		fmt.Fprintf(out, "\nNode %s joined with address %v, wrote the updated config to %s\nCopy it to every node (including this one) as %s and run `nylon reload`, %s can connect once it is distributed\n",
-			req.Id, addrs, outPath, filepath.Base(opts.central), req.Id)
+		fmt.Fprintf(out, "Copy it to every node (including this one) as %s and run `nylon reload`\n", filepath.Base(opts.central))
 	}
 	return nil
 }
@@ -180,7 +203,8 @@ func loadOrInitNode(cmd *cobra.Command, opts initOptions) (*state.LocalCfg, erro
 	return cfg, nil
 }
 
-func loadOrInitCentral(path string, node *state.LocalCfg) (*state.CentralCfg, bool, error) {
+func loadOrInitCentral(opts initOptions, node *state.LocalCfg) (*state.CentralCfg, bool, error) {
+	path := opts.central
 	cfg := &state.CentralCfg{}
 	data, err := os.ReadFile(path)
 	existed := err == nil
@@ -192,10 +216,15 @@ func loadOrInitCentral(path string, node *state.LocalCfg) (*state.CentralCfg, bo
 		return nil, false, fmt.Errorf("read %s: %w", path, err)
 	}
 	if cfg.TryGetNode(node.Id) == nil {
+		addrs, prefixes, err := entryFlags(opts)
+		if err != nil {
+			return nil, false, err
+		}
 		cfg.Routers = append(cfg.Routers, state.RouterCfg{NodeCfg: state.NodeCfg{
 			Id:        node.Id,
 			PubKey:    node.Key.Pubkey(),
-			Addresses: []netip.Addr{nextAddress(cfg)},
+			Addresses: addrs,
+			Prefixes:  staticPrefixes(prefixes),
 		}})
 	}
 	if err = state.CentralConfigValidator(cfg); err != nil {
@@ -247,12 +276,19 @@ func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest,
 	if cfg.FindNodeBy(req.PubKey) != nil {
 		return nil, fmt.Errorf("public key is already in use")
 	}
+	for _, n := range cfg.GetNodes() {
+		for _, a := range n.Addresses {
+			if slices.Contains(req.Addresses, a) {
+				return nil, fmt.Errorf("address %s is already used by %s", a, n.Id)
+			}
+		}
+	}
 	cfg.Routers = append(cfg.Routers, state.RouterCfg{NodeCfg: state.NodeCfg{
 		Id:        req.Id,
 		PubKey:    req.PubKey,
-		Addresses: []netip.Addr{nextAddress(cfg)},
+		Addresses: req.Addresses,
+		Prefixes:  staticPrefixes(req.Prefixes),
 	}})
-	cfg.Graph = append(cfg.Graph, fmt.Sprintf("%s, %s", self.Id, req.Id))
 
 	// the joining node reached us through host so it is a usable endpoint
 	idx := slices.IndexFunc(cfg.Routers, func(r state.RouterCfg) bool { return r.Id == self.Id })
@@ -264,29 +300,7 @@ func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest,
 	if err = state.CentralConfigValidator(cfg); err != nil {
 		return nil, err
 	}
-	// the joiner has no endpoint of its own so it must be able to dial a peer
-	if !slices.ContainsFunc(cfg.GetPeers(req.Id), func(p state.NodeId) bool {
-		return cfg.IsRouter(p) && len(cfg.GetRouter(p).Endpoints) != 0
-	}) {
-		return nil, fmt.Errorf("%s would have no peer with an endpoint to connect to", req.Id)
-	}
 	return cfg, nil
-}
-
-// next ipv4 after the highest one in use, starting at 10.0.0.1
-func nextAddress(cfg *state.CentralCfg) netip.Addr {
-	var highest netip.Addr
-	for _, n := range cfg.GetNodes() {
-		for _, a := range n.Addresses {
-			if a.Is4() && (!highest.IsValid() || highest.Less(a)) {
-				highest = a
-			}
-		}
-	}
-	if !highest.IsValid() {
-		return netip.MustParseAddr("10.0.0.1")
-	}
-	return highest.Next()
 }
 
 func runInitConnect(cmd *cobra.Command, opts initOptions) error {
@@ -302,9 +316,13 @@ func runInitConnect(cmd *cobra.Command, opts initOptions) error {
 	if err != nil {
 		return err
 	}
+	addrs, prefixes, err := entryFlags(opts)
+	if err != nil {
+		return err
+	}
 
 	key := tokenKey(opts.token)
-	plain, err := yaml.Marshal(joinRequest{Id: node.Id, PubKey: node.Key.Pubkey()})
+	plain, err := yaml.Marshal(joinRequest{Id: node.Id, PubKey: node.Key.Pubkey(), Addresses: addrs, Prefixes: prefixes})
 	if err != nil {
 		return err
 	}

@@ -105,11 +105,11 @@ func startServe(t *testing.T, dir string, port int, args ...string) (string, cha
 	return token, done
 }
 
-func connect(dir string, port int, token, id string) error {
+func connect(dir string, port int, token, id string, args ...string) error {
 	cmd := newInitCmd()
 	cmd.SetOut(io.Discard)
-	cmd.SetArgs([]string{"--connect", "127.0.0.1:" + strconv.Itoa(port), "--token", token, "--id", id,
-		"-o", filepath.Join(dir, "node.yaml"), "-c", filepath.Join(dir, "central.yaml")})
+	cmd.SetArgs(append([]string{"--connect", "127.0.0.1:" + strconv.Itoa(port), "--token", token, "--id", id,
+		"-o", filepath.Join(dir, "node.yaml"), "-c", filepath.Join(dir, "central.yaml")}, args...))
 	return cmd.Execute()
 }
 
@@ -129,11 +129,12 @@ func TestInitServeConnect(t *testing.T) {
 	joinCentral := filepath.Join(serverDir, "central.join.yaml")
 
 	// new network writes central.yaml directly
-	token, done := startServe(t, serverDir, port)
+	token, done := startServe(t, serverDir, port, "--address", "10.0.0.1")
 	require.NotEmpty(t, token)
-	// wrong token must be rejected without consuming the real one
+	// rejected joins must not consume the token
 	require.ErrorContains(t, connect(t.TempDir(), port, "nope", "evil"), "invalid setup token")
-	require.NoError(t, connect(leafDir, port, token, "leaf"))
+	require.ErrorContains(t, connect(t.TempDir(), port, token, "dup", "--address", "10.0.0.1"), "already used by hub")
+	require.NoError(t, connect(leafDir, port, token, "leaf", "--address", "10.0.0.2", "--prefix", "192.168.5.0/24"))
 	require.NoError(t, <-done)
 
 	central, serverData := readCentral(t, serverCentral)
@@ -143,7 +144,9 @@ func TestInitServeConnect(t *testing.T) {
 	assert.Equal(t, []string{"127.0.0.1:" + strconv.Itoa(port)}, central.GetRouter("hub").Endpoints)
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.1")}, central.GetRouter("hub").Addresses)
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.2")}, central.GetRouter("leaf").Addresses)
-	assert.Equal(t, []state.NodeId{"leaf"}, central.GetPeers("hub"))
+	require.Len(t, central.GetRouter("leaf").Prefixes, 1)
+	assert.Equal(t, netip.MustParsePrefix("192.168.5.0/24"), central.GetRouter("leaf").Prefixes[0].GetPrefix())
+	assert.Empty(t, central.Graph)
 	for _, dir := range []string{serverDir, leafDir} {
 		data, err := os.ReadFile(filepath.Join(dir, "node.yaml"))
 		require.NoError(t, err)
@@ -155,7 +158,7 @@ func TestInitServeConnect(t *testing.T) {
 
 	// existing network keeps central.yaml and writes the join beside it
 	token, done = startServe(t, serverDir, port)
-	require.NoError(t, connect(leaf2Dir, port, token, "leaf2"))
+	require.NoError(t, connect(leaf2Dir, port, token, "leaf2", "--address", "10.0.0.3"))
 	require.NoError(t, <-done)
 
 	_, after := readCentral(t, serverCentral)
@@ -164,7 +167,7 @@ func TestInitServeConnect(t *testing.T) {
 	_, leaf2Data := readCentral(t, filepath.Join(leaf2Dir, "central.yaml"))
 	assert.Equal(t, joinData, leaf2Data)
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.3")}, joined.GetRouter("leaf2").Addresses)
-	assert.ElementsMatch(t, []state.NodeId{"leaf", "leaf2"}, joined.GetPeers("hub"))
+	assert.Empty(t, joined.Graph)
 
 	// an undistributed join must not be overwritten
 	serve := newInitCmd()
@@ -177,11 +180,4 @@ func TestInitServeConnect(t *testing.T) {
 	token, done = startServe(t, serverDir, port)
 	require.NoError(t, connect(t.TempDir(), port, token, "leaf3"))
 	require.NoError(t, <-done)
-}
-
-func TestEnrolNodeRequiresReachablePeer(t *testing.T) {
-	self := &state.LocalCfg{Id: "hub", Key: state.GenerateKey(), Port: state.DefaultPort}
-	central := &state.CentralCfg{Clients: []state.ClientCfg{{NodeCfg: state.NodeCfg{Id: "hub", PubKey: self.Key.Pubkey()}}}}
-	_, err := enrolNode(central, self, joinRequest{Id: "leaf", PubKey: state.GenerateKey().Pubkey()}, "10.1.1.1:57175")
-	assert.ErrorContains(t, err, "no peer with an endpoint")
 }

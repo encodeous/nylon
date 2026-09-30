@@ -33,6 +33,8 @@ type initOptions struct {
 	connect          string
 	token            string
 	central          string
+	addresses        []string
+	prefixes         []string
 }
 
 func newInitCmd() *cobra.Command {
@@ -88,6 +90,8 @@ func newInitCmd() *cobra.Command {
 	flags.StringVar(&opts.connect, "connect", "", "Join the network through a node running --serve (host[:port])")
 	flags.StringVar(&opts.token, "token", "", "Setup token printed by --serve")
 	flags.StringVarP(&opts.central, "config", "c", DefaultConfigPath, "Central config path used by --serve and --connect")
+	flags.StringSliceVar(&opts.addresses, "address", nil, "Nylon address for this node in central config (repeatable)")
+	flags.StringSliceVar(&opts.prefixes, "prefix", nil, "IP prefix this node advertises in central config (repeatable)")
 	cmd.MarkFlagsMutuallyExclusive("serve", "connect")
 	cmd.MarkFlagsRequiredTogether("connect", "token")
 	return cmd
@@ -173,6 +177,18 @@ func buildNodeConfig(opts initOptions) (*state.LocalCfg, error) {
 		return nil, fmt.Errorf("invalid node config: %w", err)
 	}
 	return cfg, nil
+}
+
+func parseAddrs(values []string) ([]netip.Addr, error) {
+	addrs := make([]netip.Addr, 0, len(values))
+	for _, value := range values {
+		addr, err := netip.ParseAddr(value)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", value, err)
+		}
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
 }
 
 func parsePrefixes(values []string) ([]netip.Prefix, error) {
