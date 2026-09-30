@@ -109,6 +109,15 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 		}
 		neighs = append(neighs, stNeigh)
 	}
+	// drop routes for removed prefixes so we stop requesting seqnos for them
+	prefixes := next.GetPrefixes()
+	for _, neigh := range neighs {
+		for prefix := range neigh.Routes {
+			if !slices.Contains(prefixes, prefix) {
+				delete(neigh.Routes, prefix)
+			}
+		}
+	}
 	n.RouterState.Neighbours = neighs
 	if n.EndpointResolver != nil {
 		addresses := make(map[string]struct{})
