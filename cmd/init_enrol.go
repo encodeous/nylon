@@ -66,22 +66,15 @@ func tokenKey(token string) []byte {
 
 func runInitServe(cmd *cobra.Command, opts initOptions) error {
 	out := cmd.OutOrStdout()
-	node, err := loadOrInitNode(cmd, opts)
+	node, central, err := loadServeConfigs(opts)
 	if err != nil {
 		return err
 	}
-	central, existed, err := loadOrInitCentral(opts, node)
-	if err != nil {
-		return err
-	}
-	// an existing network keeps its central config until the join is distributed
-	outPath := opts.central
-	if existed {
-		outPath = joinConfigPath(opts.central)
-		if !opts.force {
-			if err = checkPendingJoin(outPath, central); err != nil {
-				return err
-			}
+	// central config stays in sync with the network until the join is distributed
+	outPath := joinConfigPath(opts.central)
+	if !opts.force {
+		if err = checkPendingJoin(outPath, central); err != nil {
+			return err
 		}
 	}
 
@@ -129,7 +122,7 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 				http.Error(w, "setup token already used", http.StatusForbidden)
 				return
 			}
-			updated, err := enrolNode(central, node, req, r.Host)
+			updated, err := enrolNode(central, req)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -164,76 +157,40 @@ func runInitServe(cmd *cobra.Command, opts initOptions) error {
 
 	fmt.Fprintf(out, "\nNode %s joined with address %v, wrote %s\nIt has no connections yet, add it to graph (e.g. `%s, %s`) then:\n",
 		req.Id, central.GetNode(req.Id).Addresses, outPath, node.Id, req.Id)
-	switch {
-	case !existed:
-		fmt.Fprintln(out, "Start nylon")
-	case central.Dist != nil:
+	if central.Dist != nil {
 		fmt.Fprintf(out, "Seal it and publish it to %s:\n\n  nylon seal -c %s -k %s -o %s\n",
 			strings.Join(central.Dist.Repos, ", "), outPath, DefaultKeyPath, DefaultBundlePath)
-	default:
+	} else {
 		fmt.Fprintf(out, "Copy it to every node (including this one) as %s and run `nylon reload`\n", filepath.Base(opts.central))
 	}
 	return nil
 }
 
-// reuse this node's config when present so --serve works on an existing network
-func loadOrInitNode(cmd *cobra.Command, opts initOptions) (*state.LocalCfg, error) {
+// serving enrols into an existing network so both configs must already exist
+func loadServeConfigs(opts initOptions) (*state.LocalCfg, *state.CentralCfg, error) {
 	data, err := os.ReadFile(opts.output)
-	if err == nil {
-		cfg, err := state.ParseLocalConfig(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", opts.output, err)
-		}
-		if err = state.NodeConfigValidator(nil, cfg); err != nil {
-			return nil, fmt.Errorf("invalid node config: %w", err)
-		}
-		return cfg, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read %s: %w", opts.output, err)
-	}
-	cfg, err := buildNodeConfig(opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("read %s: %w", opts.output, err)
 	}
-	if err = writeNodeConfig(cfg, opts.output, false); err != nil {
-		return nil, err
+	node, err := state.ParseLocalConfig(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", opts.output, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Created %s\n", opts.output)
-	return cfg, nil
-}
-
-func loadOrInitCentral(opts initOptions, node *state.LocalCfg) (*state.CentralCfg, bool, error) {
-	path := opts.central
-	cfg := &state.CentralCfg{}
-	data, err := os.ReadFile(path)
-	existed := err == nil
-	if existed {
-		if err = yaml.Unmarshal(data, cfg); err != nil {
-			return nil, false, fmt.Errorf("parse %s: %w", path, err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	data, err = os.ReadFile(opts.central)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read %s: %w", opts.central, err)
 	}
-	if cfg.TryGetNode(node.Id) == nil {
-		addrs, prefixes, err := entryFlags(opts)
-		if err != nil {
-			return nil, false, err
-		}
-		cfg.Routers = append(cfg.Routers, state.RouterCfg{NodeCfg: state.NodeCfg{
-			Id:        node.Id,
-			PubKey:    node.Key.Pubkey(),
-			Addresses: addrs,
-			Prefixes:  staticPrefixes(prefixes),
-		}})
+	central := &state.CentralCfg{}
+	if err = yaml.Unmarshal(data, central); err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", opts.central, err)
 	}
-	if err = state.CentralConfigValidator(cfg); err != nil {
-		return nil, false, fmt.Errorf("invalid central config: %w", err)
+	if err = state.CentralConfigValidator(central); err != nil {
+		return nil, nil, fmt.Errorf("invalid central config: %w", err)
 	}
-	if err = state.NodeConfigValidator(cfg, node); err != nil {
-		return nil, false, fmt.Errorf("invalid node config: %w", err)
+	if err = state.NodeConfigValidator(central, node); err != nil {
+		return nil, nil, fmt.Errorf("invalid node config: %w", err)
 	}
-	return cfg, existed, nil
+	return node, central, nil
 }
 
 func joinConfigPath(central string) string {
@@ -262,7 +219,7 @@ func checkPendingJoin(path string, central *state.CentralCfg) error {
 	return nil
 }
 
-func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest, host string) (*state.CentralCfg, error) {
+func enrolNode(central *state.CentralCfg, req joinRequest) (*state.CentralCfg, error) {
 	err, cfg := central.Clone()
 	if err != nil {
 		return nil, err
@@ -289,14 +246,6 @@ func enrolNode(central *state.CentralCfg, self *state.LocalCfg, req joinRequest,
 		Addresses: req.Addresses,
 		Prefixes:  staticPrefixes(req.Prefixes),
 	}})
-
-	// the joining node reached us through host so it is a usable endpoint
-	idx := slices.IndexFunc(cfg.Routers, func(r state.RouterCfg) bool { return r.Id == self.Id })
-	if idx != -1 && len(cfg.Routers[idx].Endpoints) == 0 {
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			cfg.Routers[idx].Endpoints = []string{net.JoinHostPort(h, strconv.Itoa(int(self.Port)))}
-		}
-	}
 	if err = state.CentralConfigValidator(cfg); err != nil {
 		return nil, err
 	}
