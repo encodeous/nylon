@@ -20,7 +20,30 @@ Nylon targets under 10 seconds of convergence time after a link failure, as you 
 
 ## Getting Started
 
-Download the latest release binary from the [releases page](https://github.com/encodeous/nylon/releases), then head to the [docs](https://nylon.jq.ax) for setup instructions.
+Install the latest release on Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh
+```
+
+To also run nylon as a systemd service, with its configs in `/etc/nylon`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh -s -- --service
+```
+
+Pass options after `sh -s --`, for example `... | sh -s -- --version v0.4.6`:
+
+| Option | Description |
+|---|---|
+| `--service` | Also install and enable a systemd service using the configs in `/etc/nylon` |
+| `--version <tag>` | Install a specific release, e.g. `v0.4.6` (also works for downgrades) |
+| `--uninstall` | Remove the service and binary; keeps `/etc/nylon` |
+| `--help` | Show usage |
+
+You can also download binaries directly from the [releases page](https://github.com/encodeous/nylon/releases).
+
+Then head to the [docs](https://nylon.jq.ax) for setup instructions.
 
 > **[Read the full documentation at nylon.jq.ax](https://nylon.jq.ax)**
 > includes configuration reference, guides for connecting WireGuard clients, port forwarding, and comparisons with Tailscale/Nebula.

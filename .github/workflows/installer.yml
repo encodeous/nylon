@@ -1,0 +1,97 @@
+name: Installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - ".github/workflows/installer.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - ".github/workflows/installer.yml"
+  # Also catch new releases that break the installer.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: shellcheck install.sh
+
+  # Installs published releases on a real Ubuntu 24.04 VM with systemd, as a
+  # non-root user with sudo, the way most people will run it.
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install binary
+        run: |
+          sh install.sh
+          nylon version
+      - name: Re-run is a no-op
+        run: |
+          version=$(nylon version | sed 's/^Version: //')
+          sh install.sh 2>&1 | grep -Fx "==> nylon $version is already installed"
+      - name: Install service without configs
+        run: |
+          # A pre-existing config dir must still end up root-only.
+          sudo mkdir -m 0755 /etc/nylon
+          sh install.sh --service
+          systemctl is-enabled nylon
+          test "$(systemctl is-active nylon)" = inactive
+          test "$(sudo stat -c %a /etc/nylon)" = 700
+      - name: Start service with a single-node config
+        run: |
+          key=$(nylon key 2>pub)
+          printf 'id: ci\nkey: %s\nport: 57175\n' "$key" | sudo tee /etc/nylon/node.yaml >/dev/null
+          printf 'routers:\n  - id: ci\n    pubkey: %s\n    addresses: [10.99.0.1]\n' "$(cat pub)" | sudo tee /etc/nylon/central.yaml >/dev/null
+          sudo nylon verify /etc/nylon/central.yaml --node /etc/nylon/node.yaml
+          sh install.sh --service 2>&1 | grep -Fx "==> started nylon.service"
+          # Same PID after a while, so it isn't crash-looping.
+          sleep 2
+          pid=$(systemctl show -p MainPID --value nylon)
+          sleep 10
+          test "$pid" != 0
+          test "$(systemctl show -p MainPID --value nylon)" = "$pid"
+          ip -br addr | grep 10.99.0.1
+      - name: Re-running with --service leaves it running
+        run: |
+          pid=$(systemctl show -p MainPID --value nylon)
+          sh install.sh --service 2>&1 | grep -Fx "==> nylon.service is already running"
+          test "$(systemctl show -p MainPID --value nylon)" = "$pid"
+      - name: Changing version restarts the service
+        run: |
+          sh install.sh --version v0.4.5 2>&1 | grep -Fx "==> restarted nylon.service"
+          nylon version | grep -Fx "Version: v0.4.5"
+          sh install.sh 2>&1 | grep -Fx "==> restarted nylon.service"
+          sleep 2
+          pid=$(systemctl show -p MainPID --value nylon)
+          sleep 10
+          test "$pid" != 0
+          test "$(systemctl show -p MainPID --value nylon)" = "$pid"
+      - name: Uninstall
+        run: |
+          sh install.sh --uninstall
+          test "$(systemctl is-active nylon)" != active
+          if ip link show nylon 2>/dev/null; then exit 1; fi
+          test ! -e /usr/local/bin/nylon
+          test ! -e /etc/systemd/system/nylon.service
+          sudo test -f /etc/nylon/node.yaml
+      - name: Leaves a hand-written unit alone
+        run: |
+          printf '[Service]\nExecStart=/bin/true\n' | sudo tee /etc/systemd/system/nylon.service >/dev/null
+          if sh install.sh --service; then exit 1; fi
+          sh install.sh --uninstall
+          sudo test -f /etc/systemd/system/nylon.service
+      - name: Logs
+        if: failure()
+        run: sudo journalctl -u nylon --no-pager
