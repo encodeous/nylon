@@ -1,14 +1,10 @@
 package state
 
 import (
-	"fmt"
 	"math"
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 )
 
 type Endpoint interface {
@@ -29,28 +25,11 @@ type NylonEndpoint struct {
 	lastHeardBack time.Time
 	expRTT        float64
 	remoteInit    bool
-	WgEndpoint    conn.Endpoint
 	Address       string
 }
 
 func (ep *NylonEndpoint) AsNylonEndpoint() *NylonEndpoint {
 	return ep
-}
-
-func (ep *NylonEndpoint) GetWgEndpoint(device *device.Device, resolver *EndpointResolver) (conn.Endpoint, error) {
-	ap, err := resolver.Get(ep.Address)
-	if err != nil {
-		return nil, err
-	}
-
-	if ep.WgEndpoint == nil || ep.WgEndpoint.DstIPPort() != ap {
-		wgEp, err := device.Bind().ParseEndpoint(ap.String())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse endpoint: %s, %v", ap.String(), err)
-		}
-		ep.WgEndpoint = wgEp
-	}
-	return ep.WgEndpoint, nil
 }
 
 func (n *Neighbour) BestEndpoint() Endpoint {
@@ -92,11 +71,10 @@ func (u *NylonEndpoint) IsAlive() bool {
 	return u.IsActive() || !u.remoteInit // we never gc endpoints that we have in our config
 }
 
-func NewEndpoint(address string, remoteInit bool, wgEndpoint conn.Endpoint, t *RouterTunables) *NylonEndpoint {
+func NewEndpoint(address string, remoteInit bool, t *RouterTunables) *NylonEndpoint {
 	return &NylonEndpoint{
 		t:          t,
 		remoteInit: remoteInit,
-		WgEndpoint: wgEndpoint,
 		Address:    address,
 		history:    make([]time.Duration, 0),
 		expRTT:     math.Inf(1),

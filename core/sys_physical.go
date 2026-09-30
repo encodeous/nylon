@@ -4,87 +4,49 @@ package core
 
 import (
 	"fmt"
+	"net"
 	"runtime"
-	"strings"
 
-	"github.com/encodeous/nylon/log"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 )
 
-func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
-	itfName := n.InterfaceName // attempt to name the interface
-
+func newDefaultRuntime(n *Nylon) (Runtime, error) {
+	name := n.InterfaceName
 	if runtime.GOOS == "darwin" && !n.NoTun {
-		itfName = "utun"
+		name = "utun"
 	}
-
-	var tdev tun.Device
+	var host tun.Device
+	var err error
 	if n.NoTun {
-		tdev = tun.NewDummyDevice(itfName)
+		host = tun.NewDummyDevice(name)
 	} else {
-		tdev, err = tun.CreateTUN(itfName, device.DefaultMTU)
+		host, err = tun.CreateTUN(name, device.DefaultMTU)
 		if err != nil {
-			return nil, nil, "", fmt.Errorf("failed to create TUN: %v. Check if an interface with the name nylon exists already", err)
+			return Runtime{}, fmt.Errorf("failed to create TUN: %w. Check if an interface with the name %s exists already", err, name)
 		}
 	}
-	realInterfaceName, err := tdev.Name()
-	if err == nil {
-		itfName = realInterfaceName
-	}
-
-	wgLog := n.Log.With("module", log.ScopePolyamide)
-
-	// setup WireGuard
-	dev = device.NewDevice(tdev, conn.NewDefaultBind(), &device.Logger{
-		Verbosef: func(format string, args ...any) {
-			if n.DBG_log_wireguard {
-				wgLog.Debug(fmt.Sprintf(format, args...))
-			}
-		},
-		Errorf: func(format string, args ...any) {
-			if strings.Contains(format, "Failed to send PolySock packets") {
-				return
-			}
-			wgLog.Error(fmt.Sprintf(format, args...))
-		},
-	})
-
-	// start uapi for wg command
-	n.wgUapi, err = InitUAPI(n.Log, itfName)
+	transport, err := NewWireGuardTransport(n, nil)
 	if err != nil {
-		return nil, nil, "", err
+		host.Close()
+		return Runtime{}, err
 	}
-
-	if n.wgUapi != nil {
-		go func() {
-			for n.Context.Err() == nil {
-				accept, err := n.wgUapi.Accept()
-				if err != nil {
-					n.Log.Debug(err.Error())
-					continue
-				}
-				go dev.IpcHandle(accept)
-			}
-		}()
+	actual, err := host.Name()
+	var listener net.Listener
+	if err == nil {
+		listener, err = InitUAPI(n.Log, actual)
 	}
-
+	if err != nil {
+		host.Close()
+		transport.Close()
+		return Runtime{}, err
+	}
+	n.wireGuard = &legacyWireGuard{transport: transport, listener: listener}
 	if n.NoTun {
-		n.Log.Info("Created userspace-only WireGuard device", "name", itfName)
+		n.Log.Info("Created userspace-only WireGuard device", "name", actual)
 	} else {
-		n.Log.Info("Created WireGuard interface", "name", itfName)
+		n.Log.Info("Created WireGuard interface", "name", actual)
 	}
-	return dev, tdev, itfName, nil
-}
-
-func CleanupWireGuardDevice(n *Nylon) error {
-	n.Device.Close()
-	if n.wgUapi != nil {
-		err := n.wgUapi.Close()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return Runtime{Transports: []polyamide.Transport{transport}, Host: host}, nil
 }

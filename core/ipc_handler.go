@@ -10,12 +10,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 )
+
+var ErrIPCStatusHandled = errors.New("nylon IPC response handled")
 
 var pjMarshal = protojson.MarshalOptions{EmitUnpopulated: true}
 var pjUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
@@ -63,7 +65,7 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 		if err := writeResponse(rw, errResponse(err.Error())); err != nil {
 			return err
 		}
-		return device.ErrIPCStatusHandled
+		return ErrIPCStatusHandled
 	}
 
 	// trace is blocking, so we dont dispatch
@@ -75,7 +77,7 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 		if err := writeResponse(rw, resp); err != nil {
 			return err
 		}
-		return device.ErrIPCStatusHandled
+		return ErrIPCStatusHandled
 	}
 
 	done := make(chan *protocol.IpcResponse, 1)
@@ -105,7 +107,7 @@ func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
 	if err := writeResponse(rw, resp); err != nil {
 		return err
 	}
-	return device.ErrIPCStatusHandled
+	return ErrIPCStatusHandled
 }
 
 func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
@@ -127,8 +129,11 @@ func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
 	}
 
 	listenPort := uint32(n.LocalCfg.Port)
-	if n.Device != nil {
-		listenPort = uint32(n.Device.ListenPort())
+	// The WireGuard transport knows its bound port once it starts.
+	if n.wireGuard != nil {
+		if port := n.wireGuard.transport.ListenPort(); port != 0 {
+			listenPort = uint32(port)
+		}
 	}
 
 	return &protocol.IpcResponse{
@@ -188,7 +193,7 @@ func buildSeqnos(n *Nylon) []*protocol.SeqnoEntry {
 	return entries
 }
 
-func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]device.PeerStatus) []*protocol.NeighbourInfo {
+func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]polyamide.PeerStats) []*protocol.NeighbourInfo {
 	ids := slices.Clone(n.GetPeers(n.LocalCfg.Id))
 	slices.Sort(ids)
 	neighbours := make([]*protocol.NeighbourInfo, 0, len(ids))
@@ -316,26 +321,28 @@ func advertisementsForNode(n *Nylon, id state.NodeId) []*protocol.Advertisement 
 	return ads
 }
 
-func wireGuardPeerStats(n *Nylon) map[state.NyPublicKey]device.PeerStatus {
-	stats := make(map[state.NyPublicKey]device.PeerStatus)
-	if n.Device == nil {
+func wireGuardPeerStats(n *Nylon) map[state.NyPublicKey]polyamide.PeerStats {
+	stats := make(map[state.NyPublicKey]polyamide.PeerStats)
+	if len(n.Transports) == 0 {
 		return stats
 	}
-	for _, peer := range n.Device.GetPeers() {
-		stat := peer.Status()
-		stats[state.NyPublicKey(stat.PublicKey)] = stat
+	for _, stat := range n.transportPeers() {
+		if key, ok := peerPublicKey(stat.Peer); ok {
+			stats[key] = stat
+		}
 	}
 	return stats
 }
-
-func wireGuardPeerStatsProto(stat device.PeerStatus) *protocol.WireGuardPeerStats {
-	return &protocol.WireGuardPeerStats{
-		LatestHandshakeUnix:         stat.LatestHandshakeTime().UnixNano(),
-		TxBytes:                     stat.TxBytes,
-		RxBytes:                     stat.RxBytes,
-		PersistentKeepaliveInterval: stat.PersistentKeepaliveInterval,
-		Endpoint:                    &stat.Endpoint,
+func wireGuardPeerStatsProto(stat polyamide.PeerStats) *protocol.WireGuardPeerStats {
+	var handshake int64
+	if !stat.LastHandshake.IsZero() {
+		handshake = stat.LastHandshake.UnixNano()
 	}
+	endpoint := ""
+	if stat.PreferredEndpoint != nil {
+		endpoint = stat.PreferredEndpoint.Address()
+	}
+	return &protocol.WireGuardPeerStats{LatestHandshakeUnix: handshake, TxBytes: stat.TxBytes, RxBytes: stat.RxBytes, PersistentKeepaliveInterval: uint32(stat.Keepalive / time.Second), Endpoint: &endpoint}
 }
 
 func sourceProto(source state.Source) *protocol.Source {
@@ -496,7 +503,7 @@ func handleTrace(n *Nylon, rw *bufio.ReadWriter) error {
 		if err := writeResponse(rw, errResponse("tracing not enabled; restart with --dbg-trace-tc")); err != nil {
 			return err
 		}
-		return device.ErrIPCStatusHandled
+		return ErrIPCStatusHandled
 	}
 	// Send initial OK
 	if err := writeResponse(rw, &protocol.IpcResponse{Ok: true}); err != nil {
@@ -513,7 +520,7 @@ func handleTrace(n *Nylon, rw *bufio.ReadWriter) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return device.ErrIPCStatusHandled
+			return ErrIPCStatusHandled
 		case msg := <-ch:
 			if str, ok := msg.(string); ok {
 				resp := &protocol.IpcResponse{
@@ -521,7 +528,7 @@ func handleTrace(n *Nylon, rw *bufio.ReadWriter) error {
 					Response: &protocol.IpcResponse_Trace{Trace: &protocol.TraceEvent{Line: str}},
 				}
 				if err := writeResponse(rw, resp); err != nil {
-					return device.ErrIPCStatusHandled
+					return ErrIPCStatusHandled
 				}
 			}
 		}

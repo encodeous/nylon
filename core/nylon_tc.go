@@ -1,166 +1,94 @@
 package core
 
 import (
+	"errors"
 	"fmt"
-	"net/netip"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	NyProtoId = 8
-)
-
-// polyamide traffic control for nylon
-
-func (n *Nylon) InstallTC() {
-	t := n.Trace
-
-	if n.DBG_trace_tc {
-		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			if packet.Validate() { // make sure it's an IP packet
-				peer := packet.FromPeer
-				if peer == nil {
-					peer = packet.ToPeer
-				}
-				src := packet.GetSrc()
-				dst := packet.GetDst()
-				if src.IsValid() &&
-					dst.IsValid() &&
-					peer != nil &&
-					src != netip.IPv4Unspecified() && src != netip.IPv6Unspecified() &&
-					dst != netip.IPv4Unspecified() && dst != netip.IPv6Unspecified() {
-					t.Submit(fmt.Sprintf("Unhandled TC packet: %v -> %v, peer %s\n", packet.GetSrc(), packet.GetDst(), peer))
-				}
-			}
-			return device.TcPass, nil
-		})
+// routeBatch is the traffic-control filter shared by every transport and the TUN.
+func (n *Nylon) routeBatch(packets []polyamide.TCElement, decisions []polyamide.TCDecision) {
+	for i := range packets {
+		decisions[i] = n.routePacket(packets[i])
 	}
-
-	// bounce back packets if using system routing
-	if n.UseSystemRouting {
-		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			if packet.Incoming() {
-				// bounce incoming packets
-				//dev.Log.Verbosef("BounceFwd packet: %v -> %v", packet.GetSrc(), packet.GetDst())
-				return device.TcBounce, nil
-			}
-			return device.TcPass, nil
-		})
-		// forward only outgoing packets based on the routing table
-		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.Tables.Load().Forward.Lookup(packet.GetDst())
-			if ok && !packet.Incoming() {
-				if entry.Blackhole {
-					return device.TcDrop, nil
-				}
-				packet.ToPeer = entry.Peer
-				if n.DBG_trace_tc {
-					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
-				}
-				return device.TcForward, nil
-			}
-			return device.TcPass, nil
-		})
-	} else {
-		// forward packets based on the routing table
-		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			entry, ok := n.router.Tables.Load().Forward.Lookup(packet.GetDst())
-			if ok {
-				if entry.Blackhole {
-					return device.TcDrop, nil
-				}
-				packet.ToPeer = entry.Peer
-				if n.DBG_trace_tc {
-					t.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.GetSrc(), packet.GetDst(), entry.Nh))
-				}
-				return device.TcForward, nil
-			}
-			return device.TcPass, nil
-		})
-
-		// handle TTL
-		n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-			if packet.Incoming() && (packet.GetIPVersion() == 4 || packet.GetIPVersion() == 6) {
-				// allow traceroute to figure out the route
-				ttl := packet.GetTTL()
-				if ttl >= 1 {
-					ttl--
-					packet.DecrementTTL()
-				}
-				if ttl == 0 {
-					if n.DBG_trace_tc {
-						t.Submit(fmt.Sprintf("TTL Expired: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
-					}
-					return device.TcBounce, nil
-				}
-			}
-			return device.TcPass, nil
-		})
-	}
-
-	// handle passive client traffic separately
-
-	// bounce back packets destined for the current node
-	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		entry, ok := n.router.Tables.Load().Exit.Lookup(packet.GetDst())
-		// we should only accept packets destined to us, but not our passive clients
-		if ok && entry.Nh == n.LocalCfg.Id {
-			if n.DBG_trace_tc {
-				t.Submit(fmt.Sprintf("Exit: %v -> %v\n", packet.GetSrc(), packet.GetDst()))
-			}
-			//dev.Log.Verbosef("BounceCur packet: %v -> %v", packet.GetSrc(), packet.GetDst())
-			return device.TcBounce, nil
-		}
-		//dev.Log.Verbosef("pass packet: %v -> %v, %v", packet.GetSrc(), packet.GetDst(), entry.Nh)
-		return device.TcPass, nil
-	})
-
-	// handle incoming nylon packets
-	n.Device.InstallFilter(func(dev *device.Device, packet *device.TCElement) (device.TCAction, error) {
-		if packet.Incoming() && packet.GetIPVersion() == NyProtoId {
-			n.handleNylonPacket(packet.Payload(), packet.FromEp, packet.FromPeer)
-			return device.TcDrop, nil
-		}
-		return device.TcPass, nil
-	})
 }
 
-func (n *Nylon) SendNylon(pkt *protocol.Ny, endpoint conn.Endpoint, peer *device.Peer) error {
+func (n *Nylon) transportHooks() polyamide.Hooks {
+	return polyamide.Hooks{
+		RouteBatch:  n.routeBatch,
+		Control:     func(m polyamide.ControlMessage) { n.handleNylonPacket(m.Payload, m.Endpoint, m.From) },
+		DeliverHost: n.deliverTUN,
+		EndpointLearned: func(peer polyamide.Peer, endpoint polyamide.Endpoint) {
+			n.Dispatch(func() error {
+				n.endpointLearned(state.NodeId(peer.ID()), endpoint, peer)
+				return nil
+			})
+		},
+	}
+}
+
+// routePacket drops packets that have no route.
+func (n *Nylon) routePacket(packet polyamide.TCElement) polyamide.TCDecision {
+	tables := n.router.Tables.Load()
+	if tables == nil {
+		return polyamide.TCDecision{}
+	}
+	if entry, ok := tables.Exit.Lookup(packet.Destination()); ok && entry.Nh == n.LocalCfg.Id {
+		if n.DBG_trace_tc {
+			n.Trace.Submit(fmt.Sprintf("Exit: %v -> %v\n", packet.Source(), packet.Destination()))
+		}
+		return polyamide.TCDecision{Action: polyamide.TcBounce}
+	}
+	if packet.Incoming() {
+		// The host routing table forwards incoming packets.
+		if n.UseSystemRouting {
+			return polyamide.TCDecision{Action: polyamide.TcBounce}
+		}
+		packet.DecrementTTL()
+		if packet.TTL() == 0 {
+			if n.DBG_trace_tc {
+				n.Trace.Submit(fmt.Sprintf("TTL Expired: %v -> %v\n", packet.Source(), packet.Destination()))
+			}
+			return polyamide.TCDecision{Action: polyamide.TcBounce}
+		}
+	}
+	if entry, ok := tables.Forward.Lookup(packet.Destination()); ok {
+		if entry.Blackhole {
+			return polyamide.TCDecision{}
+		}
+		if n.DBG_trace_tc {
+			n.Trace.Submit(fmt.Sprintf("Fwd packet: %v -> %v, via %s\n", packet.Source(), packet.Destination(), entry.Nh))
+		}
+		// The transport sends to the peer's default endpoint, which SyncTransport keeps best first.
+		if links := tables.Links[entry.Nh]; len(links) != 0 {
+			return polyamide.TCDecision{Action: polyamide.TcForward, To: links[0].Peer}
+		}
+		return polyamide.TCDecision{}
+	}
+	if n.DBG_trace_tc {
+		n.Trace.Submit(fmt.Sprintf("Unhandled TC packet: %v -> %v\n", packet.Source(), packet.Destination()))
+	}
+	return polyamide.TCDecision{}
+}
+func (n *Nylon) SendNylon(pkt *protocol.Ny, endpoint polyamide.Endpoint, peer polyamide.Peer) error {
 	return n.SendNylonBundle(&protocol.TransportBundle{Packets: []*protocol.Ny{pkt}}, endpoint, peer)
 }
-
-func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint conn.Endpoint, peer *device.Peer) error {
-	tce := n.Device.NewTCElement()
-	offset := device.MessageTransportOffsetContent + device.PolyHeaderSize
-	buf, err := proto.MarshalOptions{
-		Deterministic: true,
-	}.MarshalAppend(tce.Buffer[offset:offset], pkt)
+func (n *Nylon) SendNylonBundle(pkt *protocol.TransportBundle, endpoint polyamide.Endpoint, peer polyamide.Peer) error {
+	data, err := (proto.MarshalOptions{Deterministic: true}).Marshal(pkt)
 	if err != nil {
-		n.Device.PutMessageBuffer(tce.Buffer)
-		n.Device.PutTCElement(tce)
 		return err
 	}
-	tce.InitPacket(NyProtoId, uint16(len(buf)+device.PolyHeaderSize))
-	tce.Priority = device.TcHighPriority
-
-	tce.ToEp = endpoint
-	tce.ToPeer = peer
-
-	// TODO: Optimize? is it worth it?
-
-	tcs := device.NewTCState()
-
-	n.Device.TCBatch([]*device.TCElement{tce}, tcs)
-	return nil
+	if peer == nil || peer.Transport() == nil {
+		return polyamide.ErrInvalidHandle
+	}
+	return peer.Transport().SendControl(n.Context, peer, endpoint, data)
 }
 
-func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *device.Peer) {
-	// we need to be careful here, since this function is called on the dataplane
+func (n *Nylon) handleNylonPacket(packet []byte, endpoint polyamide.Endpoint, peer polyamide.Peer) {
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -171,7 +99,6 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 	bundle := &protocol.TransportBundle{}
 	err := proto.Unmarshal(packet, bundle)
 	if err != nil {
-		// log skipped message
 		n.Log.Debug("Failed to unmarshal packet", "err", err)
 		return
 	}
@@ -181,14 +108,15 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 		return // not loaded yet
 	}
 	if peer == nil {
-		n.Log.Debug("dropping nylon packet without an authenticated peer")
+		n.Log.Debug("dropping nylon packet without a peer")
 		return
 	}
-	neigh, ok := (*nt)[state.NyPublicKey(peer.GetPublicKey())]
+	key, valid := peerPublicKey(peer)
+	neigh, ok := (*nt)[key]
+	ok = ok && valid
 	if !ok {
-		// This is expected briefly while a peer is being retired after a config
-		// change. The packet was authenticated under an obsolete generation.
-		n.Log.Debug("dropping nylon packet from an unknown peer", "key", peer.GetPublicKey())
+		// Retired generations can still deliver callbacks during reconciliation.
+		n.Log.Debug("dropping nylon packet from an unknown peer", "peer", peer.ID())
 		return
 	}
 
@@ -211,4 +139,27 @@ func (n *Nylon) handleNylonPacket(packet []byte, endpoint conn.Endpoint, peer *d
 			handleProbe(n, pkt.GetProbeOp(), endpoint, peer, neigh)
 		}
 	}
+}
+
+func (n *Nylon) routeTUNPackets(packets [][]byte) error {
+	elements := make([]polyamide.TCElement, 0, len(packets))
+	for _, bytes := range packets {
+		data, valid := polyamide.IPBytes(bytes)
+		if valid {
+			elements = append(elements, polyamide.TCElement{Bytes: data})
+		}
+	}
+	decisions := make([]polyamide.TCDecision, len(elements))
+	n.routeBatch(elements, decisions)
+	err := polyamide.DispatchBatch(n.Context, elements, decisions)
+	var host [][]byte
+	for i, decision := range decisions {
+		if decision.Action == polyamide.TcBounce {
+			host = append(host, elements[i].Bytes)
+		}
+	}
+	if len(host) != 0 {
+		err = errors.Join(err, n.deliverTUN(host))
+	}
+	return err
 }

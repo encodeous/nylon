@@ -53,7 +53,7 @@ type DataSource struct {
 func runTests(t *testing.T, ping func(i int) float64, dura time.Duration, fn string) (DataSource, DataSource) {
 	t.Helper()
 	tunables := DefaultRouterTunables()
-	dep := NewEndpoint("127.0.0.1:0", false, nil, &tunables)
+	dep := NewEndpoint("127.0.0.1:0", false, &tunables)
 
 	truth := DataSource{
 		Name: "Truth",

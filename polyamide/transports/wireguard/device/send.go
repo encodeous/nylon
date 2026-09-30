@@ -8,6 +8,7 @@ package device
 import (
 	"encoding/binary"
 	"errors"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 /* Outbound flow
@@ -230,15 +233,19 @@ func (device *Device) RoutineReadFromTUN() {
 		bufs      = make([]*[MaxMessageSize]byte, batchSize)
 		count     = batchSize
 		sizes     = make([]int, batchSize)
-		tcBufs    = make([]*TCElement, 0, batchSize)
 		offset    = MessageTransportHeaderSize
-		tcs       = NewTCState()
+		byPeer    = make(map[*Peer][]OutboundPacket)
 	)
 
 	for i := 0; i < batchSize; i++ {
 		bufs[i] = device.GetMessageBuffer()
 		rBufs[i] = bufs[i][:]
 	}
+	defer func() {
+		for _, buf := range bufs {
+			device.PutMessageBuffer(buf)
+		}
+	}()
 
 	for {
 		count, readErr = device.tun.device.Read(rBufs, sizes, offset)
@@ -247,19 +254,33 @@ func (device *Device) RoutineReadFromTUN() {
 			if sizes[i] < 1 {
 				continue
 			}
-			tce := device.GetTCElement()
-			tce.Buffer = bufs[i]
-			tce.Packet = bufs[i][offset : offset+sizes[i]]
-			tcBufs = append(tcBufs, tce)
-
+			// lookup peer
+			packet := bufs[i][offset : offset+sizes[i]]
+			var peer *Peer
+			switch packet[0] >> 4 {
+			case 4:
+				if len(packet) >= ipv4.HeaderLen {
+					peer = device.Allowedips.Lookup(packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len])
+				}
+			case 6:
+				if len(packet) >= ipv6.HeaderLen {
+					peer = device.Allowedips.Lookup(packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len])
+				}
+			default:
+				device.Log.Verbosef("Received packet with unknown IP version")
+			}
+			if peer == nil {
+				continue
+			}
+			byPeer[peer] = append(byPeer[peer], OutboundPacket{Buffer: bufs[i], Size: sizes[i]})
 			bufs[i] = device.GetMessageBuffer()
 			rBufs[i] = bufs[i][:]
 		}
 
-		// pass to traffic control
-		device.TCBatch(tcBufs, tcs)
-
-		tcBufs = tcBufs[:0]
+		for peer, packets := range byPeer {
+			peer.SendPackets(packets)
+			delete(byPeer, peer)
+		}
 
 		if readErr != nil {
 			if errors.Is(readErr, tun.ErrTooManySegments) {

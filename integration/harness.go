@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn/bindtest"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
@@ -108,6 +109,7 @@ type VirtualHarness struct {
 	Local            []state.LocalCfg
 	Net              *InMemoryNetwork
 	Nylons           []atomic.Pointer[core.Nylon]
+	nodeDone         []chan struct{}
 	Links            []*VirtualLink
 	linksMu          sync.RWMutex
 	Endpoints        map[string]state.NodeId
@@ -166,6 +168,7 @@ func (v *VirtualHarness) Start() chan error {
 	v.Context = ctx
 	v.Cancel = cancel
 	v.Nylons = make([]atomic.Pointer[core.Nylon], len(v.Central.Routers))
+	v.nodeDone = make([]chan struct{}, len(v.Central.Routers))
 	errChan := make(chan error, 128) // a large number so we dont get blocked
 	vn := &InMemoryNetwork{}
 	v.Net = vn
@@ -206,7 +209,10 @@ func (v *VirtualHarness) Start() chan error {
 	for idx, rt := range v.Central.Routers {
 		sd := startDelay
 		n := v.Nylons[idx].Load()
+		done := make(chan struct{})
+		v.nodeDone[idx] = done
 		go func() {
+			defer close(done)
 			timer := time.NewTimer(sd)
 			select {
 			case <-timer.C:
@@ -334,7 +340,22 @@ func (i *InMemoryNetwork) virtualInternet(pkt []byte, len int, from, to bindtest
 	link.simulate(pkt, len, from, to, i)
 }
 
-func (i *InMemoryNetwork) Bind(node state.NodeId) conn.Bind {
+func (i *InMemoryNetwork) NewRuntime(n *core.Nylon) (core.Runtime, error) {
+	var host tun.Device
+	if n.NoTun {
+		host = tun.NewDummyDevice("nylon-vn")
+	} else {
+		host = i.Tun(n.LocalCfg.Id)
+	}
+	transport, err := core.NewWireGuardTransport(n, func() conn.Bind { return i.newWireGuardBind(n.LocalCfg.Id) })
+	if err != nil {
+		_ = host.Close()
+		return core.Runtime{}, err
+	}
+	return core.Runtime{Transports: []polyamide.Transport{transport}, Host: host}, nil
+}
+
+func (i *InMemoryNetwork) newWireGuardBind(node state.NodeId) conn.Bind {
 	i.Lock()
 	defer i.Unlock()
 	epSendMapping := func(to bindtest.ChannelEndpoint2) bindtest.ChannelEndpoint2 {
@@ -430,7 +451,7 @@ func (i *InMemoryNetwork) Send(node state.NodeId, src, dst string, pkt []byte, t
 	numId := i.cfg.IndexOf(node)
 	ipPkt := append(make([]byte, ipv4Size), pkt...)
 	ip := ipPkt[0:ipv4Size]
-	ip[0] = 4 << 4
+	ip[0] = 4<<4 | ipv4Size/4
 	binary.BigEndian.PutUint16(ip[2:4], uint16(ipv4Size+len(pkt)))
 	ip[8] = ttl
 	copy(ipPkt[12:16], netip.MustParseAddr(src).AsSlice())

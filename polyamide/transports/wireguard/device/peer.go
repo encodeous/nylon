@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 )
 
@@ -171,8 +170,6 @@ func (peer *Peer) SendBuffers(buffers [][]byte, eps []conn.Endpoint) error {
 	for _, b := range buffers {
 		totalLen += uint64(len(b))
 	}
-	perf.SentPacketPerSecond.Add(float64(len(buffers)))
-	perf.SentBytesPerSecond.Add(float64(totalLen))
 	peer.txBytes.Add(totalLen)
 	return anyError
 }
@@ -315,11 +312,13 @@ func (peer *Peer) Stop() {
 
 func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 	peer.endpoints.Lock()
-	defer peer.endpoints.Unlock()
 	if peer.endpoints.disableRoaming {
+		peer.endpoints.Unlock()
 		return
 	}
 	peer.endpoints.clearSrcOnTx = false
+	destination := endpoint.DstIPPort()
+	learned := !slices.ContainsFunc(peer.endpoints.val, func(known conn.Endpoint) bool { return known.DstIPPort() == destination })
 
 	if peer.endpoints.preferRoaming || len(peer.endpoints.val) == 0 {
 		if len(peer.endpoints.val) == 0 {
@@ -327,6 +326,10 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 		} else {
 			peer.endpoints.val[0] = endpoint
 		}
+	}
+	peer.endpoints.Unlock()
+	if learned && peer.device.hooks.EndpointLearned != nil {
+		peer.device.hooks.EndpointLearned(peer, endpoint)
 	}
 }
 
@@ -338,14 +341,14 @@ func (peer *Peer) SetEndpoints(endpoints []conn.Endpoint) {
 }
 
 func (peer *Peer) GetEndpoints() []conn.Endpoint {
-	peer.handshake.mutex.RLock()
-	defer peer.handshake.mutex.RUnlock()
+	peer.endpoints.Lock()
+	defer peer.endpoints.Unlock()
 	return slices.Clone(peer.endpoints.val)
 }
 
 func (peer *Peer) CleanEndpoints() {
-	peer.handshake.mutex.Lock()
-	defer peer.handshake.mutex.Unlock()
+	peer.endpoints.Lock()
+	defer peer.endpoints.Unlock()
 	if len(peer.endpoints.val) > 1 {
 		peer.endpoints.val = peer.endpoints.val[:1]
 	}
@@ -358,8 +361,8 @@ func (peer *Peer) SetPreferRoaming(val bool) {
 }
 
 func (peer *Peer) GetPreferRoaming() bool {
-	peer.handshake.mutex.RLock()
-	defer peer.handshake.mutex.RUnlock()
+	peer.endpoints.Lock()
+	defer peer.endpoints.Unlock()
 	return peer.endpoints.preferRoaming
 }
 

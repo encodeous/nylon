@@ -1,14 +1,15 @@
 package core
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
 	"strings"
 
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
 
@@ -42,8 +43,12 @@ func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	return Exec(logger, "netsh", "interface", "ip", "delete", "address", ifName, addr.String())
 }
 
-func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
-	ifId := wintypes.LUID((dev.(*tun.NativeTun)).LUID())
+func ConfigureRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
+	native, ok := dev.(interface{ LUID() uint64 })
+	if !ok {
+		return fmt.Errorf("host device does not expose a Windows LUID")
+	}
+	ifId := wintypes.LUID(native.LUID())
 	itf, err := ifId.Interface()
 	if err != nil {
 		return err
@@ -60,8 +65,12 @@ func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route n
 	}
 }
 
-func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
-	ifId := wintypes.LUID((dev.(*tun.NativeTun)).LUID())
+func RemoveRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
+	native, ok := dev.(interface{ LUID() uint64 })
+	if !ok {
+		return fmt.Errorf("host device does not expose a Windows LUID")
+	}
+	ifId := wintypes.LUID(native.LUID())
 	itf, err := ifId.Interface()
 	if err != nil {
 		return err

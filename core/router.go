@@ -4,9 +4,9 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/gaissmai/bart"
 	"go4.org/netipx"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/encodeous/nylon/log"
@@ -17,7 +17,6 @@ import (
 
 type RouteTableEntry struct {
 	Nh        state.NodeId
-	Peer      *device.Peer
 	Blackhole bool
 }
 
@@ -25,7 +24,8 @@ type ForwardingTables struct {
 	// Forward contains the full routing table.
 	Forward *bart.Table[RouteTableEntry]
 	// Exit contains only routes to services hosted on this node.
-	Exit *bart.Table[RouteTableEntry]
+	Exit  *bart.Table[RouteTableEntry]
+	Links map[state.NodeId][]Link
 }
 
 func (n *Nylon) GetNeighIO(neigh state.NodeId) *IOPending {
@@ -115,23 +115,20 @@ func (n *Nylon) TableInsertRoute(prefix netip.Prefix, route state.SelRoute) {
 			Blackhole: true,
 		})
 		ne.Delete(prefix)
-		n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
+		n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne, Links: n.forwardingLinks()})
 		return
 	}
-	peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(nh).PubKey))
 	nf.Insert(prefix, RouteTableEntry{
-		Nh:   nh,
-		Peer: peer,
+		Nh: nh,
 	})
 	if route.Nh == n.LocalCfg.Id {
 		ne.Insert(prefix, RouteTableEntry{
-			Nh:   nh,
-			Peer: peer,
+			Nh: nh,
 		})
 	} else {
 		ne.Delete(prefix)
 	}
-	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
+	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne, Links: n.forwardingLinks()})
 }
 
 func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
@@ -140,50 +137,14 @@ func (n *Nylon) TableDeleteRoute(prefix netip.Prefix) {
 	ne := tables.Exit.Clone()
 	nf.Delete(prefix)
 	ne.Delete(prefix)
-	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne})
+	n.router.Tables.Store(&ForwardingTables{Forward: nf, Exit: ne, Links: n.forwardingLinks()})
 }
 
-func (n *Nylon) rebindForwardingPeers() {
-	if n.Device == nil {
-		return
-	}
-
+func (n *Nylon) publishLinks() {
 	tables := n.router.Tables.Load()
-	if tables == nil {
-		return
+	if tables != nil {
+		n.router.Tables.Store(&ForwardingTables{Forward: tables.Forward, Exit: tables.Exit, Links: n.forwardingLinks()})
 	}
-
-	peers := make(map[state.NodeId]*device.Peer)
-	for _, node := range n.CentralCfg.GetNodes() {
-		peers[node.Id] = n.Device.LookupPeer(device.NoisePublicKey(node.PubKey))
-	}
-
-	forward, forwardChanged := rebindRouteTablePeers(tables.Forward, peers)
-	exit, exitChanged := rebindRouteTablePeers(tables.Exit, peers)
-	if forwardChanged || exitChanged {
-		n.router.Tables.Store(&ForwardingTables{Forward: forward, Exit: exit})
-	}
-}
-
-func rebindRouteTablePeers(table *bart.Table[RouteTableEntry], peers map[state.NodeId]*device.Peer) (*bart.Table[RouteTableEntry], bool) {
-	next := table
-	changed := false
-	for prefix, entry := range table.All() {
-		if entry.Blackhole {
-			continue
-		}
-		peer := peers[entry.Nh]
-		if entry.Peer == peer {
-			continue
-		}
-		if !changed {
-			next = table.Clone()
-			changed = true
-		}
-		entry.Peer = peer
-		next.Insert(prefix, entry)
-	}
-	return next, changed
 }
 
 type IOPending struct {
@@ -403,6 +364,12 @@ func (n *Nylon) routerHandleSeqnoRequest(neigh state.NodeId, pkt *protocol.Ny_Se
 	return nil
 }
 
+// bundleEntrySize includes the field tag and length prefix of a repeated TransportBundle entry.
+func bundleEntrySize(m *protocol.Ny) int {
+	size := proto.Size(m)
+	return protowire.SizeTag(1) + protowire.SizeBytes(size)
+}
+
 func (n *Nylon) flushIO() error {
 	for _, neigh := range n.RouterState.Neighbours {
 		// TODO, investigate effect of packet loss on control messages
@@ -412,7 +379,15 @@ func (n *Nylon) flushIO() error {
 			continue
 		}
 		if best != nil && best.IsActive() {
-			peer := n.Device.LookupPeer(device.NoisePublicKey(n.GetNode(neigh.Id).PubKey))
+			link, ok := n.bestLink(neigh.Id)
+			if !ok {
+				continue
+			}
+			// Bundles must fit both the path MTU and the transport's control capacity.
+			limit := n.SafeMTU
+			if capacity, err := link.Peer.Transport().ControlMTU(link.Peer, link.Endpoint); err == nil {
+				limit = min(limit, capacity)
+			}
 			for {
 				bundle := &protocol.TransportBundle{}
 				tLength := 0
@@ -430,24 +405,24 @@ func (n *Nylon) flushIO() error {
 							HopCount: uint32(nio.SeqnoReq[seqR].V2),
 						},
 					}}
-					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+bundleEntrySize(req) >= limit {
 						goto send
 					}
 					delete(nio.SeqnoReq, seqR)
 					bundle.Packets = append(bundle.Packets, req)
-					tLength += proto.Size(req)
+					tLength += bundleEntrySize(req)
 				}
 
 				for id, update := range nio.Updates {
 					req := &protocol.Ny{Type: &protocol.Ny_RouteOp{
 						RouteOp: update,
 					}}
-					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+bundleEntrySize(req) >= limit {
 						goto send
 					}
 					delete(nio.Updates, id)
 					bundle.Packets = append(bundle.Packets, req)
-					tLength += proto.Size(req)
+					tLength += bundleEntrySize(req)
 				}
 
 				for prefix := range nio.Acks {
@@ -457,21 +432,21 @@ func (n *Nylon) flushIO() error {
 							Prefix: prefixBytes,
 						},
 					}}
-					if tLength != 0 && tLength+proto.Size(req) >= n.SafeMTU {
+					if tLength != 0 && tLength+bundleEntrySize(req) >= limit {
 						goto send
 					}
 					delete(nio.Acks, prefix)
 					bundle.Packets = append(bundle.Packets, req)
-					tLength += proto.Size(req)
+					tLength += bundleEntrySize(req)
 				}
 
 				if tLength == 0 {
 					break
 				}
 			send:
-				err := n.SendNylonBundle(bundle, nil, peer)
-				if err != nil {
-					return err
+				// Control messages are best effort. A failed send must not stop the node.
+				if err := n.SendNylonBundle(bundle, link.Endpoint, link.Peer); err != nil {
+					n.Log.Debug("failed to send control bundle", "neighbour", neigh.Id, "err", err)
 				}
 			}
 		}

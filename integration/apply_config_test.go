@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
 
@@ -185,15 +185,40 @@ func TestApplyCentralConfigRotatesPeerKeyWithoutChangingNextHop(t *testing.T) {
 	waitForPayload(t, vh, errs, received, 1)
 
 	newPrivateKey := state.GenerateKey()
-	b := vh.Nylons[vh.IndexOf("b")].Load()
-	assert.NoError(t, b.Device.SetPrivateKey(device.NoisePrivateKey(newPrivateKey)))
-
+	bIdx := vh.IndexOf("b")
+	b := vh.Nylons[bIdx].Load()
 	err, next := vh.Central.Clone()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	next.Timestamp++
-	next.Routers[vh.IndexOf("b")].PubKey = newPrivateKey.Pubkey()
+	next.Routers[bIdx].PubKey = newPrivateKey.Pubkey()
 
-	applyConfigAndWait(t, b, next)
+	// A local identity is fixed at construction. Restart the remote node while
+	// keeping the sender alive so its forwarding table must rebind the same hop.
+	b.Stop()
+	select {
+	case <-vh.nodeDone[bIdx]:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out stopping remote node")
+	}
+	require.NoError(t, vh.Net.binds[bIdx].Close())
+	local := vh.Local[bIdx]
+	local.Key = newPrivateKey
+	// Packet delivery holds linksMu while accessing bind slots. Pause delivery
+	// while the restarted node installs its replacement virtual bind and TUN.
+	vh.linksMu.Lock()
+	replacement, err := core.NewNylon(*next, local, *vh.LogLevel, "", map[string]any{"vnet": vh.Net}, state.NylonOptions{DBG_log_wireguard: true}, vh.Tunables)
+	vh.linksMu.Unlock()
+	require.NoError(t, err)
+	vh.Nylons[bIdx].Store(replacement)
+	done := make(chan struct{})
+	vh.nodeDone[bIdx] = done
+	go func() {
+		defer close(done)
+		if err := replacement.Start(); err != nil {
+			errs <- err
+		}
+	}()
+
 	a := vh.Nylons[vh.IndexOf("a")].Load()
 	applyConfigAndWait(t, a, next)
 
@@ -329,5 +354,12 @@ func hasAppliedPeer(n *core.Nylon, id state.NodeId) bool {
 }
 
 func hasWGPeer(n *core.Nylon, key state.NyPublicKey) bool {
-	return n.Device.LookupPeer(device.NoisePublicKey(key)) != nil
+	for _, transport := range n.Transports {
+		for _, stat := range transport.Peers() {
+			if [32]byte(stat.Peer.PublicKey()) == [32]byte(key) {
+				return true
+			}
+		}
+	}
+	return false
 }

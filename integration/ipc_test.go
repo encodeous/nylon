@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/core"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
@@ -53,7 +52,7 @@ func ipcCall(t *testing.T, n *core.Nylon, req *protocol.IpcRequest) *protocol.Ip
 		bufio.NewWriter(&outBuf),
 	)
 	err = core.HandleNylonIPC(n, rw)
-	require.True(t, errors.Is(err, device.ErrIPCStatusHandled), "unexpected error: %v", err)
+	require.True(t, errors.Is(err, core.ErrIPCStatusHandled), "unexpected error: %v", err)
 
 	resp := &protocol.IpcResponse{}
 	um := protojson.UnmarshalOptions{DiscardUnknown: true}
@@ -230,7 +229,7 @@ func TestIPCMalformedRequest(t *testing.T) {
 		)
 		err := core.HandleNylonIPC(a, rw)
 		// Should write an error response, not crash
-		assert.True(t, errors.Is(err, device.ErrIPCStatusHandled), "unexpected error: %v", err)
+		assert.True(t, errors.Is(err, core.ErrIPCStatusHandled), "unexpected error: %v", err)
 		resp := &protocol.IpcResponse{}
 		um := protojson.UnmarshalOptions{DiscardUnknown: true}
 		assert.NoError(t, um.Unmarshal(outBuf.Bytes(), resp))
@@ -258,7 +257,7 @@ func TestIPCSocketResponseHasNoUAPIErrnoTrailer(t *testing.T) {
 	a := vh.Nylons[vh.IndexOf("a")].Load()
 	client, server := net.Pipe()
 	defer client.Close()
-	go a.Device.IpcHandle(server)
+	go a.HandleUAPI(server)
 
 	m := protojson.MarshalOptions{EmitUnpopulated: true}
 	data, err := m.Marshal(&protocol.IpcRequest{

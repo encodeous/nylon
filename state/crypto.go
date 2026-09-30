@@ -2,15 +2,18 @@ package state
 
 import (
 	"crypto/rand"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+
+	"github.com/encodeous/nylon/polyamide"
 	"go.step.sm/crypto/x25519"
 )
 
-type NyPrivateKey [device.NoisePrivateKeySize]byte
-type NyPublicKey [device.NoisePublicKeySize]byte
+const KeySize = polyamide.KeySize
+
+type NyPrivateKey [KeySize]byte
+type NyPublicKey [KeySize]byte
 
 func GenerateKey() NyPrivateKey {
-	key := make([]byte, device.NoisePrivateKeySize)
+	key := make([]byte, KeySize)
 
 	if _, err := rand.Read(key); err != nil {
 		panic(err)

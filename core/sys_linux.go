@@ -5,8 +5,8 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 	"github.com/encodeous/nylon/state"
 )
 
@@ -39,10 +39,10 @@ func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	return Exec(logger, "ip", "addr", "del", state.AddrToPrefix(addr).String(), "dev", ifName)
 }
 
-func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+func ConfigureRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
 	return Exec(logger, "ip", "route", "add", route.String(), "dev", itfName)
 }
 
-func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+func RemoveRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
 	return Exec(logger, "ip", "route", "del", route.String(), "dev", itfName)
 }

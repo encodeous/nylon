@@ -64,7 +64,8 @@ type Device struct {
 		limiter        ratelimiter.Ratelimiter
 	}
 
-	TCFilters     []TCFilter
+	// hooks are fixed at construction.
+	hooks         Hooks
 	Allowedips    AllowedIPs
 	indexTable    IndexTable
 	cookieChecker CookieChecker
@@ -75,7 +76,6 @@ type Device struct {
 		messageBuffers            *WaitPool
 		inboundElements           *WaitPool
 		outboundElements          *WaitPool
-		tcElements                *WaitPool
 	}
 
 	queue struct {
@@ -286,8 +286,15 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 	return nil
 }
 
+// NewDevice creates a device that routes packets between its TUN and peers by allowed IPs.
 func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
+	return NewDeviceWithHooks(tunDevice, bind, logger, Hooks{})
+}
+
+// NewDeviceWithHooks creates a device that reports packets and endpoints to hooks.
+func NewDeviceWithHooks(tunDevice tun.Device, bind conn.Bind, logger *Logger, hooks Hooks) *Device {
 	device := new(Device)
+	device.hooks = hooks
 	device.state.state.Store(uint32(deviceStateDown))
 	device.closed = make(chan struct{})
 	device.Log = logger
@@ -302,9 +309,6 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
 	device.rate.limiter.Init()
 	device.indexTable.Init()
-	device.TCFilters = append(device.TCFilters, TCFDrop)
-	device.TCFilters = append(device.TCFilters, TCFBounce)
-	device.TCFilters = append(device.TCFilters, TCFAllowedip)
 
 	device.PopulatePools()
 

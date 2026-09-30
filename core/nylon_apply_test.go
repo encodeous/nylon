@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/state"
 	"github.com/gaissmai/bart"
 	"github.com/stretchr/testify/assert"
@@ -107,43 +107,21 @@ func TestReconcileAdvertisedPrefixesReusesUnchangedMonitor(t *testing.T) {
 	assert.Equal(t, state.INF, n.RouterState.Advertised[prefix].MetricFn())
 }
 
-func TestRebindForwardingPeersUpdatesUnchangedNextHop(t *testing.T) {
+func TestPublishLinksPreservesOldSnapshot(t *testing.T) {
 	prefix := netip.MustParsePrefix("10.0.0.0/24")
-	nextHop := state.NodeId("next")
-	oldPeer := new(device.Peer)
-	newPeer := new(device.Peer)
+	oldPeer := new(testTransportPeer)
+	newPeer := &testTransportPeer{id: "new"}
 	forward := new(bart.Table[RouteTableEntry])
-	forward.Insert(prefix, RouteTableEntry{Nh: nextHop, Peer: oldPeer})
-
-	rebound, changed := rebindRouteTablePeers(forward, map[state.NodeId]*device.Peer{
-		nextHop: newPeer,
-	})
-
-	assert.True(t, changed)
-	forwardEntry, ok := rebound.Lookup(prefix.Addr())
-	if assert.True(t, ok) {
-		assert.Same(t, newPeer, forwardEntry.Peer)
-		assert.Equal(t, nextHop, forwardEntry.Nh)
-	}
-	oldEntry, ok := forward.Lookup(prefix.Addr())
-	if assert.True(t, ok) {
-		assert.Same(t, oldPeer, oldEntry.Peer, "published forwarding snapshots must remain immutable")
-	}
-}
-
-func TestRebindForwardingPeersReusesUnchangedTable(t *testing.T) {
-	prefix := netip.MustParsePrefix("10.0.0.0/24")
-	nextHop := state.NodeId("next")
-	peer := new(device.Peer)
-	forward := new(bart.Table[RouteTableEntry])
-	forward.Insert(prefix, RouteTableEntry{Nh: nextHop, Peer: peer})
-
-	rebound, changed := rebindRouteTablePeers(forward, map[state.NodeId]*device.Peer{
-		nextHop: peer,
-	})
-
-	assert.False(t, changed)
-	assert.Same(t, forward, rebound)
+	forward.Insert(prefix, RouteTableEntry{Nh: "next"})
+	n := new(Nylon)
+	old := &ForwardingTables{Forward: forward, Exit: new(bart.Table[RouteTableEntry]), Links: map[state.NodeId][]Link{"next": {{Peer: oldPeer}}}}
+	n.router.Tables.Store(old)
+	n.neighbourLinks = map[state.NodeId][]neighbourLink{"next": {{Link: Link{Peer: newPeer}}}}
+	n.publishLinks()
+	next := n.router.Tables.Load()
+	assert.Same(t, forward, next.Forward)
+	assert.Same(t, newPeer, next.Links["next"][0].Peer)
+	assert.Same(t, oldPeer, old.Links["next"][0].Peer)
 }
 
 func TestHandleNylonPacketDropsUnknownRetiredPeer(t *testing.T) {
@@ -152,7 +130,7 @@ func TestHandleNylonPacketDropsUnknownRetiredPeer(t *testing.T) {
 	n.PeerMap.Store(&peerMap)
 
 	assert.NotPanics(t, func() {
-		n.handleNylonPacket(nil, nil, new(device.Peer))
+		n.handleNylonPacket(nil, nil, new(testTransportPeer))
 	})
 }
 
@@ -191,3 +169,10 @@ func testCentralConfig(id state.NodeId, prefixes ...state.PrefixHealthWrapper) s
 		},
 	}
 }
+
+type testTransportPeer struct{ id string }
+
+func (p *testTransportPeer) ID() string                     { return p.id }
+func (p *testTransportPeer) PublicKey() polyamide.PublicKey { return polyamide.PublicKey{} }
+
+func (p *testTransportPeer) Transport() polyamide.Transport { return nil }
