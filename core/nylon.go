@@ -69,8 +69,12 @@ type Nylon struct {
 	peerReceived map[polyamide.Peer]time.Time
 	tunWorkers   sync.WaitGroup
 	// wireGuard serves legacy UAPI. It is nil for custom runtimes.
-	wireGuard          *legacyWireGuard
-	resourceCleanup    sync.Once
+	wireGuard       *legacyWireGuard
+	resourceCleanup sync.Once
+	// systemConfigured is set once startup begins configuring the host with
+	// pre-up commands. Only then does cleanup undo host configuration, so a
+	// failed start cannot tear down another instance using the same interface.
+	systemConfigured   bool
 	resourceCleanupErr error
 
 	// only used for debugging & tests

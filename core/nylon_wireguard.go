@@ -46,6 +46,7 @@ func (n *Nylon) initTransport() error {
 	// configure system networking
 
 	// run pre-up commands
+	n.systemConfigured = true
 	for _, cmd := range n.PreUp {
 		err = ExecSplit(n.Log, cmd)
 		if err != nil {
@@ -89,19 +90,21 @@ func (n *Nylon) initTransport() error {
 }
 
 func (n *Nylon) cleanupTransport() error {
-	for _, route := range n.AppliedSystem.Routes {
-		if err := RemoveRoute(n.Log, n.Tun, n.Interface, route); err != nil {
-			n.Log.Error("failed to remove route", "err", err)
+	if n.systemConfigured {
+		for _, route := range n.AppliedSystem.Routes {
+			if err := RemoveRoute(n.Log, n.Tun, n.Interface, route); err != nil {
+				n.Log.Error("failed to remove route", "err", err)
+			}
 		}
-	}
-	for _, addr := range n.AppliedSystem.Aliases {
-		if err := RemoveAlias(n.Log, n.Interface, addr); err != nil {
-			n.Log.Error("failed to remove alias", "err", err)
+		for _, addr := range n.AppliedSystem.Aliases {
+			if err := RemoveAlias(n.Log, n.Interface, addr); err != nil {
+				n.Log.Error("failed to remove alias", "err", err)
+			}
 		}
-	}
-	for _, cmd := range n.PreDown {
-		if err := ExecSplit(n.Log, cmd); err != nil {
-			n.Log.Error("failed to run pre-down command", "err", err)
+		for _, cmd := range n.PreDown {
+			if err := ExecSplit(n.Log, cmd); err != nil {
+				n.Log.Error("failed to run pre-down command", "err", err)
+			}
 		}
 	}
 	var err error
@@ -115,9 +118,11 @@ func (n *Nylon) cleanupTransport() error {
 	for _, transport := range n.Transports {
 		err = errors.Join(err, transport.Close())
 	}
-	for _, cmd := range n.PostDown {
-		if e := ExecSplit(n.Log, cmd); e != nil {
-			n.Log.Error("failed to run post-down command", "err", e)
+	if n.systemConfigured {
+		for _, cmd := range n.PostDown {
+			if e := ExecSplit(n.Log, cmd); e != nil {
+				n.Log.Error("failed to run post-down command", "err", e)
+			}
 		}
 	}
 	return err

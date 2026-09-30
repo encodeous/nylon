@@ -168,6 +168,16 @@ func TestDeliverTUNAcceptsByteCounts(t *testing.T) {
 	packet := tuntest.Ping(netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("10.0.0.1"))
 	require.NoError(t, n.deliverTUN([][]byte{packet, packet}))
 	require.Equal(t, packet, <-host.output)
-	// Spare capacity lets Linux GRO coalesce the packets that follow.
-	require.GreaterOrEqual(t, host.minCap, tunHeadroom+maxTUNPacketSize)
+	// On Linux, spare capacity lets GRO coalesce the packets that follow.
+	require.GreaterOrEqual(t, host.minCap, minHostBufferCap)
+}
+
+func TestHostBuffersGrowForLargerPackets(t *testing.T) {
+	small := getHostBuffer(10)
+	require.Len(t, *small, 10)
+	require.GreaterOrEqual(t, cap(*small), minHostBufferCap)
+	hostBuffers.Put(small)
+	large := getHostBuffer(minHostBufferCap + 1)
+	require.Len(t, *large, minHostBufferCap+1)
+	hostBuffers.Put(large)
 }

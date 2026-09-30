@@ -12,12 +12,6 @@ import (
 const tunHeadroom = 16
 const maxTUNPacketSize = 65535
 
-// hostBuffer holds one packet written to the TUN. Its spare capacity lets Linux
-// GRO coalesce the packets that follow it.
-type hostBuffer = [tunHeadroom + maxTUNPacketSize]byte
-
-var hostBuffers = sync.Pool{New: func() any { return new(hostBuffer) }}
-
 func (n *Nylon) startTUNReader() {
 	n.tunWorkers.Add(1)
 	go func() {
@@ -107,11 +101,12 @@ func (n *Nylon) applyHostMTU() {
 
 func (n *Nylon) deliverTUN(packets [][]byte) error {
 	// Use Nylon-owned buffers for the headers written by the TUN.
-	pooled := make([]*hostBuffer, len(packets))
+	pooled := make([]*[]byte, len(packets))
 	buffers := make([][]byte, len(packets))
 	for i, packet := range packets {
-		pooled[i] = hostBuffers.Get().(*hostBuffer)
-		buffers[i] = pooled[i][:tunHeadroom+copy(pooled[i][tunHeadroom:], packet)]
+		pooled[i] = getHostBuffer(tunHeadroom + len(packet))
+		buffers[i] = *pooled[i]
+		copy(buffers[i][tunHeadroom:], packet)
 	}
 	// Implementations disagree on the count they return: Linux reports bytes.
 	_, err := n.Tun.Write(buffers, tunHeadroom)
@@ -119,4 +114,18 @@ func (n *Nylon) deliverTUN(packets [][]byte) error {
 		hostBuffers.Put(buffer)
 	}
 	return err
+}
+
+var hostBuffers sync.Pool
+
+// getHostBuffer returns a pooled buffer of length size, with at least
+// minHostBufferCap capacity. A pooled buffer that is too small is replaced.
+func getHostBuffer(size int) *[]byte {
+	buffer, _ := hostBuffers.Get().(*[]byte)
+	if buffer == nil || cap(*buffer) < size {
+		buffer = new([]byte)
+		*buffer = make([]byte, size, max(size, minHostBufferCap))
+	}
+	*buffer = (*buffer)[:size]
+	return buffer
 }
