@@ -45,6 +45,9 @@ func newInitCmd() *cobra.Command {
 		GroupID: "init",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.connect == "" && (len(opts.addresses) != 0 || len(opts.prefixes) != 0) {
+				return errors.New("--address and --prefix are only used with --connect")
+			}
 			cmd.SilenceUsage = true
 			if opts.serve {
 				return runInitServe(cmd, opts)
@@ -90,8 +93,8 @@ func newInitCmd() *cobra.Command {
 	flags.StringVar(&opts.connect, "connect", "", "Join the network through a node running --serve (host[:port])")
 	flags.StringVar(&opts.token, "token", "", "Setup token printed by --serve")
 	flags.StringVarP(&opts.central, "config", "c", DefaultConfigPath, "Central config path used by --serve and --connect")
-	flags.StringSliceVar(&opts.addresses, "address", nil, "Nylon address for this node in central config (repeatable)")
-	flags.StringSliceVar(&opts.prefixes, "prefix", nil, "IP prefix this node advertises in central config (repeatable)")
+	flags.StringSliceVar(&opts.addresses, "address", nil, "Nylon address to join with, used by --connect (repeatable)")
+	flags.StringSliceVar(&opts.prefixes, "prefix", nil, "IP prefix to advertise, used by --connect (repeatable)")
 	cmd.MarkFlagsMutuallyExclusive("serve", "connect")
 	cmd.MarkFlagsRequiredTogether("connect", "token")
 	return cmd
