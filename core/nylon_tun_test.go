@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun/tuntest"
 	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide-wireguard-go/tun/tuntest"
 	"github.com/gaissmai/bart"
 	"github.com/stretchr/testify/require"
 	"net/netip"

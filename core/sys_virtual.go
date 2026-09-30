@@ -5,7 +5,7 @@ package core
 import (
 	"fmt"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/adapter"
+	"github.com/encodeous/polyamide-wireguard-go/adapter"
 )
 
 // The integration environment supplies a complete runtime. Nylon does not know
