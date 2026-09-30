@@ -26,15 +26,6 @@ Install the latest release on Linux, along with a systemd service that runs it w
 curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh
 ```
 
-Pass options after `sh -s --`, for example `... | sh -s -- --version v0.4.6`:
-
-| Option | Description |
-|---|---|
-| `--no-service` | Install only the binary without the systemd service |
-| `--version <tag>` | Install a specific release, e.g. `v0.4.6` (also works for downgrades) |
-| `--uninstall` | Remove the service and binary; keeps `/etc/nylon` |
-| `--help` | Show usage |
-
 You can also download binaries directly from the [releases page](https://github.com/encodeous/nylon/releases).
 
 Then head to the [docs](https://nylon.jq.ax) for setup instructions.
