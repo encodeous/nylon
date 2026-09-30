@@ -39,3 +39,4 @@ vendor
 
 workdir
 Dockerfile
+macos/
