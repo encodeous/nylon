@@ -65,7 +65,9 @@ type Nylon struct {
 	observability     *observabilityServer
 	peerHandles       map[state.NodeId]map[polyamide.Transport]polyamide.Peer
 	neighbourLinks    map[state.NodeId][]neighbourLink
-	tunWorkers        sync.WaitGroup
+	// peerReceived is when each peer last received a packet. It ranks links without health.
+	peerReceived map[polyamide.Peer]time.Time
+	tunWorkers   sync.WaitGroup
 	// wireGuard serves legacy UAPI. It is nil for custom runtimes.
 	wireGuard          *legacyWireGuard
 	resourceCleanup    sync.Once

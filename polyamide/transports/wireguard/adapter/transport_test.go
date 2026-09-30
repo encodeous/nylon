@@ -1,14 +1,19 @@
 package adapter_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -373,4 +378,40 @@ func TestEndpointLearnedReportsUnconfiguredSourceOnce(t *testing.T) {
 	endpoint := receive(t, learned)
 	require.Equal(t, netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), p.transports[0].ListenPort()).String(), endpoint.Address())
 	require.Empty(t, learned)
+}
+
+func TestUAPIIsReadOnly(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	ctx := context.Background()
+	wg := newTransport(t, privateKey(t))
+	remote := publicKey(t, privateKey(t))
+	peer, err := wg.PreparePeer(ctx, polyamide.PeerConfig{ID: "remote", PublicKey: remote})
+	require.NoError(t, err)
+	require.NoError(t, wg.Start(ctx, polyamide.Hooks{}))
+	client, server := net.Pipe()
+	defer client.Close()
+	go wg.HandleUAPI(server)
+	reader := bufio.NewReader(client)
+	response := func() string {
+		var lines []string
+		for {
+			line, err := reader.ReadString('\n')
+			require.NoError(t, err)
+			if line == "\n" {
+				return strings.Join(lines, "")
+			}
+			lines = append(lines, line)
+		}
+	}
+	// Removing a peer through UAPI would leave the transport's handle stale.
+	_, err = fmt.Fprintf(client, "set=1\npublic_key=%s\nremove=true\n\n", hex.EncodeToString(remote[:]))
+	require.NoError(t, err)
+	require.NotContains(t, response(), "errno=0")
+	_, err = io.WriteString(client, "get=1\n\n")
+	require.NoError(t, err)
+	status := response()
+	require.Contains(t, status, "public_key="+hex.EncodeToString(remote[:]))
+	require.Contains(t, status, "errno=0")
+	require.Len(t, wg.Peers(), 1)
+	require.Same(t, peer, wg.Peers()[0].Peer)
 }

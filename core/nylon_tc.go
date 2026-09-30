@@ -24,7 +24,7 @@ func (n *Nylon) transportHooks() polyamide.Hooks {
 		DeliverHost: n.deliverTUN,
 		EndpointLearned: func(peer polyamide.Peer, endpoint polyamide.Endpoint) {
 			n.Dispatch(func() error {
-				n.renewLink(state.NodeId(peer.ID()), endpoint, peer)
+				n.endpointLearned(state.NodeId(peer.ID()), endpoint, peer)
 				return nil
 			})
 		},

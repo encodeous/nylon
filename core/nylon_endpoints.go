@@ -182,7 +182,20 @@ func handleProbePing(n *Nylon, node state.NodeId, endpoint polyamide.Endpoint, p
 	n.renewLink(node, endpoint, peer)
 }
 
-// renewLink records traffic from peer at endpoint, learning it as a link if needed.
+// endpointLearned handles a packet from peer at an endpoint its transport was not
+// configured with, such as after the peer roams.
+func (n *Nylon) endpointLearned(node state.NodeId, endpoint polyamide.Endpoint, peer polyamide.Peer) {
+	if n.transportPeer(node, peer.Transport()) != peer {
+		return // the handle was retired
+	}
+	if n.IsClient(node) {
+		n.passiveClientRoamed(peer)
+		return
+	}
+	n.renewLink(node, endpoint, peer)
+}
+
+// renewLink records traffic from a neighbour at endpoint, learning it as a link if needed.
 func (n *Nylon) renewLink(node state.NodeId, endpoint polyamide.Endpoint, peer polyamide.Peer) {
 	if node == n.LocalCfg.Id {
 		return

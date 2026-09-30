@@ -3,7 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
-	"io"
+	"sync"
 
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 )
@@ -11,6 +11,12 @@ import (
 // Reserve space for headers written by native TUN drivers.
 const tunHeadroom = 16
 const maxTUNPacketSize = 65535
+
+// hostBuffer holds one packet written to the TUN. Its spare capacity lets Linux
+// GRO coalesce the packets that follow it.
+type hostBuffer = [tunHeadroom + maxTUNPacketSize]byte
+
+var hostBuffers = sync.Pool{New: func() any { return new(hostBuffer) }}
 
 func (n *Nylon) startTUNReader() {
 	n.tunWorkers.Add(1)
@@ -101,14 +107,16 @@ func (n *Nylon) applyHostMTU() {
 
 func (n *Nylon) deliverTUN(packets [][]byte) error {
 	// Use Nylon-owned buffers for the headers written by the TUN.
+	pooled := make([]*hostBuffer, len(packets))
 	buffers := make([][]byte, len(packets))
 	for i, packet := range packets {
-		buffers[i] = make([]byte, tunHeadroom+len(packet))
-		copy(buffers[i][tunHeadroom:], packet)
+		pooled[i] = hostBuffers.Get().(*hostBuffer)
+		buffers[i] = pooled[i][:tunHeadroom+copy(pooled[i][tunHeadroom:], packet)]
 	}
-	written, err := n.Tun.Write(buffers, tunHeadroom)
-	if err == nil && written != len(buffers) {
-		return io.ErrShortWrite
+	// Implementations disagree on the count they return: Linux reports bytes.
+	_, err := n.Tun.Write(buffers, tunHeadroom)
+	for _, buffer := range pooled {
+		hostBuffers.Put(buffer)
 	}
 	return err
 }

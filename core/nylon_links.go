@@ -26,8 +26,9 @@ type neighbourLink struct {
 	health *state.NylonEndpoint
 }
 
-// rankLinks orders links by metric. Links without health rank last.
-func rankLinks(links []neighbourLink) []neighbourLink {
+// rankLinks orders links by metric. Links without health rank last, and among
+// them, the link whose peer received a packet most recently comes first.
+func (n *Nylon) rankLinks(links []neighbourLink) []neighbourLink {
 	metric := func(link neighbourLink) uint32 {
 		if link.health == nil {
 			return state.INF
@@ -35,7 +36,9 @@ func rankLinks(links []neighbourLink) []neighbourLink {
 		return link.health.Metric()
 	}
 	ranked := slices.Clone(links)
-	slices.SortStableFunc(ranked, func(a, b neighbourLink) int { return cmp.Compare(metric(a), metric(b)) })
+	slices.SortStableFunc(ranked, func(a, b neighbourLink) int {
+		return cmp.Or(cmp.Compare(metric(a), metric(b)), n.peerReceived[b.Peer].Compare(n.peerReceived[a.Peer]))
+	})
 	return ranked
 }
 
@@ -43,7 +46,7 @@ func rankLinks(links []neighbourLink) []neighbourLink {
 func (n *Nylon) forwardingLinks() map[state.NodeId][]Link {
 	links := make(map[state.NodeId][]Link, len(n.neighbourLinks))
 	for id, candidates := range n.neighbourLinks {
-		for _, link := range rankLinks(candidates) {
+		for _, link := range n.rankLinks(candidates) {
 			if link.health == nil || link.health.Metric() != state.INF {
 				links[id] = append(links[id], link.Link)
 			}
@@ -98,6 +101,11 @@ func (n *Nylon) SyncTransport() error {
 	for _, stat := range n.transportPeers() {
 		if handles[state.NodeId(stat.Peer.ID())][stat.Peer.Transport()] != stat.Peer {
 			result = errors.Join(result, stat.Peer.Transport().RemovePeer(n.Context, stat.Peer))
+		}
+	}
+	for peer := range n.peerReceived {
+		if handles[state.NodeId(peer.ID())][peer.Transport()] != peer {
+			delete(n.peerReceived, peer)
 		}
 	}
 	n.AppliedSystem.Peers = desired
@@ -165,7 +173,7 @@ func (n *Nylon) syncNode(id state.NodeId) (map[polyamide.Transport]polyamide.Pee
 	}
 	// The first endpoint is the transport's default for this peer.
 	endpoints := make(map[polyamide.Transport][]polyamide.Endpoint)
-	for _, link := range rankLinks(links) {
+	for _, link := range n.rankLinks(links) {
 		if link.Endpoint != nil {
 			endpoints[link.Peer.Transport()] = append(endpoints[link.Peer.Transport()], link.Endpoint)
 		}

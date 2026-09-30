@@ -356,3 +356,23 @@ func TestTUNReaderSurvivesTooManySegments(t *testing.T) {
 	require.Equal(t, packet, routingReceive(t, transport.packets))
 	require.NoError(t, ctx.Err())
 }
+
+func TestPassiveClientForwardsThroughPeerThatHeardFromIt(t *testing.T) {
+	a := &tunTransport{packets: make(chan []byte, 1)}
+	b := &tunTransport{packets: make(chan []byte, 1)}
+	onA, onB := &routingPeer{transport: a, id: "client"}, &routingPeer{transport: b, id: "client"}
+	n := testNylonWithPrefixes()
+	n.Transports = []polyamide.Transport{a, b}
+	n.CentralCfg.Clients = []state.ClientCfg{{NodeCfg: state.NodeCfg{Id: "client"}}}
+	n.peerHandles = map[state.NodeId]map[polyamide.Transport]polyamide.Peer{"client": {a: onA, b: onB}}
+	n.neighbourLinks = map[state.NodeId][]neighbourLink{"client": {{Link: Link{Peer: onA}}, {Link: Link{Peer: onB}}}}
+	n.router.Tables.Store(&ForwardingTables{Forward: new(bart.Table[RouteTableEntry]), Exit: new(bart.Table[RouteTableEntry])})
+	n.publishLinks()
+	require.Same(t, onA, n.router.Tables.Load().Links["client"][0].Peer)
+	// The client roams onto transport b.
+	n.endpointLearned("client", testEndpoint("127.0.0.1:1234"), onB)
+	require.Same(t, onB, n.router.Tables.Load().Links["client"][0].Peer)
+	// A stale handle does not change the selection.
+	n.endpointLearned("client", testEndpoint("127.0.0.1:1234"), &routingPeer{transport: a, id: "client"})
+	require.Same(t, onB, n.router.Tables.Load().Links["client"][0].Peer)
+}

@@ -395,5 +395,6 @@ func (t *Transport) HandleUAPI(c net.Conn) {
 	t.mu.RLock()
 	dev := t.dev
 	t.mu.RUnlock()
-	dev.IpcHandle(c)
+	// Peers are managed through the transport, so UAPI cannot change them.
+	dev.IpcHandleReadOnly(c)
 }

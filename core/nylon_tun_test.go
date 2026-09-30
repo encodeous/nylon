@@ -142,3 +142,32 @@ func TestTUNRoutesEachDestinationToItsTransport(t *testing.T) {
 	require.Equal(t, one, <-b.packets)
 	require.Empty(t, a.packets)
 }
+
+// byteCountTUN reports bytes written, like the Linux TUN.
+type byteCountTUN struct {
+	*testTUN
+	minCap int
+}
+
+func (h *byteCountTUN) Write(bufs [][]byte, offset int) (int, error) {
+	total := 0
+	h.minCap = -1
+	for _, b := range bufs {
+		total += len(b) - offset
+		if h.minCap < 0 || cap(b) < h.minCap {
+			h.minCap = cap(b)
+		}
+	}
+	_, err := h.testTUN.Write(bufs, offset)
+	return total, err
+}
+
+func TestDeliverTUNAcceptsByteCounts(t *testing.T) {
+	host := &byteCountTUN{testTUN: &testTUN{output: make(chan []byte, 2)}}
+	n := &Nylon{Tun: host}
+	packet := tuntest.Ping(netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("10.0.0.1"))
+	require.NoError(t, n.deliverTUN([][]byte{packet, packet}))
+	require.Equal(t, packet, <-host.output)
+	// Spare capacity lets Linux GRO coalesce the packets that follow.
+	require.GreaterOrEqual(t, host.minCap, tunHeadroom+maxTUNPacketSize)
+}
