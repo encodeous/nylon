@@ -103,10 +103,9 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
    After a few seconds, the nodes will discover each other and establish a secure tunnel. You should be able to ping `10.0.0.2` from `node-1`.
 
    :::tip[Running as a service]
-   On Linux with systemd, the installer can run nylon as a service instead. Stop the nylon you started above (Ctrl+C), then run:
+   On Linux with systemd, the installer also set nylon up as a service. To run it that way instead, stop the nylon you started above (Ctrl+C), then run:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh -s -- --service
    sudo mv node.yaml central.yaml /etc/nylon/
    sudo systemctl start nylon
    ```

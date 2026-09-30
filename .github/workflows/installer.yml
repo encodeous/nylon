@@ -33,19 +33,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install binary
+      - name: Install binary only
         run: |
-          sh install.sh
+          sh install.sh --no-service
           nylon version
+          test ! -e /etc/systemd/system/nylon.service
       - name: Re-run is a no-op
         run: |
           version=$(nylon version | sed 's/^Version: //')
-          sh install.sh 2>&1 | grep -Fx "==> nylon $version is already installed"
-      - name: Install service without configs
+          sh install.sh --no-service 2>&1 | grep -Fx "==> nylon $version is already installed"
+      - name: Install service (default) without configs
         run: |
           # A pre-existing config dir must still end up root-only.
           sudo mkdir -m 0755 /etc/nylon
-          sh install.sh --service
+          sh install.sh
           systemctl is-enabled nylon
           test "$(systemctl is-active nylon)" = inactive
           test "$(sudo stat -c %a /etc/nylon)" = 700
@@ -55,7 +56,7 @@ jobs:
           printf 'id: ci\nkey: %s\nport: 57175\n' "$key" | sudo tee /etc/nylon/node.yaml >/dev/null
           printf 'routers:\n  - id: ci\n    pubkey: %s\n    addresses: [10.99.0.1]\n' "$(cat pub)" | sudo tee /etc/nylon/central.yaml >/dev/null
           sudo nylon verify /etc/nylon/central.yaml --node /etc/nylon/node.yaml
-          sh install.sh --service 2>&1 | grep -Fx "==> started nylon.service"
+          sh install.sh 2>&1 | grep -Fx "==> started nylon.service"
           # Same PID after a while, so it isn't crash-looping.
           sleep 2
           pid=$(systemctl show -p MainPID --value nylon)
@@ -63,10 +64,10 @@ jobs:
           test "$pid" != 0
           test "$(systemctl show -p MainPID --value nylon)" = "$pid"
           ip -br addr | grep 10.99.0.1
-      - name: Re-running with --service leaves it running
+      - name: Re-running leaves it running
         run: |
           pid=$(systemctl show -p MainPID --value nylon)
-          sh install.sh --service 2>&1 | grep -Fx "==> nylon.service is already running"
+          sh install.sh 2>&1 | grep -Fx "==> nylon.service is already running"
           test "$(systemctl show -p MainPID --value nylon)" = "$pid"
       - name: Changing version restarts the service
         run: |
@@ -89,7 +90,7 @@ jobs:
       - name: Leaves a hand-written unit alone
         run: |
           printf '[Service]\nExecStart=/bin/true\n' | sudo tee /etc/systemd/system/nylon.service >/dev/null
-          if sh install.sh --service; then exit 1; fi
+          if sh install.sh; then exit 1; fi
           sh install.sh --uninstall
           sudo test -f /etc/systemd/system/nylon.service
       - name: Logs

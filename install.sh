@@ -1,7 +1,7 @@
 #!/bin/sh
 # nylon installer
-# Installs the latest nylon release to /usr/local/bin. With --service, also
-# installs a systemd unit that runs nylon with the configs in /etc/nylon.
+# Installs the latest nylon release to /usr/local/bin as well as a systemd
+# unit to enable nylon as a service. opt out with --no-service
 # Re-running upgrades nylon and restarts the service. Tested on Ubuntu 24.04.
 
 set -eu
@@ -13,11 +13,11 @@ UNIT="/etc/systemd/system/nylon.service"
 
 usage() {
 	cat <<EOF
-Usage: install.sh [--version <tag>] [--service] [--uninstall]
+Usage: install.sh [--version <tag>] [--no-service] [--uninstall]
 
   --version <tag>  Install a specific release, e.g. v0.4.6 (default: latest)
-  --service        Also install and enable a systemd service that runs nylon
-                   with the configs in $CONFIG_DIR
+  --no-service     Don't install the systemd service that runs nylon with the
+                   configs in $CONFIG_DIR (installed by default)
   --uninstall      Remove the service and binary (keeps $CONFIG_DIR)
 EOF
 }
@@ -166,7 +166,7 @@ uninstall() {
 
 main() {
 	VERSION=latest
-	SERVICE=0
+	SERVICE=1
 	UNINSTALL=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -176,6 +176,7 @@ main() {
 			shift
 			;;
 		--service) SERVICE=1 ;;
+		--no-service) SERVICE=0 ;;
 		--uninstall) UNINSTALL=1 ;;
 		-h | --help)
 			usage
@@ -192,10 +193,11 @@ main() {
 		exit 0
 	fi
 	if [ "$SERVICE" = 1 ] && [ ! -d /run/systemd/system ]; then
-		die "--service needs systemd"
+		info "systemd isn't running; installing the binary only"
+		SERVICE=0
 	fi
 	if [ "$SERVICE" = 1 ] && [ -f "$UNIT" ] && ! managed_unit; then
-		die "$UNIT exists but wasn't installed by this script; move it aside and re-run"
+		die "$UNIT exists but wasn't installed by this script; move it aside, or re-run with --no-service"
 	fi
 
 	detect_arch
@@ -218,7 +220,7 @@ main() {
 		as_root systemctl restart nylon
 		info "restarted nylon.service"
 	elif [ "$UPGRADED" = 1 ] && [ ! -f "$UNIT" ]; then
-		info "next: https://nylon.jq.ax/guides/getting-started (or re-run with --service)"
+		info "next: https://nylon.jq.ax/guides/getting-started"
 	fi
 }
 

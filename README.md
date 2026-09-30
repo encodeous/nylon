@@ -20,23 +20,17 @@ Nylon targets under 10 seconds of convergence time after a link failure, as you 
 
 ## Getting Started
 
-Install the latest release on Linux:
+Install the latest release on Linux, along with a systemd service that runs it with the configs in `/etc/nylon`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh
-```
-
-To also run nylon as a systemd service, with its configs in `/etc/nylon`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh -s -- --service
 ```
 
 Pass options after `sh -s --`, for example `... | sh -s -- --version v0.4.6`:
 
 | Option | Description |
 |---|---|
-| `--service` | Also install and enable a systemd service using the configs in `/etc/nylon` |
+| `--no-service` | Install only the binary without the systemd service |
 | `--version <tag>` | Install a specific release, e.g. `v0.4.6` (also works for downgrades) |
 | `--uninstall` | Remove the service and binary; keeps `/etc/nylon` |
 | `--help` | Show usage |
