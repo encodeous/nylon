@@ -1,62 +1,48 @@
 package core
 
 import (
-	"bufio"
-	"cmp"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
 	"runtime"
 	"slices"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/state"
 )
 
-func (n *Nylon) initWireGuard() error {
-	dev, tdev, itfName, err := NewWireGuardDevice(n)
+func (n *Nylon) initTransport() error {
+	if len(n.Transports) == 0 {
+		rt, err := newDefaultRuntime(n)
+		if err != nil {
+			return err
+		}
+		if err := rt.validate(); err != nil {
+			rt.close()
+			return err
+		}
+		n.useRuntime(rt)
+	}
+	name, err := n.Tun.Name()
 	if err != nil {
 		return err
 	}
-
-	err = dev.Up()
-	if err != nil {
-		return err
+	n.Interface = name
+	// Nodes that fail to sync are retried by the reconciliation task below.
+	if err := n.SyncTransport(); err != nil {
+		n.Log.Warn("initial transport sync incomplete; will retry", "err", err)
 	}
-
-	n.Device = dev
-	n.Tun = tdev
-	n.Interface = itfName
-
-	n.InstallTC()
-	n.Log.Info("installed nylon traffic control filter for polysock")
-
-	dev.IpcHandler["get=nylon\n"] = func(writer *bufio.ReadWriter) error {
-		return HandleNylonIPC(n, writer)
+	n.applyHostMTU()
+	for _, transport := range n.Transports {
+		if err := transport.Start(n.Context, n.transportHooks()); err != nil {
+			return err
+		}
 	}
-
-	// TODO: fully convert to code-based api
-	err = dev.IpcSet(
-		fmt.Sprintf(
-			`private_key=%s
-listen_port=%d
-`,
-			hex.EncodeToString(n.Key[:]),
-			n.Port,
-		),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to configure wg device: %v", err)
+	if n.wireGuard != nil {
+		n.wireGuard.serve(n.Context, n.Log)
 	}
-
-	// add peers
-	err = n.SyncWireGuard()
-	if err != nil {
-		return err
-	}
-
+	n.startTUNReader()
+	n.watchTUNEvents()
 	// configure system networking
 
 	// run pre-up commands
@@ -69,7 +55,7 @@ listen_port=%d
 
 	if !n.NoNetConfigure && !n.NoTun {
 		for _, addr := range n.GetRouter(n.LocalCfg.Id).Addresses {
-			err := ConfigureAlias(n.Log, itfName, addr)
+			err := ConfigureAlias(n.Log, n.Interface, addr)
 			if err != nil {
 				n.Log.Error("failed to configure alias", "err", err)
 			} else if !slices.Contains(n.AppliedSystem.Aliases, addr) {
@@ -77,7 +63,7 @@ listen_port=%d
 			}
 		}
 
-		err = InitInterface(n.Log, itfName)
+		err = InitInterface(n.Log, n.Interface)
 		if err != nil {
 			return err
 		}
@@ -102,136 +88,50 @@ listen_port=%d
 	return nil
 }
 
-func (n *Nylon) cleanupWireGuard() error {
-	// remove routes
+func (n *Nylon) cleanupTransport() error {
 	for _, route := range n.AppliedSystem.Routes {
-		err := RemoveRoute(n.Log, n.Tun, n.Interface, route)
-		if err != nil {
+		if err := RemoveRoute(n.Log, n.Tun, n.Interface, route); err != nil {
 			n.Log.Error("failed to remove route", "err", err)
 		}
 	}
 	for _, addr := range n.AppliedSystem.Aliases {
-		err := RemoveAlias(n.Log, n.Interface, addr)
-		if err != nil {
+		if err := RemoveAlias(n.Log, n.Interface, addr); err != nil {
 			n.Log.Error("failed to remove alias", "err", err)
 		}
 	}
-	// run pre-down commands
 	for _, cmd := range n.PreDown {
-		err := ExecSplit(n.Log, cmd)
-		if err != nil {
+		if err := ExecSplit(n.Log, cmd); err != nil {
 			n.Log.Error("failed to run pre-down command", "err", err)
 		}
 	}
-	err := CleanupWireGuardDevice(n)
-	if err != nil {
-		return err
+	var err error
+	if n.wireGuard != nil {
+		err = errors.Join(err, n.wireGuard.close())
 	}
-	// run post-down commands
+	if n.Tun != nil {
+		err = errors.Join(err, n.Tun.Close())
+	}
+	n.tunWorkers.Wait()
+	for _, transport := range n.Transports {
+		err = errors.Join(err, transport.Close())
+	}
 	for _, cmd := range n.PostDown {
-		err = ExecSplit(n.Log, cmd)
-		if err != nil {
-			n.Log.Error("failed to run post-down command", "err", err)
+		if e := ExecSplit(n.Log, cmd); e != nil {
+			n.Log.Error("failed to run post-down command", "err", e)
 		}
 	}
-	return nil
+	return err
 }
 
-func (n *Nylon) SyncWireGuard() error {
-	if n.Device == nil {
-		return nil
-	}
-	if n.AppliedSystem.Peers == nil {
-		n.AppliedSystem.Peers = make(map[state.NodeId]state.NyPublicKey)
-	}
-
-	desired := make(map[state.NodeId]state.NyPublicKey)
-	for _, peer := range n.GetPeers(n.LocalCfg.Id) {
-		ncfg := n.GetNode(peer)
-		desired[peer] = ncfg.PubKey
-	}
-
-	// Prepare every desired peer before removing any old peer. In particular,
-	// public-key rotation must keep the old peer alive until the forwarding
-	// table has been rebound to the replacement.
-	for _, peer := range slices.Sorted(slices.Values(n.GetPeers(n.LocalCfg.Id))) {
-		ncfg := n.GetNode(peer)
-		wgPeer := n.Device.LookupPeer(device.NoisePublicKey(ncfg.PubKey))
-		if wgPeer == nil {
-			n.Log.Debug("adding", "peer", peer)
-			var err error
-			wgPeer, err = n.Device.NewPeer(device.NoisePublicKey(ncfg.PubKey))
-			if err != nil {
-				return err
-			}
-			wgPeer.Start()
-		}
-		if n.IsClient(peer) {
-			wgPeer.SetPreferRoaming(true)
-		}
-	}
-
-	if err := n.syncWireGuardEndpoints(); err != nil {
-		return err
-	}
-
-	// The forwarding table caches concrete peers for the one-lookup hot path.
-	// Rebind every entry before stopping peers from the previous generation.
-	n.rebindForwardingPeers()
-
-	desiredKeys := make(map[state.NyPublicKey]struct{}, len(desired))
-	for _, key := range desired {
-		desiredKeys[key] = struct{}{}
-	}
-	for _, wgPeer := range n.Device.GetPeers() {
-		key := state.NyPublicKey(wgPeer.GetPublicKey())
-		if _, ok := desiredKeys[key]; ok {
-			continue
-		}
-		n.Log.Debug("removing obsolete WireGuard peer", "key", key)
-		n.Device.RemovePeer(wgPeer.GetPublicKey())
-	}
-
-	n.AppliedSystem.Peers = desired
-	return nil
+func (n *Nylon) transportPeer(id state.NodeId, transport polyamide.Transport) polyamide.Peer {
+	return n.peerHandles[id][transport]
 }
-
-func (n *Nylon) syncWireGuardEndpoints() error {
-	if n.Device == nil {
-		return nil
+func peerPublicKey(peer polyamide.Peer) (state.NyPublicKey, bool) {
+	var key state.NyPublicKey
+	if peer == nil {
+		return key, false
 	}
-	dev := n.Device
-
-	// configure endpoints
-	for _, peer := range slices.Sorted(slices.Values(n.GetPeers(n.LocalCfg.Id))) {
-		if n.IsClient(peer) {
-			continue
-		}
-		pcfg := n.GetRouter(peer)
-		nhNeigh := n.RouterState.GetNeighbour(peer)
-		eps := make([]conn.Endpoint, 0)
-
-		if nhNeigh != nil {
-			links := slices.Clone(nhNeigh.Eps)
-			slices.SortStableFunc(links, func(a, b state.Endpoint) int {
-				return cmp.Compare(a.Metric(), b.Metric())
-			})
-			for _, ep := range links {
-				nep, err := ep.AsNylonEndpoint().GetWgEndpoint(n.Device, n.EndpointResolver)
-				if err != nil {
-					continue
-				}
-				eps = append(eps, nep)
-			}
-		}
-
-		wgPeer := dev.LookupPeer(device.NoisePublicKey(pcfg.PubKey))
-		if wgPeer != nil {
-			wgPeer.SetEndpoints(eps)
-		}
-	}
-
-	return nil
+	return state.NyPublicKey(peer.PublicKey()), true
 }
 
 func (n *Nylon) SyncSystemState() error {
@@ -317,4 +217,21 @@ func (n *Nylon) syncSystemRoutes() error {
 	}
 	n.AppliedSystem.Routes = applied
 	return syncErr
+}
+
+// defaultTransport carries configured endpoints when the runtime supplies no links.
+// The platform runtime uses WireGuard.
+func (n *Nylon) defaultTransport() polyamide.Transport {
+	if len(n.Transports) == 0 {
+		return nil
+	}
+	return n.Transports[0]
+}
+
+func (n *Nylon) transportPeers() []polyamide.PeerStats {
+	var peers []polyamide.PeerStats
+	for _, transport := range n.Transports {
+		peers = append(peers, transport.Peers()...)
+	}
+	return peers
 }

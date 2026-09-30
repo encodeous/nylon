@@ -4,75 +4,30 @@ package core
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/encodeous/nylon/log"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
-	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/nylon/polyamide/transports/wireguard/adapter"
 )
 
-type VirtualNet interface {
-	Bind(node state.NodeId) conn.Bind
-	Tun(node state.NodeId) tun.Device
+// The integration environment supplies a complete runtime. Nylon does not know
+// which protocol, sockets, or bind implementation that transport uses.
+type virtualRuntimeFactory interface {
+	NewRuntime(*Nylon) (Runtime, error)
 }
 
-func NewWireGuardDevice(n *Nylon) (dev *device.Device, tunDevice tun.Device, realItf string, err error) {
-	x := n.AuxConfig["vnet"]
-	if x == nil {
-		return nil, nil, "", fmt.Errorf("expected aux config \"vnet\", but it was not present")
+func newDefaultRuntime(n *Nylon) (Runtime, error) {
+	factory, ok := n.AuxConfig["vnet"].(virtualRuntimeFactory)
+	if !ok {
+		return Runtime{}, fmt.Errorf("expected aux config vnet runtime factory")
 	}
-	vn := x.(VirtualNet)
-
-	itfName := "nylon-vn"
-
-	bind := vn.Bind(n.LocalCfg.Id)
-	var tdev tun.Device
-	if n.NoTun {
-		tdev = tun.NewDummyDevice(itfName)
-	} else {
-		tdev = vn.Tun(n.LocalCfg.Id)
+	rt, err := factory.NewRuntime(n)
+	if err != nil {
+		return Runtime{}, err
 	}
-
-	wgLog := n.Log.With("module", log.ScopePolyamide)
-
-	// setup WireGuard
-	dev = device.NewDevice(tdev, bind, &device.Logger{
-		Verbosef: func(format string, args ...any) {
-			if n.DBG_log_wireguard {
-				wgLog.Debug(fmt.Sprintf(format, args...))
-			}
-		},
-		Errorf: func(format string, args ...any) {
-			if strings.Contains(format, "Failed to send PolySock packets") {
-				return
-			}
-			wgLog.Error(fmt.Sprintf(format, args...))
-		},
-	})
-
-	if n.NoTun {
-		n.Log.Info("Created userspace-only WireGuard device", "name", itfName)
-	} else {
-		n.Log.Info("Created WireGuard interface", "name", itfName)
-	}
-	return dev, tdev, itfName, nil
-}
-
-func CleanupWireGuardDevice(n *Nylon) error {
-	if n.Device != nil {
-		err := n.Device.Bind().Close()
-		if err != nil {
-			return err
-		}
-		n.Device.Close()
-	}
-	if n.wgUapi != nil {
-		err := n.wgUapi.Close()
-		if err != nil {
-			return err
+	// Tests use the WireGuard transport's UAPI without a socket.
+	if len(rt.Transports) != 0 {
+		if wg, ok := rt.Transports[0].(*adapter.Transport); ok {
+			n.wireGuard = &legacyWireGuard{transport: wg}
 		}
 	}
-	return nil
+	return rt, nil
 }

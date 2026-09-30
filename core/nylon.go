@@ -4,21 +4,20 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/netip"
 	"os"
 	"os/signal"
 	"path"
 	"reflect"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/encodeous/nylon/perf"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/state"
 	"github.com/encodeous/tint"
 	"github.com/jellydator/ttlcache/v3"
@@ -58,11 +57,19 @@ type Nylon struct {
 	ConfigPath      string
 
 	// resources
-	Tun           tun.Device
-	wgUapi        net.Listener
-	Interface     string
-	Device        *device.Device
-	observability *observabilityServer
+	Tun       polyamide.HostDevice
+	Interface string
+	// Transports are the registered transports. The first is the default.
+	Transports        []polyamide.Transport
+	linksForNeighbour func(state.NodeId) []LinkConfig
+	observability     *observabilityServer
+	peerHandles       map[state.NodeId]map[polyamide.Transport]polyamide.Peer
+	neighbourLinks    map[state.NodeId][]neighbourLink
+	tunWorkers        sync.WaitGroup
+	// wireGuard serves legacy UAPI. It is nil for custom runtimes.
+	wireGuard          *legacyWireGuard
+	resourceCleanup    sync.Once
+	resourceCleanupErr error
 
 	// only used for debugging & tests
 	AuxConfig map[string]any
@@ -79,7 +86,67 @@ type AppliedSystemState struct {
 	Peers   map[state.NodeId]state.NyPublicKey
 }
 
+// Runtime supplies the transports and host device. Nylon owns them and closes
+// them if initialization fails.
+type Runtime struct {
+	// The first transport is the default. It carries configured endpoints.
+	Transports []polyamide.Transport
+	// Called on the dispatcher. Nil binds configured endpoints to the default transport.
+	LinksForNeighbour func(state.NodeId) []LinkConfig
+	Host              polyamide.HostDevice
+}
+
+func (rt Runtime) validate() error {
+	if len(rt.Transports) == 0 || slices.Contains(rt.Transports, nil) || rt.Host == nil {
+		return errors.New("runtime requires a host device and at least one transport")
+	}
+	for i, transport := range rt.Transports {
+		if slices.Contains(rt.Transports[:i], transport) {
+			return errors.New("runtime contains a duplicate transport")
+		}
+	}
+	return nil
+}
+
+func (rt Runtime) close() {
+	if rt.Host != nil {
+		_ = rt.Host.Close()
+	}
+	for _, transport := range rt.Transports {
+		if transport != nil {
+			_ = transport.Close()
+		}
+	}
+}
+
+// useRuntime attaches a validated runtime.
+func (n *Nylon) useRuntime(rt Runtime) {
+	n.Transports = slices.Clone(rt.Transports)
+	n.linksForNeighbour = rt.LinksForNeighbour
+	n.Tun = rt.Host
+}
+
 func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, opts state.NylonOptions, tunables *state.RouterTunables) (*Nylon, error) {
+	return newNylon(ccfg, ncfg, logLevel, configPath, aux, opts, tunables, nil)
+}
+
+// NewNylonWithRuntime uses rt instead of creating the platform runtime.
+func NewNylonWithRuntime(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, opts state.NylonOptions, tunables *state.RouterTunables, rt Runtime) (*Nylon, error) {
+	return newNylon(ccfg, ncfg, logLevel, configPath, aux, opts, tunables, &rt)
+}
+
+func newNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, configPath string, aux map[string]any, opts state.NylonOptions, tunables *state.RouterTunables, supplied *Runtime) (*Nylon, error) {
+	attached := false
+	defer func() {
+		if !attached && supplied != nil {
+			supplied.close()
+		}
+	}()
+	if supplied != nil {
+		if err := supplied.validate(); err != nil {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	dispatch := make(chan func() error, 128)
@@ -155,12 +222,19 @@ func NewNylon(ccfg state.CentralCfg, ncfg state.LocalCfg, logLevel slog.Level, c
 		AuxConfig:        aux,
 		DNSResolver:      dnsResolver,
 		EndpointResolver: state.NewEndpointResolver(dnsResolver),
+		peerHandles:      make(map[state.NodeId]map[polyamide.Transport]polyamide.Peer),
+	}
+	if supplied != nil {
+		n.useRuntime(*supplied)
 	}
 
+	attached = true
 	n.Log.Info("init modules")
 
 	err = n.Init()
 	if err != nil {
+		n.Cancel(err)
+		_ = n.Cleanup()
 		return nil, err
 	}
 	return n, nil
@@ -196,8 +270,7 @@ func (n *Nylon) Init() error {
 		return nylonGc(n)
 	}, n.GcDelay)
 
-	// wireguard configuration
-	err = n.initWireGuard()
+	err = n.initTransport()
 	if err != nil {
 		return err
 	}
@@ -327,16 +400,26 @@ endLoop:
 }
 
 func (n *Nylon) Cleanup() error {
+	n.resourceCleanup.Do(func() { n.resourceCleanupErr = n.cleanup() })
+	return n.resourceCleanupErr
+}
+
+func (n *Nylon) cleanup() error {
+	n.Cancel(context.Canceled)
 	if n.observability != nil {
 		n.observability.close()
 	}
-	n.PingBuf.Stop()
+	if n.PingBuf != nil {
+		n.PingBuf.Stop()
+	}
 	for _, health := range n.prefixHealth {
 		health.monitor.Stop()
 	}
 
+	err := n.cleanupTransport()
 	n.CleanupRouter()
-	n.Trace.Cleanup()
-
-	return n.cleanupWireGuard()
+	if n.Trace != nil && n.Trace.Broadcaster != nil {
+		_ = n.Trace.Cleanup()
+	}
+	return err
 }

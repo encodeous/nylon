@@ -1,6 +1,8 @@
 package core
 
 import (
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/encodeous/nylon/state"
@@ -14,40 +16,52 @@ func (n *Nylon) initPassiveClient() error {
 }
 
 func scanPassivePeers(n *Nylon) error {
-	for _, peer := range n.Device.GetPeers() {
-		nid := n.FindNodeBy(state.NyPublicKey(peer.GetPublicKey()))
+	// A node can have a peer on each transport. Use the most recent packet from any of them.
+	lastRX := make(map[state.NodeId]time.Time)
+	for _, stat := range n.transportPeers() {
+		key, valid := peerPublicKey(stat.Peer)
+		if !valid {
+			continue
+		}
+		nid := n.FindNodeBy(key)
+		if nid == nil {
+			continue
+		}
+		if last, seen := lastRX[*nid]; !seen || stat.LastReceived.After(last) {
+			lastRX[*nid] = stat.LastReceived
+		}
+	}
 
-		if nid != nil {
-			// check if we are the only node that is advertising this passive client, if so, we can apply the following optimization
-			// As we are the only node advertising the client, we can permanently hold the route (with a very high metric), and not expire it
-			// This enables our passive client to be reachable even if it does not send any traffic for a long time (e.g. mobile device going to sleep)
-			// If this device switches to another nylon node, that node will start advertising the client, and we will stop holding the route
+	for _, nid := range slices.Sorted(maps.Keys(lastRX)) {
+		if !n.IsClient(nid) {
+			continue
+		}
+		// check if we are the only node that is advertising this passive client, if so, we can apply the following optimization
+		// As we are the only node advertising the client, we can permanently hold the route (with a very high metric), and not expire it
+		// This enables our passive client to be reachable even if it does not send any traffic for a long time (e.g. mobile device going to sleep)
+		// If this device switches to another nylon node, that node will start advertising the client, and we will stop holding the route
 
-			hasOtherAdvertisers := false
-			ncfg := n.GetNode(*nid)
-			for _, prefix := range ncfg.Prefixes {
-				for _, neigh := range n.RouterState.Neighbours {
-					for _, route := range neigh.Routes {
-						if route.Prefix == prefix.GetPrefix() && route.NodeId != n.LocalCfg.Id && route.FD.Metric != state.INF {
-							hasOtherAdvertisers = true
-							goto foundAdvertiser
-						}
+		hasOtherAdvertisers := false
+		ncfg := n.GetNode(nid)
+		for _, prefix := range ncfg.Prefixes {
+			for _, neigh := range n.RouterState.Neighbours {
+				for _, route := range neigh.Routes {
+					if route.Prefix == prefix.GetPrefix() && route.NodeId != n.LocalCfg.Id && route.FD.Metric != state.INF {
+						hasOtherAdvertisers = true
+						goto foundAdvertiser
 					}
 				}
 			}
-		foundAdvertiser:
+		}
+	foundAdvertiser:
 
-			// TODO: we could make this expire after a longer period of time, like 24h. However, this would require our passive client to wait for the full route propagation time after 24 hours. (Might cause unexpected interruptions)
+		// TODO: we could make this expire after a longer period of time, like 24h. However, this would require our passive client to wait for the full route propagation time after 24 hours. (Might cause unexpected interruptions)
 
-			recentlyUpdated := time.Since(peer.LastReceivedPacket()) < n.ClientDeadThreshold
-			if n.IsClient(*nid) {
-				// we have a passive client
-				for _, newPrefix := range ncfg.Prefixes {
-					recentlyAdvertised := n.hasRecentlyAdvertised(newPrefix.GetPrefix())
-					if recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised {
-						n.updatePassiveClient(newPrefix, *nid, !recentlyUpdated)
-					}
-				}
+		recentlyUpdated := time.Since(lastRX[nid]) < n.ClientDeadThreshold
+		for _, newPrefix := range ncfg.Prefixes {
+			recentlyAdvertised := n.hasRecentlyAdvertised(newPrefix.GetPrefix())
+			if recentlyUpdated || !hasOtherAdvertisers && recentlyAdvertised {
+				n.updatePassiveClient(newPrefix, nid, !recentlyUpdated)
 			}
 		}
 	}

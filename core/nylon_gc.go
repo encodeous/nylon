@@ -31,6 +31,8 @@ func nylonGc(n *Nylon) error {
 		}
 		neigh.Eps = neigh.Eps[:count]
 	}
+	n.pruneLinks()
+	n.publishLinks()
 
 	err := n.GcRouter()
 	if err != nil {

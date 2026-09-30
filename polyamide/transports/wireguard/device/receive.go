@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/encodeous/nylon/perf"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -434,8 +433,8 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 	device.Log.Verbosef("%v - Routine: sequential receiver - started", peer)
 
 	var (
-		tcBufs = make([]*TCElement, 0, maxBatchSize)
-		tcs    = NewTCState()
+		inbound = make([]InboundPacket, 0, maxBatchSize)
+		bufs    = make([][]byte, 0, maxBatchSize)
 	)
 
 	for elemsContainer := range peer.queue.inbound.c {
@@ -446,7 +445,6 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		validTailPacket := -1
 		dataPacketReceived := false
 		rxBytesLen := uint64(0)
-		rxPkts := 0
 
 		for i, elem := range elemsContainer.elems {
 			if elem.packet == nil {
@@ -465,7 +463,6 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 				peer.SendStagedPackets()
 			}
 			rxBytesLen += uint64(len(elem.packet) + MinMessageSize)
-			rxPkts++
 
 			if len(elem.packet) == 0 {
 				device.Log.Verbosef("%v - Receiving keepalive packet", peer)
@@ -473,25 +470,14 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 			}
 			dataPacketReceived = true
 
-			tce := device.GetTCElement()
-			tce.Packet = elem.packet
-			tce.Buffer = elem.buffer
-			elem.buffer = nil
-			elem.packet = nil
-			tce.FromEp = elem.endpoint
-			tce.FromPeer = peer
-
-			tcBufs = append(tcBufs, tce)
+			if device.hooks.Receive != nil {
+				inbound = append(inbound, InboundPacket{Packet: elem.packet, Endpoint: elem.endpoint})
+			} else if packet, ok := device.allowedPacket(peer, elem.packet); ok {
+				bufs = append(bufs, elem.buffer[:MessageTransportOffsetContent+len(packet)])
+			}
 		}
 
-		// pass to traffic control
-		device.TCBatch(tcBufs, tcs)
-
-		tcBufs = tcBufs[:0]
-
 		peer.rxBytes.Add(rxBytesLen)
-		perf.RecvBytesPerSecond.Add(float64(rxBytesLen))
-		perf.RecvPacketPerSecond.Add(float64(rxPkts))
 		if validTailPacket >= 0 {
 			peer.SetEndpointFromPacket(elemsContainer.elems[validTailPacket].endpoint)
 			peer.keepKeyFreshReceiving()
@@ -500,6 +486,19 @@ func (peer *Peer) RoutineSequentialReceiver(maxBatchSize int) {
 		}
 		if dataPacketReceived {
 			peer.timersDataReceived()
+		}
+		if len(inbound) > 0 {
+			device.hooks.Receive(peer, inbound)
+			clear(inbound)
+			inbound = inbound[:0]
+		}
+		if len(bufs) > 0 {
+			_, err := device.tun.device.Write(bufs, MessageTransportOffsetContent)
+			if err != nil && !device.isClosed() {
+				device.Log.Errorf("Failed to write packets to TUN device: %v", err)
+			}
+			clear(bufs)
+			bufs = bufs[:0]
 		}
 		for _, elem := range elemsContainer.elems {
 			device.PutMessageBuffer(elem.buffer)

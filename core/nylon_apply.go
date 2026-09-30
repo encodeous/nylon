@@ -46,10 +46,10 @@ func (n *Nylon) ApplyCentralConfig(cfg *state.CentralCfg) (ApplyResult, error) {
 }
 
 func (n *Nylon) SyncApplicationState() error {
-	if n.Device == nil {
+	if len(n.Transports) == 0 {
 		return nil
 	}
-	if err := n.SyncWireGuard(); err != nil {
+	if err := n.SyncTransport(); err != nil {
 		return err
 	}
 	ComputeRoutes(n.RouterState, n)
@@ -105,7 +105,7 @@ func (n *Nylon) reconcileRouterState(next *state.CentralCfg) error {
 			Eps:    make([]state.Endpoint, 0, len(cfg.Endpoints)),
 		}
 		for _, ep := range cfg.Endpoints {
-			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, nil, &n.RouterTunables))
+			stNeigh.Eps = append(stNeigh.Eps, state.NewEndpoint(ep, false, &n.RouterTunables))
 		}
 		neighs = append(neighs, stNeigh)
 	}
@@ -165,7 +165,7 @@ func reconcileConfiguredEndpoints(neigh *state.Neighbour, desired []string, t *s
 		if _, ok := seen[address]; ok {
 			continue
 		}
-		eps = append(eps, state.NewEndpoint(address, false, nil, t))
+		eps = append(eps, state.NewEndpoint(address, false, t))
 	}
 	neigh.Eps = eps
 }

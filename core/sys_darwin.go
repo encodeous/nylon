@@ -5,8 +5,8 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
 )
 
 func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
@@ -63,7 +63,7 @@ func PrefixToMaskString(p netip.Prefix) string {
 	return net.IP(mask).String()
 }
 
-func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+func ConfigureRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
 	if route.Addr().Is6() {
 		return Exec(logger, "/sbin/route", "-n", "add", "-inet6", route.String(), "-interface", itfName)
 	} else {
@@ -73,7 +73,7 @@ func ConfigureRoute(logger *slog.Logger, dev tun.Device, itfName string, route n
 	}
 }
 
-func RemoveRoute(logger *slog.Logger, dev tun.Device, itfName string, route netip.Prefix) error {
+func RemoveRoute(logger *slog.Logger, dev polyamide.HostDevice, itfName string, route netip.Prefix) error {
 	if route.Addr().Is6() {
 		return Exec(logger, "/sbin/route", "-n", "delete", "-inet6", route.String(), "-interface", itfName)
 	} else {

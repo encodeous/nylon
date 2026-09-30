@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/encodeous/nylon/perf"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -80,7 +79,9 @@ type StdNetEndpoint struct {
 	// src is the current sticky source address and interface index, if
 	// supported. Typically this is a PKTINFO structure from/for control
 	// messages, see unix.PKTINFO for an example.
-	src []byte
+	// Peers can share an endpoint. Source state can change while another peer sends.
+	srcMu sync.RWMutex
+	src   []byte
 }
 
 var (
@@ -99,6 +100,8 @@ func (*StdNetBind) ParseEndpoint(s string) (Endpoint, error) {
 }
 
 func (e *StdNetEndpoint) ClearSrc() {
+	e.srcMu.Lock()
+	defer e.srcMu.Unlock()
 	if e.src != nil {
 		// Truncate src, no need to reallocate.
 		e.src = e.src[:0]
@@ -266,7 +269,6 @@ func (s *StdNetBind) receiveIP(
 				return 0, err
 			}
 		}
-		perf.RecvBatchSize.Add(float64(numMsgs))
 	} else {
 		msg := &(*msgs)[0]
 		msg.N, msg.NN, _, msg.Addr, err = conn.ReadMsgUDP(msg.Buffers[0], msg.OOB)
@@ -275,7 +277,6 @@ func (s *StdNetBind) receiveIP(
 		}
 		numMsgs = 1
 	}
-	perf.RecvsPerSecond.Add(1)
 	for i := 0; i < numMsgs; i++ {
 		msg := &(*msgs)[i]
 		sizes[i] = msg.N
@@ -436,8 +437,6 @@ func (s *StdNetBind) send(conn *net.UDPConn, pc batchWriter, msgs []ipv6.Message
 	if runtime.GOOS == "linux" || runtime.GOOS == "android" {
 		for {
 			n, err = pc.WriteBatch(msgs[start:], 0)
-			perf.SendBatchSize.Add(float64(n))
-			perf.SendsPerSecond.Add(1)
 			if err != nil || n == len(msgs[start:]) {
 				break
 			}
@@ -450,8 +449,6 @@ func (s *StdNetBind) send(conn *net.UDPConn, pc batchWriter, msgs []ipv6.Message
 				break
 			}
 		}
-		perf.SendsPerSecond.Add(float64(len(msgs)))
-		perf.SendBatchSize.Add(1)
 	}
 	return err
 }

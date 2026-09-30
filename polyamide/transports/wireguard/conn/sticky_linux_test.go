@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -263,4 +264,27 @@ func Test_listenConfig(t *testing.T) {
 			t.Logf("listenConfig() does not set IPV6_RECVPKTINFO on %s", runtime.GOOS)
 		}
 	})
+}
+
+func TestSharedEndpointSourceState(t *testing.T) {
+	source := new(StdNetEndpoint)
+	setSrc(source, netip.MustParseAddr("127.0.0.1"), 1)
+	control := append([]byte(nil), source.src...)
+	endpoint := new(StdNetEndpoint)
+	var workers sync.WaitGroup
+	for _, work := range []func(){
+		func() { endpoint.ClearSrc() },
+		func() { getSrcFromControl(control, endpoint) },
+		func() { endpoint.SrcIP(); endpoint.SrcIfidx(); endpoint.SrcToString() },
+		func() { var output []byte; setSrcControl(&output, endpoint) },
+	} {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for range 1000 {
+				work()
+			}
+		}()
+	}
+	workers.Wait()
 }
