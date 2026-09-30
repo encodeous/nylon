@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
+	"github.com/encodeous/polyamide-wireguard-go/ipc"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
 

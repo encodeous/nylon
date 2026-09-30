@@ -10,9 +10,9 @@ import (
 
 	"github.com/encodeous/nylon/log"
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/adapter"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/conn"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
+	"github.com/encodeous/polyamide-wireguard-go/adapter"
+	"github.com/encodeous/polyamide-wireguard-go/conn"
+	"github.com/encodeous/polyamide-wireguard-go/device"
 )
 
 // NewWireGuardTransport creates the WireGuard transport for n and serves Nylon IPC

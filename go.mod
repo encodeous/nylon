@@ -6,6 +6,7 @@ require (
 	github.com/digineo/go-ping v1.2.0
 	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
+	github.com/encodeous/polyamide-wireguard-go v0.0.0-20260930194717-ff21c4e94337
 	github.com/encodeous/tint v1.2.0
 	github.com/gaissmai/bart v0.25.0
 	github.com/goccy/go-yaml v1.19.1
@@ -23,11 +24,7 @@ require (
 	go.uber.org/goleak v1.3.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.52.0
-	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.47.0
-	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 	google.golang.org/protobuf v1.36.10
-	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
 )
 
 require (
@@ -52,7 +49,6 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/google/btree v1.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
@@ -83,8 +79,10 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/time v0.12.0 // indirect
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

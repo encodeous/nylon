@@ -8,8 +8,8 @@ import (
 	"runtime"
 
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/device"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
+	"github.com/encodeous/polyamide-wireguard-go/device"
+	"github.com/encodeous/polyamide-wireguard-go/tun"
 )
 
 func newDefaultRuntime(n *Nylon) (Runtime, error) {

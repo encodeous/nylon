@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"fmt"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
 	"github.com/encodeous/nylon/protocol"
+	"github.com/encodeous/polyamide-wireguard-go/ipc"
 )
 
 func SendIPCRequest(itf string, req *protocol.IpcRequest) (*protocol.IpcResponse, error) {

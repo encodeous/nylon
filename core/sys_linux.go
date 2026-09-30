@@ -6,8 +6,8 @@ import (
 	"net/netip"
 
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/ipc"
 	"github.com/encodeous/nylon/state"
+	"github.com/encodeous/polyamide-wireguard-go/ipc"
 )
 
 func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {

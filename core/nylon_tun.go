@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/encodeous/nylon/polyamide/transports/wireguard/tun"
+	"github.com/encodeous/polyamide-wireguard-go/tun"
 )
 
 // Reserve space for headers written by native TUN drivers.
