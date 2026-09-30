@@ -115,6 +115,24 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
 
 </Steps>
 
+## Quick Setup with a Setup Token
+
+Instead of writing `central.yaml` by hand, you can enrol nodes with a one-time setup token. On an existing node (or the first node of a new network), run:
+
+```bash
+nylon init --serve
+```
+
+This creates `node.yaml` and `central.yaml` if they are missing, prints a setup token, and waits on TCP port `57175` for one node to join. On the new node, run:
+
+```bash
+nylon init --connect <first-node-ip> --token <setup-token>
+```
+
+The new node generates its key, is added to `central.yaml` with the next free address and connected to the serving node, and receives a copy of the updated `central.yaml`. The node ID defaults to the hostname; pass `--id` to choose another. The exchange is encrypted with the token, and the token can only be used once.
+
+Afterwards, run `nylon reload` on the serving node if nylon is already running, and distribute the updated `central.yaml` to any other nodes. If the network uses [Config Distribution](/guides/config-distribution), the serving node's `central.yaml` is the unencrypted copy of the bundle: reseal it with `nylon seal` and publish it, otherwise the next bundle will overwrite the change.
+
 ## Next Steps
 
 - Learn how to connect [Passive Nodes](/guides/wg-clients) to support edge platforms like iOS.

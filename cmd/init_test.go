@@ -1,9 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
+	"io"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -65,4 +70,70 @@ func TestBuildNodeConfigRejectsInvalidValues(t *testing.T) {
 
 	_, err = buildNodeConfig(initOptions{id: "router-1", port: 57175, excludeIPs: []string{"not-a-prefix"}})
 	require.ErrorContains(t, err, "invalid --exclude-ip")
+}
+
+func TestInitServeConnect(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+
+	serverDir, clientDir := t.TempDir(), t.TempDir()
+	pr, pw := io.Pipe()
+	serve := newInitCmd()
+	serve.SetOut(pw)
+	serve.SetArgs([]string{"--serve", "--id", "hub", "--port", strconv.Itoa(port),
+		"-o", filepath.Join(serverDir, "node.yaml"), "-c", filepath.Join(serverDir, "central.yaml")})
+	done := make(chan error, 1)
+	go func() {
+		done <- serve.Execute()
+		_ = pw.Close()
+	}()
+
+	var token string
+	scanner := bufio.NewScanner(pr)
+	for scanner.Scan() {
+		if v, ok := strings.CutPrefix(scanner.Text(), "Setup token: "); ok {
+			token = v
+			break
+		}
+	}
+	require.NotEmpty(t, token)
+	go func() { _, _ = io.Copy(io.Discard, pr) }()
+
+	// wrong token must be rejected without consuming the real one
+	bad := newInitCmd()
+	bad.SetArgs([]string{"--connect", "127.0.0.1:" + strconv.Itoa(port), "--token", "nope", "--id", "evil",
+		"-o", filepath.Join(clientDir, "evil.yaml"), "-c", filepath.Join(clientDir, "evil-central.yaml")})
+	require.ErrorContains(t, bad.Execute(), "invalid setup token")
+
+	connect := newInitCmd()
+	connect.SetOut(io.Discard)
+	connect.SetArgs([]string{"--connect", "127.0.0.1:" + strconv.Itoa(port), "--token", token, "--id", "leaf",
+		"-o", filepath.Join(clientDir, "node.yaml"), "-c", filepath.Join(clientDir, "central.yaml")})
+	require.NoError(t, connect.Execute())
+	require.NoError(t, <-done)
+
+	serverCentral, err := os.ReadFile(filepath.Join(serverDir, "central.yaml"))
+	require.NoError(t, err)
+	clientCentral, err := os.ReadFile(filepath.Join(clientDir, "central.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, serverCentral, clientCentral)
+
+	var central state.CentralCfg
+	require.NoError(t, yaml.Unmarshal(clientCentral, &central))
+	require.NoError(t, state.CentralConfigValidator(&central))
+	assert.Equal(t, []string{"127.0.0.1:" + strconv.Itoa(port)}, central.GetRouter("hub").Endpoints)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.1")}, central.GetRouter("hub").Addresses)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.2")}, central.GetRouter("leaf").Addresses)
+	assert.Equal(t, []state.NodeId{"leaf"}, central.GetPeers("hub"))
+
+	for _, dir := range []string{serverDir, clientDir} {
+		data, err := os.ReadFile(filepath.Join(dir, "node.yaml"))
+		require.NoError(t, err)
+		node, err := state.ParseLocalConfig(data)
+		require.NoError(t, err)
+		require.NoError(t, state.NodeConfigValidator(&central, node))
+		assert.Equal(t, central.GetNode(node.Id).PubKey, node.Key.Pubkey())
+	}
 }
