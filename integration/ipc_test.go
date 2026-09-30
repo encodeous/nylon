@@ -94,6 +94,11 @@ func TestIPCStatus(t *testing.T) {
 	assert.GreaterOrEqual(t, len(s.GetRoutes().GetSelected()), 1)
 	assert.GreaterOrEqual(t, len(s.GetRoutes().GetForward()), 1)
 	assert.GreaterOrEqual(t, len(s.GetFeasibilityDistances()), 1)
+
+	nodes := s.GetNodes()
+	require.Len(t, nodes, 2)
+	assert.Equal(t, "a", nodes[0].NodeId)
+	assert.Equal(t, "b", nodes[1].NodeId)
 }
 
 func TestIPCProbeReportsTimeout(t *testing.T) {
