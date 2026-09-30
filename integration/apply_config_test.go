@@ -200,6 +200,76 @@ func TestApplyCentralConfigRotatesPeerKeyWithoutChangingNextHop(t *testing.T) {
 	waitForPayload(t, vh, errs, received, 2)
 }
 
+func TestApplyCentralConfigRemovedPrefixStopsSeqnoRequests(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	vh := &VirtualHarness{}
+	a1 := "192.168.40.1:1234"
+	vh.NewNode("a", "10.0.0.1/32")
+	b1 := "192.168.40.2:1234"
+	vh.NewNode("b", "10.0.0.2/32")
+	vh.Central.Graph = []string{"a, b"}
+	vh.Endpoints = map[string]state.NodeId{
+		a1: "a",
+		b1: "b",
+	}
+	vh.AddLink(a1, b1)
+	vh.AddLink(b1, a1)
+	removed := netip.MustParsePrefix("10.1.0.2/32")
+	bi := vh.IndexOf("b")
+	vh.Central.Routers[bi].Prefixes = append(vh.Central.Routers[bi].Prefixes, state.PrefixHealthWrapper{
+		PrefixHealth: &state.StaticPrefixHealth{Prefix: removed},
+	})
+
+	errs := vh.Start()
+	defer vh.Stop()
+
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	b := vh.Nylons[bi].Load()
+	neighHasRoute := func() bool {
+		res := make(chan bool, 1)
+		a.Dispatch(func() error {
+			route, ok := a.RouterState.GetNeighbour("b").Routes[removed]
+			res <- ok && route.Metric != state.INF
+			return nil
+		})
+		select {
+		case ok := <-res:
+			return ok
+		case err := <-errs:
+			t.Fatal(err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for dispatch")
+		}
+		return false
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !neighHasRoute() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for a to learn the prefix")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	err, next := vh.Central.Clone()
+	assert.NoError(t, err)
+	next.Timestamp++
+	next.Routers[bi].Prefixes = next.Routers[bi].Prefixes[:1]
+	applyConfigAndWait(t, b, next)
+	applyConfigAndWait(t, a, next)
+
+	// stale route keeps a requesting seqnos until it expires
+	done := make(chan struct{})
+	var stale bool
+	a.Dispatch(func() error {
+		_, stale = a.RouterState.GetNeighbour("b").Routes[removed]
+		close(done)
+		return nil
+	})
+	<-done
+	assert.False(t, stale)
+}
+
 func applyConfigAndWait(t *testing.T, n *core.Nylon, cfg *state.CentralCfg) {
 	t.Helper()
 	done := make(chan struct{})
