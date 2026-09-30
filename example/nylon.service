@@ -1,10 +1,15 @@
+# Sample unit; install.sh --service installs an equivalent one.
 [Unit]
-Description=Nylon Service
+Description=nylon mesh network
+Documentation=https://nylon.jq.ax
 After=network-online.target
+Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/nylon run
-WorkingDirectory=/home/encodeous
+ExecStart=/usr/local/bin/nylon run -c /etc/nylon/central.yaml -n /etc/nylon/node.yaml
+WorkingDirectory=/etc/nylon
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

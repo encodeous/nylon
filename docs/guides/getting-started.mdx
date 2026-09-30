@@ -17,7 +17,13 @@ graph LR
 ## Prerequisites
 
 - Two machines with UDP port `57175` open (can configure with a different port).
-- The `nylon` binary downloaded on both machines from the [releases page](https://github.com/encodeous/nylon/releases).
+- The `nylon` binary installed on both machines. On Linux:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/encodeous/nylon/main/install.sh | sh
+  ```
+
+  On other platforms, download it from the [releases page](https://github.com/encodeous/nylon/releases).
 
 :::note
 The Linux and macOS versions are well tested, but the Windows TUN interface has known stability issues. For Windows, we recommend using [WireGuard for Windows](https://www.wireguard.com/install/) and connecting to a Linux/macOS machine as a [passive client](/guides/wg-clients).
@@ -95,6 +101,17 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
    ```
 
    After a few seconds, the nodes will discover each other and establish a secure tunnel. You should be able to ping `10.0.0.2` from `node-1`.
+
+   :::tip[Running as a service]
+   On Linux with systemd, the installer also set nylon up as a service. To run it that way instead, stop the nylon you started above (Ctrl+C), then run:
+
+   ```bash
+   sudo mv node.yaml central.yaml /etc/nylon/
+   sudo systemctl start nylon
+   ```
+
+   The service reads its configs from `/etc/nylon` (readable only by root) and starts on boot. Follow its logs with `journalctl -u nylon -f`. Re-running the installer upgrades nylon and restarts the service if it's running.
+   :::
 
 </Steps>
 
