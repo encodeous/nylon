@@ -75,7 +75,7 @@ func TestComputeSysRouteTableDoesNotMutateCentralExcludes(t *testing.T) {
 	assert.Equal(t, []netip.Prefix{pfx("10.0.0.0/25")}, n.CentralCfg.ExcludeIPs)
 }
 
-func TestComputeSysRouteTableCoalescesAdjacentResults(t *testing.T) {
+func TestComputeSysRouteTableKeepsAdjacentPrefixesSeparate(t *testing.T) {
 	n := sysRouteTestNylon(
 		"a",
 		nil,
@@ -84,10 +84,43 @@ func TestComputeSysRouteTableCoalescesAdjacentResults(t *testing.T) {
 		map[netip.Prefix]state.SelRoute{
 			pfx("10.0.0.0/25"):   {Nh: "b"},
 			pfx("10.0.0.128/25"): {Nh: "b"},
+			pfx("10.0.1.2/32"):   {Nh: "b"},
+			pfx("10.0.1.3/32"):   {Nh: "c"},
 		},
 	)
 
-	assert.Equal(t, []netip.Prefix{pfx("10.0.0.0/24")}, sortedPrefixes(n.ComputeSysRouteTable()))
+	assert.Equal(t, []netip.Prefix{
+		pfx("10.0.0.0/25"),
+		pfx("10.0.0.128/25"),
+		pfx("10.0.1.2/32"),
+		pfx("10.0.1.3/32"),
+	}, n.ComputeSysRouteTable())
+}
+
+func TestComputeSysRouteTableKeepsOverlappingPrefixes(t *testing.T) {
+	n := sysRouteTestNylon(
+		"a",
+		nil,
+		nil,
+		nil,
+		map[netip.Prefix]state.SelRoute{
+			pfx("10.0.0.0/24"): {Nh: "b"},
+			pfx("10.0.0.0/25"): {Nh: "c"},
+			pfx("10.0.0.5/32"): {Nh: "a"},
+		},
+	)
+
+	// the remainders of the /24 and /25 share everything below 10.0.0.128, which is listed once
+	assert.ElementsMatch(t, []netip.Prefix{
+		pfx("10.0.0.0/30"),
+		pfx("10.0.0.4/32"),
+		pfx("10.0.0.6/31"),
+		pfx("10.0.0.8/29"),
+		pfx("10.0.0.16/28"),
+		pfx("10.0.0.32/27"),
+		pfx("10.0.0.64/26"),
+		pfx("10.0.0.128/25"),
+	}, n.ComputeSysRouteTable())
 }
 
 func sysRouteTestNylon(local state.NodeId, centralExcludes, localUnexcludes, localExcludes []netip.Prefix, routes map[netip.Prefix]state.SelRoute) *Nylon {

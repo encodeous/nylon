@@ -2,6 +2,7 @@ package core
 
 import (
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/gaissmai/bart"
@@ -209,7 +210,12 @@ func (n *Nylon) InitRouter() error {
 	return nil
 }
 
-// ComputeSysRouteTable computes: computed = prefixes - (((n.CentralCfg.ExcludeIPs U selected self prefixes) - n.LocalCfg.UnexcludeIPs) U n.LocalCfg.ExcludeIPs)
+// ComputeSysRouteTable computes, for each prefix p: p - (((n.CentralCfg.ExcludeIPs U selected self prefixes) - n.LocalCfg.UnexcludeIPs) U n.LocalCfg.ExcludeIPs)
+//
+// Each prefix is computed on its own, so separately advertised prefixes are
+// never merged. Windows treats the last address of an on-link prefix as its
+// broadcast address, so merging 10.0.0.2/32 and 10.0.0.3/32 into 10.0.0.2/31
+// would make 10.0.0.3 unreachable.
 func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 	prefixes := make([]netip.Prefix, 0)
 	selectedSelf := make([]netip.Prefix, 0)
@@ -225,14 +231,21 @@ func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 	excludes.AddSet(state.MakeSet(selectedSelf))
 	excludes.RemoveSet(state.MakeSet(n.LocalCfg.UnexcludeIPs))
 	excludes.AddSet(state.MakeSet(n.LocalCfg.ExcludeIPs))
+	excluded, _ := excludes.IPSet()
 
-	final := netipx.IPSetBuilder{}
-	final.AddSet(state.MakeSet(prefixes))
-	res, _ := excludes.IPSet()
-	final.RemoveSet(res)
-
-	res, _ = final.IPSet()
-	return res.Prefixes()
+	res := make([]netip.Prefix, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		remaining := netipx.IPSetBuilder{}
+		remaining.AddPrefix(prefix)
+		remaining.RemoveSet(excluded)
+		set, _ := remaining.IPSet()
+		res = append(res, set.Prefixes()...)
+	}
+	// overlapping prefixes can leave the same remainder
+	slices.SortFunc(res, func(a, b netip.Prefix) int {
+		return a.Compare(b)
+	})
+	return slices.Compact(res)
 }
 
 func (n *Nylon) updatePassiveClient(prefix state.PrefixHealthWrapper, node state.NodeId, passiveHold bool) {
