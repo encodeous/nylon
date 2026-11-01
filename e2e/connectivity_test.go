@@ -3,9 +3,13 @@
 package e2e
 
 import (
+	"net/netip"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/encodeous/nylon/e2e/machine"
+	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 )
 
@@ -58,27 +62,52 @@ func TestConnectivity(t *testing.T) {
 	node3Cfg := SimpleLocal("node3", node3Key)
 	node3Path := h.WriteConfig(configDir, "node3.yaml", node3Cfg)
 
-	// 4. Start Containers in Parallel
-	h.StartNodes(
-		NodeSpec{Name: "node1", IP: node1IP, CentralConfigPath: centralPath, NodeConfigPath: node1Path},
-		NodeSpec{Name: "node2", IP: node2IP, CentralConfigPath: centralPath, NodeConfigPath: node2Path},
-		NodeSpec{Name: "node3", IP: node3IP, CentralConfigPath: centralPath, NodeConfigPath: node3Path},
-	)
+	// The scenario is identical for Linux, Windows, and a Windows relay between
+	// Linux endpoints. Only the deployment placement changes.
+	specs := []NodeSpec{
+		{Name: "node1", IP: node1IP, CentralConfigPath: centralPath, NodeConfigPath: node1Path},
+		{Name: "node2", IP: node2IP, CentralConfigPath: centralPath, NodeConfigPath: node2Path},
+		{Name: "node3", IP: node3IP, CentralConfigPath: centralPath, NodeConfigPath: node3Path},
+	}
+	if os.Getenv("NYLON_E2E_MACHINE") == "mixed" {
+		specs[0].OS, specs[1].OS, specs[2].OS = machine.Linux, machine.Windows, machine.Linux
+	}
+	h.StartMachines(specs...)
 
 	// 5. Wait for convergence
 	t.Log("Waiting for convergence...")
-	h.WaitForLog("node3", "installing new route prefix=10.0.0.1/32")
-	h.WaitForLog("node1", "installing new route prefix=10.0.0.2/31")
-
-	// 6. Test Connectivity
-	// Ping from node1 to node2's Nylon IP
-	t.Logf("Pinging %s from node1...", node2NylonIP)
-	stdout, stderr, err := h.Exec("node3", []string{"ping", "-c", "3", node1NylonIP})
-	if err != nil {
-		h.PrintLogs("node1")
-		h.PrintLogs("node2")
-		h.PrintLogs("node3")
-		t.Fatalf("Ping failed: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
+	h.WaitForStatus(t, "node3", func(s *protocol.StatusResponse) bool {
+		return HasSelectedRoute(s, "10.0.0.1/32", "node2", "node1")
+	})
+	h.WaitForStatus(t, "node1", func(s *protocol.StatusResponse) bool {
+		return HasSelectedRoute(s, "10.0.0.3/32", "node2", "node3")
+	})
+	// Selected control-plane routes can precede system-route installation.
+	// Wait for the data plane before asserting consecutive successful replies.
+	deadline := time.Now().Add(WaitTimeout)
+	for {
+		result, err := h.Ping("node3", netip.MustParseAddr(node1NylonIP), machine.PingOptions{Count: 1})
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("data plane did not converge: %v\n%s\n%s", err, result.Stdout, result.Stderr)
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	t.Logf("Ping output:\n%s", stdout)
+
+	// Check both multihop directions and a Windows-originated ping in mixed mode.
+	for _, peer := range []struct{ from, to string }{
+		{"node3", node1NylonIP}, {"node2", node1NylonIP}, {"node1", node3NylonIP},
+	} {
+		t.Logf("Pinging %s from %s...", peer.to, peer.from)
+		result, err := h.Ping(peer.from, netip.MustParseAddr(peer.to), machine.PingOptions{Count: 3})
+		if err != nil {
+			for _, node := range []string{"node1", "node2", "node3"} {
+				h.PrintLogs(node)
+			}
+			t.Fatalf("%s ping to %s: %v\n%s\n%s", peer.from, peer.to, err, result.Stdout, result.Stderr)
+		}
+		t.Logf("Ping output:\n%s", result.Stdout)
+	}
 }
