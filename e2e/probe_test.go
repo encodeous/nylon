@@ -161,7 +161,7 @@ func waitForProbeResult(t *testing.T, h *Harness, nodeName, peerName, address st
 	last := ""
 	for time.Now().Before(deadline) {
 		resp, stdout, stderr, err := runProbeJSON(h, nodeName, peerName, probeTimeout)
-		if err == nil && resp.GetOk() {
+		if err == nil && resp.GetError() == nil {
 			for _, result := range resp.GetProbe().GetResults() {
 				if result.GetAddress() == address && check(result) {
 					return result

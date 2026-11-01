@@ -66,12 +66,12 @@ func TestPrometheusMetrics(t *testing.T) {
 		Neighbours: []*protocol.NeighbourInfo{
 			{
 				PeerId: "bob",
-				Wireguard: &protocol.WireGuardPeerStats{
+				Transport: &protocol.TransportPeerStats{
 					TxBytes:             7,
 					LatestHandshakeUnix: 1786226710556904600,
 				},
 			},
-			{PeerId: "eve", Wireguard: &protocol.WireGuardPeerStats{TxBytes: 5}},
+			{PeerId: "eve", Transport: &protocol.TransportPeerStats{TxBytes: 5}},
 		},
 	}
 	var buf bytes.Buffer

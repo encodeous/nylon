@@ -66,7 +66,8 @@ message EndpointInfo {
   int64 stabilized_rtt_ns = 8;
 }
 
-message WireGuardPeerStats {
+// What the transport reports about a peer. Byte counts include transport headers.
+message TransportPeerStats {
   int64 latest_handshake_unix = 1;
   uint64 tx_bytes = 2;
   uint64 rx_bytes = 3;
@@ -81,7 +82,7 @@ message NeighbourInfo {
   repeated EndpointInfo endpoints = 4;
   repeated NeighRoute routes = 5;
   repeated Advertisement advertised = 6;
-  WireGuardPeerStats wireguard = 7;
+  TransportPeerStats transport = 7;
 }
 
 message RouteTableEntry {
@@ -162,18 +163,47 @@ message TraceEvent {
   string line = 1;
 }
 
+// Wire format, on the nylon socket: /var/run/nylon/<interface>.sock, or on Windows
+// \\.\pipe\ProtectedPrefix\Administrators\nylon\<interface>.
+//
+// Both sides first send a hello: the 4 bytes "NYLN" and a big-endian uint16 protocol version. A server that doesn't
+// speak the client's version sends its own hello, then closes the connection.
+//
+// After that, every message is a frame: a big-endian uint32 length, then that many bytes of binary protobuf. Clients
+// send IpcRequest frames; the server answers each with IpcResponse frames carrying the request's id. Requests on one
+// connection run concurrently, so responses can arrive in any order. A trace request gets a response per event until
+// it is cancelled or the connection closes.
+
+message CancelRequest {
+  uint32 id = 1; // the request to stop
+}
+
 message IpcRequest {
+  uint32 id = 1; // chosen by the client, echoed in each response
   oneof request {
-    StatusRequest status = 1;
-    ProbeRequest probe = 2;
-    ReloadRequest reload = 3;
-    TraceRequest trace = 4;
+    StatusRequest status = 2;
+    ProbeRequest probe = 3;
+    ReloadRequest reload = 4;
+    TraceRequest trace = 5;
+    CancelRequest cancel = 6;
   }
 }
 
+message IpcError {
+  enum Code {
+    INTERNAL = 0;
+    INVALID_REQUEST = 1;
+    UNAVAILABLE = 2; // nylon is busy or shutting down; worth retrying
+    FAILED_PRECONDITION = 3; // e.g. trace without --dbg-trace-tc
+    NOT_FOUND = 4;
+  }
+  Code code = 1;
+  string message = 2;
+}
+
 message IpcResponse {
-  bool ok = 1;
-  string error = 2;
+  uint32 id = 1;
+  IpcError error = 2; // set when the request failed
   oneof response {
     StatusResponse status = 3;
     ProbeResponse probe = 4;

@@ -9,7 +9,8 @@ import (
 	"github.com/encodeous/nylon/state"
 )
 
-func TestIPCRawSocketJSONHasNoErrnoTrailer(t *testing.T) {
+// Speaks the wire format byte by byte, so a change to it shows up here even if client and server change together.
+func TestIPCRawSocketBinaryProtocol(t *testing.T) {
 	h := NewHarness(t)
 	configDir := h.SetupTestDir()
 
@@ -29,31 +30,48 @@ func TestIPCRawSocketJSONHasNoErrnoTrailer(t *testing.T) {
 		NodeConfigPath:    nodePath,
 	})
 
+	// hello, then a frame holding IpcRequest{id: 1, status: {}}
 	stdout, _, err := h.Exec("node1", []string{
 		"python3",
 		"-c",
-		`import socket
+		`import socket, struct
 s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect("/var/run/wireguard/nylon0.sock")
-s.sendall(b'get=nylon\n{"status":{}}\n')
-line=s.recv(65535).decode()
-print(line, end="")
-s.settimeout(0.2)
-try:
-    extra=s.recv(65535).decode()
-    print(extra, end="")
-except TimeoutError:
-    pass
+s.connect("/var/run/nylon/nylon0.sock")
+s.sendall(b"NYLN\x00\x01" + struct.pack(">I", 4) + b"\x08\x01\x12\x00")
+def read(n):
+    data=b""
+    while len(data) < n:
+        chunk=s.recv(n - len(data))
+        if not chunk:
+            raise EOFError
+        data+=chunk
+    return data
+print(read(6).hex())
+size=struct.unpack(">I", read(4))[0]
+print(read(size)[:3].hex())
 s.close()
 `,
 	})
 	if err != nil {
 		t.Fatalf("raw IPC request failed: %v\nstdout:\n%s", err, stdout)
 	}
-	if strings.Contains(stdout, "errno=") {
-		t.Fatalf("raw IPC response included UAPI errno trailer:\n%s", stdout)
+	lines := strings.Fields(stdout)
+	if len(lines) != 2 {
+		t.Fatalf("unexpected output:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"ok":true`) {
-		t.Fatalf("raw IPC response did not include a successful protojson response:\n%s", stdout)
+	if lines[0] != "4e594c4e0001" {
+		t.Fatalf("hello was %s, want NYLN version 1", lines[0])
+	}
+	// id 1 (08 01), then field 3, the status (1a), and no field 2, an error
+	if lines[1] != "08011a" {
+		t.Fatalf("response started %s, want a status for request 1", lines[1])
+	}
+
+	// nylon doesn't serve WireGuard's UAPI, so the wg tool can't see or change its transport.
+	if stdout, _, err := h.Exec("node1", []string{"test", "-e", "/var/run/wireguard/nylon0.sock"}); err == nil {
+		t.Fatalf("WireGuard UAPI socket exists:\n%s", stdout)
+	}
+	if stdout, _, err := h.Exec("node1", []string{"wg", "show", "nylon0"}); err == nil {
+		t.Fatalf("wg can talk to nylon:\n%s", stdout)
 	}
 }

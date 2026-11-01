@@ -68,8 +68,8 @@ type Nylon struct {
 	// peerReceived is when each peer last received a packet. It ranks links without health.
 	peerReceived map[polyamide.Peer]time.Time
 	tunWorkers   sync.WaitGroup
-	// wireGuard serves legacy UAPI. It is nil for custom runtimes.
-	wireGuard       *legacyWireGuard
+	// ipc serves nylon's socket. It is nil for custom runtimes.
+	ipc             *ipcServer
 	resourceCleanup sync.Once
 	// systemConfigured is set once startup begins configuring the host with
 	// pre-up commands. Only then does cleanup undo host configuration, so a

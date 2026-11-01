@@ -6,24 +6,10 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 
 	"github.com/encodeous/nylon/polyamide"
-	"github.com/encodeous/polyamide-wireguard-go/ipc"
 	"github.com/kmahyyg/go-network-compo/wintypes"
 )
-
-func InitUAPI(logger *slog.Logger, itfName string) (net.Listener, error) {
-	uapi, err := ipc.UAPIListen(itfName)
-	if err != nil && strings.Contains(err.Error(), "This security ID may not be assigned as the owner of this object") {
-		logger.Warn("UAPI not started. Nylon needs to be run with SYSTEM privileges. See: https://github.com/WireGuard/wgctrl-go/issues/141")
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return uapi, nil
-}
 
 func InitInterface(logger *slog.Logger, ifName string) error {
 	return nil

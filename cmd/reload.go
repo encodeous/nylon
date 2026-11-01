@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/spf13/cobra"
 )
@@ -17,15 +16,11 @@ var reloadCmd = &cobra.Command{
 		itf, _ := cmd.Flags().GetString("interface")
 		jsonOut, _ := cmd.Flags().GetBool("json")
 
-		resp, err := core.SendIPCRequest(itf, &protocol.IpcRequest{
+		resp, err := ipcRequest(itf, &protocol.IpcRequest{
 			Request: &protocol.IpcRequest_Reload{Reload: &protocol.ReloadRequest{}},
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
-		}
-		if !resp.Ok {
-			fmt.Fprintln(os.Stderr, "Error:", resp.Error)
 			os.Exit(1)
 		}
 		if jsonOut {
