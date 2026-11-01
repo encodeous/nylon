@@ -5,16 +5,16 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/netip"
 	"os"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
@@ -47,6 +47,7 @@ type Harness struct {
 	RootDir    string
 	Subnet     string
 	Gateway    string
+	testDir    string
 }
 
 // NewHarness creates a test harness with a unique subnet
@@ -70,31 +71,11 @@ func NewHarness(t *testing.T) *Harness {
 		rootDir = parent
 	}
 
-	networkMu.Lock()
-	defer networkMu.Unlock()
-
-	subnet, gateway, err := AllocateDockerSubnet(ctx)
+	newNetwork, subnet, gateway, err := createNetwork(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("Allocated subnet: %s, gateway: %s", subnet, gateway)
-
-	// Create network with a Docker-checked non-overlapping explicit subnet.
-	newNetwork, err := tcnetwork.New(ctx,
-		tcnetwork.WithAttachable(),
-		tcnetwork.WithDriver("bridge"),
-		tcnetwork.WithIPAM(&network.IPAM{
-			Driver: "default",
-			Config: []network.IPAMConfig{
-				{
-					Subnet:  netip.MustParsePrefix(subnet),
-					Gateway: netip.MustParseAddr(gateway),
-				},
-			},
-		}))
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	h := &Harness{
 		t:          t,
@@ -113,6 +94,45 @@ func NewHarness(t *testing.T) *Harness {
 	return h
 }
 
+// createNetwork creates a bridge network on a free subnet. networkMu only
+// serializes allocation within this process, so another process (another test
+// package or CI job on the same daemon) can still claim the subnet between
+// listing networks and creating ours. Docker rejects that with an overlap
+// error, so we allocate again and retry.
+func createNetwork(ctx context.Context) (*testcontainers.DockerNetwork, string, string, error) {
+	networkMu.Lock()
+	defer networkMu.Unlock()
+
+	var lastErr error
+	for range 5 {
+		subnet, gateway, err := AllocateDockerSubnet(ctx)
+		if err != nil {
+			return nil, "", "", err
+		}
+		// Create network with a Docker-checked non-overlapping explicit subnet.
+		nw, err := tcnetwork.New(ctx,
+			tcnetwork.WithAttachable(),
+			tcnetwork.WithDriver("bridge"),
+			tcnetwork.WithIPAM(&network.IPAM{
+				Driver: "default",
+				Config: []network.IPAMConfig{
+					{
+						Subnet:  netip.MustParsePrefix(subnet),
+						Gateway: netip.MustParseAddr(gateway),
+					},
+				},
+			}))
+		if err == nil {
+			return nw, subnet, gateway, nil
+		}
+		if !strings.Contains(err.Error(), "overlaps") {
+			return nil, "", "", err
+		}
+		lastErr = err
+	}
+	return nil, "", "", fmt.Errorf("could not allocate a free subnet: %w", lastErr)
+}
+
 type NodeSpec struct {
 	Name              string
 	IP                string
@@ -122,17 +142,37 @@ type NodeSpec struct {
 }
 
 func (h *Harness) StartNodes(specs ...NodeSpec) {
+	h.t.Helper()
+	// t.Fatal must only be called from the test goroutine, so the workers
+	// collect errors and we fail here once all of them are done.
+	errs := make([]error, len(specs))
 	var wg sync.WaitGroup
-	wg.Add(len(specs))
-	for _, spec := range specs {
-		go func(s NodeSpec) {
-			defer wg.Done()
-			h.StartNode(s.Name, s.IP, s.CentralConfigPath, s.NodeConfigPath, s.ExtraArgs...)
-		}(spec)
+	for i, spec := range specs {
+		wg.Go(func() {
+			_, errs[i] = h.startNode(spec.Name, spec.IP, spec.CentralConfigPath, spec.NodeConfigPath, spec.ExtraArgs...)
+		})
 	}
 	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		h.t.Fatal(err)
+	}
 }
 func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfigPath string, extraArgs ...string) testcontainers.Container {
+	h.t.Helper()
+	cont, err := h.startNode(name, ip, centralConfigPath, nodeConfigPath, extraArgs...)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return cont
+}
+
+// containerName builds a Docker-safe container name. Subtest names contain
+// '/', which Docker does not allow in names.
+func (h *Harness) containerName(name string) string {
+	return strings.ReplaceAll(h.t.Name(), "/", "_") + "-" + name
+}
+
+func (h *Harness) startNode(name string, ip string, centralConfigPath, nodeConfigPath string, extraArgs ...string) (testcontainers.Container, error) {
 	h.t.Logf("Starting node %s at %s", name, ip)
 	req := testcontainers.ContainerRequest{
 		Image:    ImageName,
@@ -175,19 +215,23 @@ func (h *Harness) StartNode(name string, ip string, centralConfigPath, nodeConfi
 				&UnifiedLogConsumer{Node: name, Manager: h.LogManager},
 			},
 		},
-		Name: h.t.Name() + "-" + name,
+		Name: h.containerName(name),
 	}
 	cont, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
-	if err != nil {
-		h.t.Fatalf("failed to start container %s: %v", name, err)
+	// GenericContainer can return a container alongside an error (e.g. when
+	// the wait strategy times out), so track it for cleanup either way.
+	if cont != nil {
+		h.mu.Lock()
+		h.Nodes[name] = cont
+		h.mu.Unlock()
 	}
-	h.mu.Lock()
-	h.Nodes[name] = cont
-	h.mu.Unlock()
-	return cont
+	if err != nil {
+		return cont, fmt.Errorf("failed to start container %s: %w", name, err)
+	}
+	return cont, nil
 }
 
 func (h *Harness) WaitForLog(nodeName string, pattern string) {
@@ -281,22 +325,42 @@ func (h *Harness) waitFor(nodeName string, source LogSource, pattern string, isR
 	}
 }
 
+// managerWriter feeds an exec stream into the LogManager one line at a time.
+// The stream arrives in arbitrary chunks, so a partial line is held until its
+// newline arrives; otherwise a pattern split across two chunks never matches.
 type managerWriter struct {
 	node    string
 	source  LogSource
 	manager *LogManager
+	partial []byte
 }
 
 func (w *managerWriter) Write(p []byte) (n int, err error) {
-	content := StripAnsi(string(p))
-	ts := time.Since(w.manager.start).Truncate(time.Millisecond)
-	fmt.Printf("[+%s][%s:%s] %s", ts, w.node, w.source, content)
-	w.manager.Accept(w.node, w.source, content)
+	w.partial = append(w.partial, p...)
+	for {
+		idx := bytes.IndexByte(w.partial, '\n')
+		if idx < 0 {
+			break
+		}
+		w.emit(string(w.partial[:idx+1]))
+		w.partial = w.partial[idx+1:]
+	}
 	return len(p), nil
 }
 
-func GetUnexportedField(field reflect.Value) interface{} {
-	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
+// Flush emits any trailing output that did not end in a newline.
+func (w *managerWriter) Flush() {
+	if len(w.partial) > 0 {
+		w.emit(string(w.partial) + "\n")
+		w.partial = nil
+	}
+}
+
+func (w *managerWriter) emit(line string) {
+	content := StripAnsi(line)
+	ts := time.Since(w.manager.start).Truncate(time.Millisecond)
+	fmt.Printf("[+%s][%s:%s] %s", ts, w.node, w.source, content)
+	w.manager.Accept(w.node, w.source, content)
 }
 
 func (h *Harness) StartTrace(nodeName string) {
@@ -319,25 +383,33 @@ func (h *Harness) StartTrace(nodeName string) {
 			TTY:          false,
 		}
 
-		docker := cont.(*testcontainers.DockerContainer)
-		// this is very sketchy, but testcontainers doesn't provide any API
-		v := reflect.ValueOf(docker)
-		y := GetUnexportedField(v.Elem().FieldByName("provider")).(*testcontainers.DockerProvider)
-		cli := y.Client()
+		// container.Exec only returns output once the command exits, so the
+		// streaming exec goes through our own client. NewDockerClientWithOpts
+		// resolves the same daemon that testcontainers uses.
+		cli, err := testcontainers.NewDockerClientWithOpts(h.ctx)
+		if err != nil {
+			// t.Fatal is not allowed outside the test goroutine.
+			h.t.Errorf("Failed to start trace for %s: %v", nodeName, err)
+			return
+		}
+		defer cli.Close()
 
 		execIDResp, err := cli.ExecCreate(h.ctx, cont.GetContainerID(), execOptions)
 		if err != nil {
-			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+			h.t.Errorf("Failed to start trace for %s: %v", nodeName, err)
+			return
 		}
 
 		resp, err := cli.ExecAttach(h.ctx, execIDResp.ID, client.ExecAttachOptions{})
 		if err != nil {
-			h.t.Fatalf("Failed to start trace for %s: %v", nodeName, err)
+			h.t.Errorf("Failed to start trace for %s: %v", nodeName, err)
+			return
 		}
 		defer resp.Close()
 
 		stdoutWriter := &managerWriter{node: nodeName, source: SourceTrace, manager: h.LogManager}
 		_, _ = stdcopy.StdCopy(stdoutWriter, stdoutWriter, resp.Reader)
+		stdoutWriter.Flush()
 	}()
 }
 func (h *Harness) Cleanup() {
@@ -500,7 +572,7 @@ func (h *Harness) StartDNS(name string, ip string, corefile string, zones map[st
 				}
 			}
 		},
-		Name: h.t.Name() + "-" + name,
+		Name: h.containerName(name),
 	}
 
 	container, err := testcontainers.GenericContainer(h.ctx, testcontainers.GenericContainerRequest{
@@ -518,14 +590,23 @@ func (h *Harness) StartDNS(name string, ip string, corefile string, zones map[st
 	return container
 }
 
-// SetupTestDir creates a directory for the current test run
+// SetupTestDir returns the directory for the current test run. The first call
+// clears out files left by a previous run; later calls return the same
+// directory without wiping it, so helpers such as StartDNS can share it with
+// the test.
 func (h *Harness) SetupTestDir() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.testDir != "" {
+		return h.testDir
+	}
 	dir := filepath.Join(h.RootDir, "e2e", "runs", h.t.Name())
 	// Clean up previous run
 	os.RemoveAll(dir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		h.t.Fatal(err)
 	}
+	h.testDir = dir
 	return dir
 }
 

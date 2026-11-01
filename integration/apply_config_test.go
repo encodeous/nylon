@@ -6,332 +6,203 @@ import (
 	"fmt"
 	"net/netip"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
 )
 
 func TestApplyCentralConfigRemovesNeighbourFromLiveNode(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHarness(t)
+		a1, b1, c1 := "192.168.10.1:1234", "192.168.10.2:1234", "192.168.10.3:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.AddNode("c", "10.0.0.3/32", c1)
+		h.Central.Graph = []string{"a, b, c"}
+		h.Connect(a1, b1)
+		h.Connect(a1, c1)
+		h.Connect(b1, c1)
+		h.Start()
 
-	vh := &VirtualHarness{}
-	a1 := "192.168.10.1:1234"
-	vh.NewNode("a", "10.0.0.1/32")
-	b1 := "192.168.10.2:1234"
-	vh.NewNode("b", "10.0.0.2/32")
-	c1 := "192.168.10.3:1234"
-	vh.NewNode("c", "10.0.0.3/32")
-	vh.Central.Graph = []string{
-		"a, b, c",
-	}
-	vh.Endpoints = map[string]state.NodeId{
-		a1: "a",
-		b1: "b",
-		c1: "c",
-	}
-	vh.AddLink(a1, b1)
-	vh.AddLink(b1, a1)
-	vh.AddLink(a1, c1)
-	vh.AddLink(c1, a1)
-	vh.AddLink(b1, c1)
-	vh.AddLink(c1, b1)
-
-	errs := vh.Start()
-	defer vh.Stop()
-
-	var apply applyResult
-	done := make(chan struct{})
-	next := vh.Central
-	next.Timestamp++
-	next.Graph = []string{
-		"a, c",
-		"b, c",
-	}
-
-	a := vh.Nylons[vh.IndexOf("a")].Load()
-	a.Dispatch(func() error {
-		beforeC := a.RouterState.GetNeighbour("c")
-		if beforeC == nil || len(beforeC.Eps) == 0 {
-			apply.Err = fmt.Errorf("expected neighbour c with at least one endpoint before apply")
-			close(done)
-			return nil
+		next := h.Central
+		next.Timestamp++
+		next.Graph = []string{
+			"a, c",
+			"b, c",
 		}
-		keptEndpoint := beforeC.Eps[0]
-		result, err := a.ApplyCentralConfig(&next)
-		afterC := a.RouterState.GetNeighbour("c")
+		bKey := h.Router("b").PubKey
+		cKey := h.Router("c").PubKey
 
-		apply = applyResult{
-			Result:            result,
-			Err:               err,
-			HasBNeighbour:     a.RouterState.GetNeighbour("b") != nil,
-			HasCNeighbour:     afterC != nil,
-			HasBAppliedPeer:   hasAppliedPeer(a, "b"),
-			HasCAppliedPeer:   hasAppliedPeer(a, "c"),
-			HasBWGPeer:        hasWGPeer(a, vh.Central.GetNode("b").PubKey),
-			HasCWGPeer:        hasWGPeer(a, vh.Central.GetNode("c").PubKey),
-			PreservedEndpoint: afterC != nil && len(afterC.Eps) > 0 && afterC.Eps[0] == keptEndpoint,
-		}
-		close(done)
-		return nil
+		apply := OnNode(h, "a", func(n *core.Nylon) applyResult {
+			beforeC := n.RouterState.GetNeighbour("c")
+			if beforeC == nil || len(beforeC.Eps) == 0 {
+				return applyResult{Err: fmt.Errorf("expected neighbour c with at least one endpoint before apply")}
+			}
+			keptEndpoint := beforeC.Eps[0]
+			result, err := n.ApplyCentralConfig(&next)
+			afterC := n.RouterState.GetNeighbour("c")
+			return applyResult{
+				Result:            result,
+				Err:               err,
+				HasBNeighbour:     n.RouterState.GetNeighbour("b") != nil,
+				HasCNeighbour:     afterC != nil,
+				HasBAppliedPeer:   hasAppliedPeer(n, "b"),
+				HasCAppliedPeer:   hasAppliedPeer(n, "c"),
+				HasBWGPeer:        hasWGPeer(n, bKey),
+				HasCWGPeer:        hasWGPeer(n, cKey),
+				PreservedEndpoint: afterC != nil && len(afterC.Eps) > 0 && afterC.Eps[0] == keptEndpoint,
+			}
+		})
+
+		assert.NoError(t, apply.Err)
+		assert.Equal(t, core.ApplyApplied, apply.Result)
+		assert.False(t, apply.HasBNeighbour)
+		assert.True(t, apply.HasCNeighbour)
+		assert.False(t, apply.HasBAppliedPeer)
+		assert.True(t, apply.HasCAppliedPeer)
+		assert.False(t, apply.HasBWGPeer)
+		assert.True(t, apply.HasCWGPeer)
+		assert.True(t, apply.PreservedEndpoint)
 	})
-
-	select {
-	case <-done:
-	case err := <-errs:
-		t.Fatal(err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for central config apply")
-	}
-
-	assert.NoError(t, apply.Err)
-	assert.Equal(t, core.ApplyApplied, apply.Result)
-	assert.False(t, apply.HasBNeighbour)
-	assert.True(t, apply.HasCNeighbour)
-	assert.False(t, apply.HasBAppliedPeer)
-	assert.True(t, apply.HasCAppliedPeer)
-	assert.False(t, apply.HasBWGPeer)
-	assert.True(t, apply.HasCWGPeer)
-	assert.True(t, apply.PreservedEndpoint)
 }
 
 func TestApplyCentralConfigLocalNodeRemovedRequiresRestart(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHarness(t)
+		a1, b1 := "192.168.20.1:1234", "192.168.20.2:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.Central.Graph = []string{"a, b"}
+		h.Connect(a1, b1)
+		h.Start()
 
-	vh := &VirtualHarness{}
-	a1 := "192.168.20.1:1234"
-	vh.NewNode("a", "10.0.0.1/32")
-	b1 := "192.168.20.2:1234"
-	vh.NewNode("b", "10.0.0.2/32")
-	vh.Central.Graph = []string{
-		"a, b",
-	}
-	vh.Endpoints = map[string]state.NodeId{
-		a1: "a",
-		b1: "b",
-	}
-	vh.AddLink(a1, b1)
-	vh.AddLink(b1, a1)
+		next := h.Central
+		next.Timestamp++
+		next.Routers = next.Routers[1:]
+		next.Graph = nil
 
-	errs := vh.Start()
-	defer vh.Stop()
+		type outcome struct {
+			result           core.ApplyResult
+			err              error
+			centralUnchanged bool
+			bStillNeighbour  bool
+		}
+		got := OnNode(h, "a", func(n *core.Nylon) outcome {
+			result, err := n.ApplyCentralConfig(&next)
+			return outcome{
+				result:           result,
+				err:              err,
+				centralUnchanged: n.CentralCfg.Timestamp == h.Central.Timestamp,
+				bStillNeighbour:  n.RouterState.GetNeighbour("b") != nil,
+			}
+		})
 
-	a := vh.Nylons[vh.IndexOf("a")].Load()
-	next := vh.Central
-	next.Timestamp++
-	next.Routers = next.Routers[1:]
-	next.Graph = nil
-
-	done := make(chan struct{})
-	var result core.ApplyResult
-	var err error
-	var centralUnchanged bool
-	var bStillNeighbour bool
-	a.Dispatch(func() error {
-		result, err = a.ApplyCentralConfig(&next)
-		centralUnchanged = a.CentralCfg.Timestamp == vh.Central.Timestamp
-		bStillNeighbour = a.RouterState.GetNeighbour("b") != nil
-		close(done)
-		return nil
+		assert.Equal(t, core.ApplyRestartRequired, got.result)
+		assert.Error(t, got.err)
+		assert.True(t, got.centralUnchanged)
+		assert.True(t, got.bStillNeighbour)
 	})
-
-	select {
-	case <-done:
-	case err := <-errs:
-		t.Fatal(err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for rejected central config apply")
-	}
-
-	assert.Equal(t, core.ApplyRestartRequired, result)
-	assert.Error(t, err)
-	assert.True(t, centralUnchanged)
-	assert.True(t, bStillNeighbour)
 }
 
 func TestApplyCentralConfigRotatesPeerKeyWithoutChangingNextHop(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHarness(t)
+		h.UntrackedRouting = true
+		a1, b1 := "192.168.30.1:1234", "192.168.30.2:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.Central.Graph = []string{"a, b"}
+		h.Connect(a1, b1)
 
-	vh := &VirtualHarness{UntrackedRouting: true}
-	a1 := "192.168.30.1:1234"
-	vh.NewNode("a", "10.0.0.1/32")
-	b1 := "192.168.30.2:1234"
-	vh.NewNode("b", "10.0.0.2/32")
-	vh.Central.Graph = []string{"a, b"}
-	vh.Endpoints = map[string]state.NodeId{
-		a1: "a",
-		b1: "b",
-	}
-	vh.AddLink(a1, b1)
-	vh.AddLink(b1, a1)
-
-	errs := vh.Start()
-	defer vh.Stop()
-
-	received := make(chan byte, 16)
-	vh.Net.SelfHandler = func(node state.NodeId, _, dst netip.Addr, data []byte) bool {
-		if node == "b" && dst == netip.MustParseAddr("10.0.0.2") && len(data) != 0 {
-			select {
-			case received <- data[0]:
-			default:
+		received := make(chan byte, 16)
+		bAddr := netip.MustParseAddr("10.0.0.2")
+		h.OnDeliver(func(node state.NodeId, _, dst netip.Addr, data []byte) bool {
+			if node == "b" && dst == bAddr && len(data) != 0 {
+				select {
+				case received <- data[0]:
+				default:
+				}
 			}
-		}
-		return true
-	}
+			return true
+		})
+		h.Start()
 
-	waitForPayload(t, vh, errs, received, 1)
+		waitForPayload(h, received, 1)
 
-	newPrivateKey := state.GenerateKey()
-	bIdx := vh.IndexOf("b")
-	b := vh.Nylons[bIdx].Load()
-	err, next := vh.Central.Clone()
-	require.NoError(t, err)
-	next.Timestamp++
-	next.Routers[bIdx].PubKey = newPrivateKey.Pubkey()
+		newPrivateKey := state.GenerateKey()
+		err, next := h.Central.Clone()
+		require.NoError(t, err)
+		next.Timestamp++
+		routerOf(next, "b").PubKey = newPrivateKey.Pubkey()
 
-	// A local identity is fixed at construction. Restart the remote node while
-	// keeping the sender alive so its forwarding table must rebind the same hop.
-	b.Stop()
-	select {
-	case <-vh.nodeDone[bIdx]:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out stopping remote node")
-	}
-	require.NoError(t, vh.Net.binds[bIdx].Close())
-	local := vh.Local[bIdx]
-	local.Key = newPrivateKey
-	// Packet delivery holds linksMu while accessing bind slots. Pause delivery
-	// while the restarted node installs its replacement virtual bind and TUN.
-	vh.linksMu.Lock()
-	replacement, err := core.NewNylon(*next, local, *vh.LogLevel, "", map[string]any{"vnet": vh.Net}, state.NylonOptions{DBG_log_wireguard: true}, vh.Tunables)
-	vh.linksMu.Unlock()
-	require.NoError(t, err)
-	vh.Nylons[bIdx].Store(replacement)
-	done := make(chan struct{})
-	vh.nodeDone[bIdx] = done
-	go func() {
-		defer close(done)
-		if err := replacement.Start(); err != nil {
-			errs <- err
-		}
-	}()
+		// A local identity is fixed at construction. Restart the remote node
+		// while keeping the sender alive so its forwarding table must rebind
+		// the same hop.
+		h.RestartNode("b", *next, func(local *state.LocalCfg) { local.Key = newPrivateKey })
+		h.ApplyConfig("a", next)
 
-	a := vh.Nylons[vh.IndexOf("a")].Load()
-	applyConfigAndWait(t, a, next)
-
-	waitForPayload(t, vh, errs, received, 2)
+		waitForPayload(h, received, 2)
+	})
 }
 
 func TestApplyCentralConfigRemovedPrefixStopsSeqnoRequests(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
-	vh := &VirtualHarness{}
-	a1 := "192.168.40.1:1234"
-	vh.NewNode("a", "10.0.0.1/32")
-	b1 := "192.168.40.2:1234"
-	vh.NewNode("b", "10.0.0.2/32")
-	vh.Central.Graph = []string{"a, b"}
-	vh.Endpoints = map[string]state.NodeId{
-		a1: "a",
-		b1: "b",
-	}
-	vh.AddLink(a1, b1)
-	vh.AddLink(b1, a1)
-	removed := netip.MustParsePrefix("10.1.0.2/32")
-	bi := vh.IndexOf("b")
-	vh.Central.Routers[bi].Prefixes = append(vh.Central.Routers[bi].Prefixes, state.PrefixHealthWrapper{
-		PrefixHealth: &state.StaticPrefixHealth{Prefix: removed},
-	})
-
-	errs := vh.Start()
-	defer vh.Stop()
-
-	a := vh.Nylons[vh.IndexOf("a")].Load()
-	b := vh.Nylons[bi].Load()
-	neighHasRoute := func() bool {
-		res := make(chan bool, 1)
-		a.Dispatch(func() error {
-			route, ok := a.RouterState.GetNeighbour("b").Routes[removed]
-			res <- ok && route.Metric != state.INF
-			return nil
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHarness(t)
+		a1, b1 := "192.168.40.1:1234", "192.168.40.2:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.Central.Graph = []string{"a, b"}
+		h.Connect(a1, b1)
+		removed := netip.MustParsePrefix("10.1.0.2/32")
+		h.Router("b").Prefixes = append(h.Router("b").Prefixes, state.PrefixHealthWrapper{
+			PrefixHealth: &state.StaticPrefixHealth{Prefix: removed},
 		})
-		select {
-		case ok := <-res:
+		h.Start()
+
+		h.Eventually(10*time.Second, "a to learn the prefix", func() bool {
+			return OnNode(h, "a", func(n *core.Nylon) bool {
+				route, ok := n.RouterState.GetNeighbour("b").Routes[removed]
+				return ok && route.Metric != state.INF
+			})
+		})
+
+		err, next := h.Central.Clone()
+		require.NoError(t, err)
+		next.Timestamp++
+		bNext := routerOf(next, "b")
+		bNext.Prefixes = bNext.Prefixes[:1]
+		h.ApplyConfig("b", next)
+		h.ApplyConfig("a", next)
+
+		// a stale route would keep a requesting seqnos until it expires
+		stale := OnNode(h, "a", func(n *core.Nylon) bool {
+			_, ok := n.RouterState.GetNeighbour("b").Routes[removed]
 			return ok
-		case err := <-errs:
-			t.Fatal(err)
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for dispatch")
-		}
-		return false
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for !neighHasRoute() {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for a to learn the prefix")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	err, next := vh.Central.Clone()
-	assert.NoError(t, err)
-	next.Timestamp++
-	next.Routers[bi].Prefixes = next.Routers[bi].Prefixes[:1]
-	applyConfigAndWait(t, b, next)
-	applyConfigAndWait(t, a, next)
-
-	// stale route keeps a requesting seqnos until it expires
-	done := make(chan struct{})
-	var stale bool
-	a.Dispatch(func() error {
-		_, stale = a.RouterState.GetNeighbour("b").Routes[removed]
-		close(done)
-		return nil
+		})
+		assert.False(t, stale)
 	})
-	<-done
-	assert.False(t, stale)
 }
 
-func applyConfigAndWait(t *testing.T, n *core.Nylon, cfg *state.CentralCfg) {
-	t.Helper()
-	done := make(chan struct{})
-	var result core.ApplyResult
-	var err error
-	n.Dispatch(func() error {
-		result, err = n.ApplyCentralConfig(cfg)
-		close(done)
-		return nil
-	})
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for central config apply")
-	}
-	assert.NoError(t, err)
-	assert.Equal(t, core.ApplyApplied, result)
-}
-
-func waitForPayload(t *testing.T, vh *VirtualHarness, errs <-chan error, received <-chan byte, payload byte) {
-	t.Helper()
-	timeout := time.NewTimer(10 * time.Second)
-	defer timeout.Stop()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+// waitForPayload keeps sending payload from a to b until b receives it.
+func waitForPayload(h *Harness, received <-chan byte, payload byte) {
+	h.t.Helper()
+	stop := h.SendEvery(100*time.Millisecond, "a", "10.0.0.1", "10.0.0.2", []byte{payload}, 64)
+	defer stop()
+	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case got := <-received:
 			if got == payload {
 				return
 			}
-		case <-ticker.C:
-			vh.Net.Send("a", "10.0.0.1", "10.0.0.2", []byte{payload}, 64)
-		case err := <-errs:
-			t.Fatal(err)
-		case <-timeout.C:
-			t.Fatalf("timed out waiting for payload %d", payload)
+		case <-deadline:
+			h.t.Fatalf("timed out waiting for payload %d", payload)
+		case <-h.ctx.Done():
+			h.t.Fatalf("harness stopped while waiting for payload %d", payload)
 		}
 	}
 }
@@ -362,4 +233,14 @@ func hasWGPeer(n *core.Nylon, key state.NyPublicKey) bool {
 		}
 	}
 	return false
+}
+
+// routerOf returns id's entry in cfg.
+func routerOf(cfg *state.CentralCfg, id state.NodeId) *state.RouterCfg {
+	for i := range cfg.Routers {
+		if cfg.Routers[i].Id == id {
+			return &cfg.Routers[i]
+		}
+	}
+	panic("unknown router " + string(id))
 }

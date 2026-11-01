@@ -3,100 +3,60 @@
 package integration
 
 import (
-	"fmt"
 	"net/netip"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/encodeous/nylon/state"
-	"go.uber.org/goleak"
 )
 
+// TestOptimalConvergence starts with a <-10-> b and a <-50-> c, so a reaches c
+// directly. Once that works, it adds b <-10-> c and expects a to switch to the
+// cheaper path through b.
 func TestOptimalConvergence(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	tunables := state.DefaultRouterTunables()
-	tunables.ProbeDelay /= 3 // 3x faster
-	tunables.RouteUpdateDelay /= 3
-	tunables.MinimumConfidenceWindow /= 5
+	synctest.Test(t, func(t *testing.T) {
+		tunables := state.DefaultRouterTunables()
+		tunables.ProbeDelay /= 3 // 3x faster
+		tunables.RouteUpdateDelay /= 3
+		tunables.MinimumConfidenceWindow /= 5
 
-	vh := &VirtualHarness{}
-	vh.Tunables = &tunables
-	a1 := "192.168.1.1:1234"
-	vh.NewNode("a", "10.0.0.1/32")
-	b1 := "192.168.1.2:1234"
-	vh.NewNode("b", "10.0.0.2/32")
-	c1 := "192.168.1.3:1234"
-	vh.NewNode("c", "10.0.0.3/32")
-	vh.Central.Graph = []string{
-		"a, b, c",
-	}
-	vh.Endpoints = map[string]state.NodeId{
-		a1: "a",
-		b1: "b",
-		c1: "c",
-	}
-	// a <-10-> b
-	vh.AddLink(a1, b1).WithLatency(10*time.Millisecond, 0)
-	vh.AddLink(b1, a1).WithLatency(10*time.Millisecond, 0)
+		h := NewHarness(t)
+		h.Tunables = &tunables
+		a1, b1, c1 := "192.168.1.1:1234", "192.168.1.2:1234", "192.168.1.3:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.AddNode("c", "10.0.0.3/32", c1)
+		h.Central.Graph = []string{"a, b, c"}
+		h.Connect(a1, b1).WithLatency(10*time.Millisecond, 0)
+		h.Connect(a1, c1).WithLatency(50*time.Millisecond, 0)
 
-	// c <-50-> a
-	vh.AddLink(a1, c1).WithLatency(50*time.Millisecond, 0)
-	vh.AddLink(c1, a1).WithLatency(50*time.Millisecond, 0)
-
-	errs := vh.Start()
-
-	vn := vh.Net
-
-	conv1 := NewSignal() // first stage convergence: c <-50-> a <-10-> b
-	conv2 := NewSignal() // second stage convergence: a <-10-> b <-10-> c
-	success := NewSignal()
-
-	go func() {
-		conv1.Wait()
-
-		fmt.Printf("---- Stage 1 convergence reached ----\n")
-
-		// b <-10-> c
-		vh.AddLink(b1, c1).WithLatency(10*time.Millisecond, 0)
-		vh.AddLink(c1, b1).WithLatency(10*time.Millisecond, 0)
-
-	}()
-
-	vn.TransitHandler = func(node state.NodeId, src, dst netip.Addr, data []byte) bool {
-		if node == "b" && src.String() == "10.0.0.1" && dst.String() == "10.0.0.3" && data[0] == 222 && conv1.Triggered() {
-			// this means the network has reached the optimal path
-			conv2.Trigger()
-		}
-		return false // don't intercept the packet
-	}
-	vn.SelfHandler = func(node state.NodeId, src, dst netip.Addr, data []byte) bool {
-		if node == "c" && src.String() == "10.0.0.1" && dst.String() == "10.0.0.3" && data[0] == 222 {
-			conv1.Trigger()
-			if conv2.Triggered() {
-				success.Trigger()
+		src, dst := netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.3")
+		isProbe := func(s, d netip.Addr, data []byte) bool { return s == src && d == dst && data[0] == 222 }
+		direct := NewSignal()  // a reached c over the direct link
+		viaB := NewSignal()    // after that, a packet went through b
+		optimal := NewSignal() // and reached c
+		h.OnTransit(func(node state.NodeId, s, d netip.Addr, data []byte) bool {
+			if node == "b" && isProbe(s, d, data) && direct.Triggered() {
+				viaB.Trigger()
 			}
-		}
-		return true
-	}
-
-	go func() {
-		for {
-			select {
-			case <-vh.Context.Done():
-				return
-			case <-time.After(100 * time.Millisecond):
-				vn.Send("a", "10.0.0.1", "10.0.0.3", []byte{222}, 64)
+			return false // route it on as usual
+		})
+		h.OnDeliver(func(node state.NodeId, s, d netip.Addr, data []byte) bool {
+			if node == "c" && isProbe(s, d, data) {
+				direct.Trigger()
+				if viaB.Triggered() {
+					optimal.Trigger()
+				}
 			}
-		}
-	}()
+			return true
+		})
 
-	select {
-	case <-success:
-		t.Log("Reached optimal!")
-	case <-time.After(200 * time.Second):
-		t.Error("Timed out waiting for ping")
-	case err := <-errs:
-		t.Error(err)
-	}
-	vh.Stop()
+		h.Start()
+		h.SendEvery(100*time.Millisecond, "a", "10.0.0.1", "10.0.0.3", []byte{222}, 64)
+
+		await(h, direct, 200*time.Second, "a to reach c directly")
+		h.Connect(b1, c1).WithLatency(10*time.Millisecond, 0)
+		await(h, optimal, 200*time.Second, "a to route to c through b")
+	})
 }
