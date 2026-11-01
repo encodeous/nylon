@@ -43,8 +43,8 @@ github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd h1:B32Ob80QTv5MomcVt709TsiWyD0QrpUYtnwW1jQFNlE=
 github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd/go.mod h1:DiXCPJtfZYioejF9zv9wfs3TXqWWglKGQ20DsBNVWVw=
-github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101192016-21817349e7b4 h1:kr+P9WO7u+hPmOkx7XtuSA7Al8Ngdfr9KJc5gNQSDVo=
-github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101192016-21817349e7b4/go.mod h1:SulefP9J0mccyOLDA+5Aa5nO569HF9YgkSRmx48wkQA=
+github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101215344-e479629b9d9a h1:WCA0EK82cM8YKA8yVkxQ7KrNHVPweFI+QSeLeOLSIn4=
+github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101215344-e479629b9d9a/go.mod h1:SulefP9J0mccyOLDA+5Aa5nO569HF9YgkSRmx48wkQA=
 github.com/encodeous/tint v1.2.0 h1:1Y+32Iu+C8MXBoNjsM4YDf6iAkcks7csAI9f7b4fr8k=
 github.com/encodeous/tint v1.2.0/go.mod h1:pyfyH+fKmtmIuWVWeMcSJjJKVJSb9sVlIfVsW3jkP+Q=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=

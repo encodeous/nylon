@@ -6,7 +6,7 @@ require (
 	github.com/digineo/go-ping v1.2.0
 	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
 	github.com/encodeous/metric v0.0.0-20251111175231-f339c2f7c4bd
-	github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101192016-21817349e7b4
+	github.com/encodeous/polyamide-wireguard-go v0.0.0-20261101215344-e479629b9d9a
 	github.com/encodeous/tint v1.2.0
 	github.com/gaissmai/bart v0.25.0
 	github.com/goccy/go-yaml v1.19.1
