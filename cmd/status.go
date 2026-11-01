@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/moby/term"
@@ -23,15 +22,11 @@ var statusCmd = &cobra.Command{
 		showFull, _ := cmd.Flags().GetBool("full")
 		noColor, _ := cmd.Flags().GetBool("no-color")
 
-		resp, err := core.SendIPCRequest(itf, &protocol.IpcRequest{
+		resp, err := ipcRequest(itf, &protocol.IpcRequest{
 			Request: &protocol.IpcRequest_Status{Status: &protocol.StatusRequest{}},
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
-		}
-		if !resp.Ok {
-			fmt.Fprintln(os.Stderr, "Error:", resp.Error)
 			os.Exit(1)
 		}
 		if jsonOut {
@@ -103,12 +98,12 @@ func renderStatus(s *protocol.StatusResponse, opts statusRenderOptions) {
 		if best != nil {
 			bestMetric = best.Metric
 		}
-		wg := neigh.GetWireguard()
+		peerStats := neigh.GetTransport()
 		statHeaders := []string{"best metric", "latest handshake", "tx", "rx"}
-		statRow := []string{metricText(p, bestMetric), formatHandshake(wg.LatestHandshakeUnix), formatBytes(wg.TxBytes), formatBytes(wg.RxBytes)}
-		if wg.Endpoint != nil {
-			statHeaders = append(statHeaders, "wireguard endpoint")
-			statRow = append(statRow, *wg.Endpoint)
+		statRow := []string{metricText(p, bestMetric), formatHandshake(peerStats.LatestHandshakeUnix), formatBytes(peerStats.TxBytes), formatBytes(peerStats.RxBytes)}
+		if peerStats.Endpoint != nil {
+			statHeaders = append(statHeaders, "transport endpoint")
+			statRow = append(statRow, *peerStats.Endpoint)
 		}
 		printTable(p, 2, statHeaders, [][]string{statRow})
 		if len(neigh.Endpoints) > 0 {

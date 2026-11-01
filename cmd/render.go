@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/encodeous/nylon/ipc"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -161,6 +162,16 @@ func formatDurationNs(ns int64) string {
 		return "-"
 	}
 	return time.Duration(ns).String()
+}
+
+// ipcRequest sends one request to the nylon serving interface itf.
+func ipcRequest(itf string, req *protocol.IpcRequest) (*protocol.IpcResponse, error) {
+	client, err := ipc.Dial(itf)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	return client.Do(req)
 }
 
 func printJSON(resp *protocol.IpcResponse) {

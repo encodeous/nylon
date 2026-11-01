@@ -176,12 +176,12 @@ func writePrometheusMetrics(w io.Writer, status *protocol.StatusResponse) {
 
 	for _, neigh := range status.Neighbours {
 		labels := map[string]string{"peer": neigh.PeerId}
-		wg := neigh.GetWireguard()
-		metrics.metric("nylon_wireguard_peer_transmit_bytes_total", "WireGuard bytes transmitted to a peer.", "counter", labels, float64(wg.TxBytes))
-		metrics.metric("nylon_wireguard_peer_receive_bytes_total", "WireGuard bytes received from a peer.", "counter", labels, float64(wg.RxBytes))
+		stats := neigh.GetTransport()
+		metrics.metric("nylon_wireguard_peer_transmit_bytes_total", "WireGuard bytes transmitted to a peer.", "counter", labels, float64(stats.TxBytes))
+		metrics.metric("nylon_wireguard_peer_receive_bytes_total", "WireGuard bytes received from a peer.", "counter", labels, float64(stats.RxBytes))
 		handshake := float64(0)
-		if wg.LatestHandshakeUnix > 0 {
-			handshake = float64(wg.LatestHandshakeUnix / int64(time.Second))
+		if stats.LatestHandshakeUnix > 0 {
+			handshake = float64(stats.LatestHandshakeUnix / int64(time.Second))
 		}
 		metrics.metric("nylon_wireguard_peer_latest_handshake_seconds", "Unix time of the latest WireGuard handshake.", "gauge", labels, handshake)
 		for _, endpoint := range neigh.Endpoints {

@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/encodeous/nylon/core"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +22,7 @@ var probeCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "Error: timeout must be positive")
 			os.Exit(1)
 		}
-		resp, err := core.SendIPCRequest(itf, &protocol.IpcRequest{
+		resp, err := ipcRequest(itf, &protocol.IpcRequest{
 			Request: &protocol.IpcRequest_Probe{Probe: &protocol.ProbeRequest{
 				PeerId:    args[0],
 				TimeoutMs: durationMillis(timeout),
@@ -31,10 +30,6 @@ var probeCmd = &cobra.Command{
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
-		}
-		if !resp.Ok {
-			fmt.Fprintln(os.Stderr, "Error:", resp.Error)
 			os.Exit(1)
 		}
 		if jsonOut {

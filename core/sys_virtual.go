@@ -4,8 +4,6 @@ package core
 
 import (
 	"fmt"
-
-	"github.com/encodeous/polyamide-wireguard-go/adapter"
 )
 
 // The integration environment supplies a complete runtime. Nylon does not know
@@ -19,15 +17,5 @@ func newDefaultRuntime(n *Nylon) (Runtime, error) {
 	if !ok {
 		return Runtime{}, fmt.Errorf("expected aux config vnet runtime factory")
 	}
-	rt, err := factory.NewRuntime(n)
-	if err != nil {
-		return Runtime{}, err
-	}
-	// Tests use the WireGuard transport's UAPI without a socket.
-	if len(rt.Transports) != 0 {
-		if wg, ok := rt.Transports[0].(*adapter.Transport); ok {
-			n.wireGuard = &legacyWireGuard{transport: wg}
-		}
-	}
-	return rt, nil
+	return factory.NewRuntime(n)
 }

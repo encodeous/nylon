@@ -6,108 +6,203 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"slices"
+	"sync"
 	"time"
 
+	"github.com/encodeous/nylon/ipc"
 	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
-	"google.golang.org/protobuf/encoding/protojson"
 )
-
-var ErrIPCStatusHandled = errors.New("nylon IPC response handled")
-
-var pjMarshal = protojson.MarshalOptions{EmitUnpopulated: true}
-var pjUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
 
 const (
 	defaultIPCProbeTimeout = 2 * time.Second
 	maxIPCProbeTimeout     = 10 * time.Second
+	// maxIPCInFlight bounds the requests one connection can have running.
+	maxIPCInFlight = 16
 )
 
-func writeResponse(rw *bufio.ReadWriter, resp *protocol.IpcResponse) error {
-	data, err := pjMarshal.Marshal(resp)
+// ipcServer accepts connections on nylon's socket.
+type ipcServer struct {
+	listener net.Listener
+	workers  sync.WaitGroup
+}
+
+// serve accepts connections until the listener closes.
+func (s *ipcServer) serve(n *Nylon) {
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		for n.Context.Err() == nil {
+			c, err := s.listener.Accept()
+			if err != nil {
+				if n.Context.Err() != nil || errors.Is(err, net.ErrClosed) {
+					return
+				}
+				n.Log.Debug("IPC accept failed", "err", err)
+				continue
+			}
+			s.workers.Add(1)
+			go func() {
+				defer s.workers.Done()
+				if err := ServeIPC(n, c); err != nil {
+					n.Log.Debug("IPC connection ended", "err", err)
+				}
+			}()
+		}
+	}()
+}
+
+func (s *ipcServer) close() error {
+	err := s.listener.Close()
+	s.workers.Wait()
+	return err
+}
+
+// ServeIPC answers requests on conn until the client hangs up or nylon stops. It closes conn.
+func ServeIPC(n *Nylon, conn net.Conn) error {
+	defer conn.Close()
+	stop := context.AfterFunc(n.Context, func() { _ = conn.Close() })
+	defer stop()
+
+	r := bufio.NewReader(conn)
+	version, err := ipc.ReadHello(r)
 	if err != nil {
-		return fmt.Errorf("marshal response: %w", err)
+		return fmt.Errorf("read hello: %w", err)
 	}
-	_, err = rw.Write(data)
-	if err != nil {
+	// Answer either way, so a client with another version can say which.
+	if err := ipc.WriteHello(conn); err != nil {
 		return err
 	}
-	_, err = rw.WriteString("\n")
-	if err != nil {
-		return err
+	if version != ipc.Version {
+		return ipc.ErrVersion{Local: ipc.Version, Remote: version}
 	}
-	return rw.Flush()
-}
 
-func errResponse(msg string) *protocol.IpcResponse {
-	return &protocol.IpcResponse{Ok: false, Error: msg}
-}
-
-func readRequest(rw *bufio.ReadWriter) (*protocol.IpcRequest, error) {
-	line, err := rw.ReadBytes('\n')
-	if err != nil {
-		return nil, err
-	}
-	req := &protocol.IpcRequest{}
-	if err := pjUnmarshal.Unmarshal(line, req); err != nil {
-		return nil, fmt.Errorf("unmarshal request: %w", err)
-	}
-	return req, nil
-}
-
-func HandleNylonIPC(n *Nylon, rw *bufio.ReadWriter) error {
-	req, err := readRequest(rw)
-	if err != nil {
-		if err := writeResponse(rw, errResponse(err.Error())); err != nil {
+	ctx, cancel := context.WithCancel(n.Context)
+	s := &ipcSession{n: n, conn: conn, active: make(map[uint32]context.CancelFunc)}
+	defer func() {
+		cancel()
+		_ = conn.Close() // unblocks a request stuck writing to a client that stopped reading
+		s.requests.Wait()
+	}()
+	for {
+		req := &protocol.IpcRequest{}
+		if err := ipc.ReadFrame(r, req); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+			// The stream can't be trusted after a bad frame, so say why and hang up.
+			_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+			_ = s.send(&protocol.IpcResponse{Error: ipc.Errorf(protocol.IpcError_INVALID_REQUEST, "bad request: %v", err)})
 			return err
 		}
-		return ErrIPCStatusHandled
-	}
-
-	// trace is blocking, so we dont dispatch
-	if _, ok := req.Request.(*protocol.IpcRequest_Trace); ok {
-		return handleTrace(n, rw)
-	}
-	if _, ok := req.Request.(*protocol.IpcRequest_Probe); ok {
-		resp := handleIPCProbe(n, req.GetProbe())
-		if err := writeResponse(rw, resp); err != nil {
-			return err
+		if c := req.GetCancel(); c != nil {
+			s.cancel(c.Id)
+			continue
 		}
-		return ErrIPCStatusHandled
+		s.start(ctx, req)
 	}
+}
 
+// ipcSession is one client connection. Its requests run concurrently.
+type ipcSession struct {
+	n        *Nylon
+	conn     net.Conn
+	writeMu  sync.Mutex
+	mu       sync.Mutex
+	active   map[uint32]context.CancelFunc
+	requests sync.WaitGroup
+}
+
+func (s *ipcSession) send(resp *protocol.IpcResponse) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return ipc.WriteFrame(s.conn, resp)
+}
+
+func (s *ipcSession) start(ctx context.Context, req *protocol.IpcRequest) {
+	id := req.Id
+	s.mu.Lock()
+	_, dup := s.active[id]
+	busy := len(s.active) >= maxIPCInFlight
+	var cancel context.CancelFunc
+	if !dup && !busy {
+		ctx, cancel = context.WithCancel(ctx)
+		s.active[id] = cancel
+	}
+	s.mu.Unlock()
+	switch {
+	case dup:
+		_ = s.send(&protocol.IpcResponse{Id: id, Error: ipc.Errorf(protocol.IpcError_INVALID_REQUEST, "request %d is already running", id)})
+		return
+	case busy:
+		_ = s.send(&protocol.IpcResponse{Id: id, Error: ipc.Errorf(protocol.IpcError_UNAVAILABLE, "too many requests in flight")})
+		return
+	}
+	s.requests.Add(1)
+	go func() {
+		defer s.requests.Done()
+		defer s.cancel(id)
+		handleIPCRequest(ctx, s.n, req, func(resp *protocol.IpcResponse) error {
+			resp.Id = id
+			return s.send(resp)
+		})
+	}()
+}
+
+func (s *ipcSession) cancel(id uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cancel, ok := s.active[id]; ok {
+		cancel()
+		delete(s.active, id)
+	}
+}
+
+func errResponse(code protocol.IpcError_Code, format string, args ...any) *protocol.IpcResponse {
+	return &protocol.IpcResponse{Error: ipc.Errorf(code, format, args...)}
+}
+
+// handleIPCRequest answers req through send, which a trace calls once per event.
+func handleIPCRequest(ctx context.Context, n *Nylon, req *protocol.IpcRequest, send func(*protocol.IpcResponse) error) {
+	var resp *protocol.IpcResponse
+	switch req.Request.(type) {
+	case *protocol.IpcRequest_Status:
+		resp = dispatchIPC(ctx, n, func() *protocol.IpcResponse { return handleStatus(n, req.GetStatus()) })
+	case *protocol.IpcRequest_Reload:
+		resp = dispatchIPC(ctx, n, func() *protocol.IpcResponse { return handleIPCReload(n, req.GetReload()) })
+	case *protocol.IpcRequest_Probe:
+		resp = handleIPCProbe(ctx, n, req.GetProbe())
+	case *protocol.IpcRequest_Trace:
+		handleTrace(ctx, n, send)
+		return
+	default:
+		resp = errResponse(protocol.IpcError_INVALID_REQUEST, "unknown request")
+	}
+	_ = send(resp)
+}
+
+// dispatchIPC runs fn on the dispatcher, which owns nylon's state.
+func dispatchIPC(ctx context.Context, n *Nylon, fn func() *protocol.IpcResponse) *protocol.IpcResponse {
 	done := make(chan *protocol.IpcResponse, 1)
 	n.Dispatch(func() error {
-		var resp *protocol.IpcResponse
-		switch req.Request.(type) {
-		case *protocol.IpcRequest_Status:
-			resp = handleStatus(n, req.GetStatus())
-		case *protocol.IpcRequest_Reload:
-			resp = handleIPCReload(n, req.GetReload())
-		default:
-			resp = errResponse("unknown method")
-		}
-		done <- resp
+		done <- fn()
 		return nil
 	})
-
-	var resp *protocol.IpcResponse
 	select {
-	case resp = <-done:
-	case <-n.Context.Done():
-		resp = errResponse("nylon shutting down")
+	case resp := <-done:
+		return resp
+	case <-ctx.Done():
+		return errResponse(protocol.IpcError_UNAVAILABLE, "nylon shutting down")
 	case <-time.After(n.IPCDispatchTimeout):
 		// nylon is too busy to handle IPC requests
-		resp = errResponse("timed out waiting for dispatch")
+		return errResponse(protocol.IpcError_UNAVAILABLE, "timed out waiting for dispatch")
 	}
-	if err := writeResponse(rw, resp); err != nil {
-		return err
-	}
-	return ErrIPCStatusHandled
 }
 
 func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
@@ -122,22 +217,21 @@ func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
 
 	txBytes := uint64(0)
 	rxBytes := uint64(0)
-	wgStats := wireGuardPeerStats(n)
-	for _, stat := range wgStats {
+	peerStats := transportPeerStats(n)
+	for _, stat := range peerStats {
 		txBytes += stat.TxBytes
 		rxBytes += stat.RxBytes
 	}
 
 	listenPort := uint32(n.LocalCfg.Port)
-	// The WireGuard transport knows its bound port once it starts.
-	if n.wireGuard != nil {
-		if port := n.wireGuard.transport.ListenPort(); port != 0 {
+	// A transport that binds a port knows which once it starts.
+	if t, ok := n.defaultTransport().(interface{ ListenPort() uint16 }); ok {
+		if port := t.ListenPort(); port != 0 {
 			listenPort = uint32(port)
 		}
 	}
 
 	return &protocol.IpcResponse{
-		Ok: true,
 		Response: &protocol.IpcResponse_Status{Status: &protocol.StatusResponse{
 			Node: &protocol.NodeStatus{
 				NodeId:          string(n.LocalCfg.Id),
@@ -157,7 +251,7 @@ func handleStatus(n *Nylon, req *protocol.StatusRequest) *protocol.IpcResponse {
 					RxBytes:               rxBytes,
 				},
 			},
-			Neighbours:           buildNeighbours(n, wgStats),
+			Neighbours:           buildNeighbours(n, peerStats),
 			Routes:               buildRouteTables(n),
 			FeasibilityDistances: buildFeasibilityDistances(n),
 		}},
@@ -193,7 +287,7 @@ func buildSeqnos(n *Nylon) []*protocol.SeqnoEntry {
 	return entries
 }
 
-func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]polyamide.PeerStats) []*protocol.NeighbourInfo {
+func buildNeighbours(n *Nylon, peerStats map[state.NyPublicKey]polyamide.PeerStats) []*protocol.NeighbourInfo {
 	ids := slices.Clone(n.GetPeers(n.LocalCfg.Id))
 	slices.Sort(ids)
 	neighbours := make([]*protocol.NeighbourInfo, 0, len(ids))
@@ -206,7 +300,7 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]polyamide.PeerStats
 			eps = n.buildEndpoints(neigh)
 			routes = buildNeighRoutes(neigh)
 		}
-		stat := wgStats[cfg.PubKey]
+		stat := peerStats[cfg.PubKey]
 		neighbours = append(neighbours, &protocol.NeighbourInfo{
 			PeerId:        string(id),
 			PublicKey:     keyString(cfg.PubKey),
@@ -214,7 +308,7 @@ func buildNeighbours(n *Nylon, wgStats map[state.NyPublicKey]polyamide.PeerStats
 			Endpoints:     eps,
 			Routes:        routes,
 			Advertised:    advertisementsForNode(n, id),
-			Wireguard:     wireGuardPeerStatsProto(stat),
+			Transport:     transportPeerStatsProto(stat),
 		})
 	}
 	return neighbours
@@ -321,7 +415,7 @@ func advertisementsForNode(n *Nylon, id state.NodeId) []*protocol.Advertisement 
 	return ads
 }
 
-func wireGuardPeerStats(n *Nylon) map[state.NyPublicKey]polyamide.PeerStats {
+func transportPeerStats(n *Nylon) map[state.NyPublicKey]polyamide.PeerStats {
 	stats := make(map[state.NyPublicKey]polyamide.PeerStats)
 	if len(n.Transports) == 0 {
 		return stats
@@ -333,7 +427,7 @@ func wireGuardPeerStats(n *Nylon) map[state.NyPublicKey]polyamide.PeerStats {
 	}
 	return stats
 }
-func wireGuardPeerStatsProto(stat polyamide.PeerStats) *protocol.WireGuardPeerStats {
+func transportPeerStatsProto(stat polyamide.PeerStats) *protocol.TransportPeerStats {
 	var handshake int64
 	if !stat.LastHandshake.IsZero() {
 		handshake = stat.LastHandshake.UnixNano()
@@ -342,7 +436,7 @@ func wireGuardPeerStatsProto(stat polyamide.PeerStats) *protocol.WireGuardPeerSt
 	if stat.PreferredEndpoint != nil {
 		endpoint = stat.PreferredEndpoint.Address()
 	}
-	return &protocol.WireGuardPeerStats{LatestHandshakeUnix: handshake, TxBytes: stat.TxBytes, RxBytes: stat.RxBytes, PersistentKeepaliveInterval: uint32(stat.Keepalive / time.Second), Endpoint: &endpoint}
+	return &protocol.TransportPeerStats{LatestHandshakeUnix: handshake, TxBytes: stat.TxBytes, RxBytes: stat.RxBytes, PersistentKeepaliveInterval: uint32(stat.Keepalive / time.Second), Endpoint: &endpoint}
 }
 
 func sourceProto(source state.Source) *protocol.Source {
@@ -426,31 +520,31 @@ func sortRouteTableEntries(entries []*protocol.RouteTableEntry) {
 	})
 }
 
-func handleIPCProbe(n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse {
+func handleIPCProbe(ctx context.Context, n *Nylon, req *protocol.ProbeRequest) *protocol.IpcResponse {
 	probeTimeout := ipcProbeTimeout(req)
 
-	dispatchCtx, dispatchCancel := context.WithTimeout(n.Context, n.IPCDispatchTimeout)
+	dispatchCtx, dispatchCancel := context.WithTimeout(ctx, n.IPCDispatchTimeout)
 	defer dispatchCancel()
 	probes, err := NewDispatchFuture(n, func() ([]Future[*protocol.EndpointProbeResult], error) {
 		return n.sendEndpointProbes(state.NodeId(req.PeerId), probeTimeout)
 	}).Await(dispatchCtx)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return errResponse("timed out waiting for dispatch")
+		if ctxErr := dispatchCtx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return errResponse(protocol.IpcError_UNAVAILABLE, "timed out waiting for dispatch")
 		}
-		return errResponse(err.Error())
+		// the only other failure: the peer isn't a neighbour
+		return errResponse(protocol.IpcError_NOT_FOUND, "%v", err)
 	}
 
-	probeCtx, probeCancel := context.WithTimeout(n.Context, probeTimeout+n.IPCDispatchTimeout)
+	probeCtx, probeCancel := context.WithTimeout(ctx, probeTimeout+n.IPCDispatchTimeout)
 	defer probeCancel()
 	results, err := AwaitAll(probeCtx, probes)
 	if err != nil {
 		if ctxErr := probeCtx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
-			return errResponse(err.Error())
+			return errResponse(protocol.IpcError_UNAVAILABLE, "%v", err)
 		}
 	}
 	return &protocol.IpcResponse{
-		Ok:       true,
 		Response: &protocol.IpcResponse_Probe{Probe: &protocol.ProbeResponse{Results: results}},
 	}
 }
@@ -465,11 +559,11 @@ func ipcProbeTimeout(req *protocol.ProbeRequest) time.Duration {
 func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcResponse {
 	data, err := os.ReadFile(n.ConfigPath)
 	if err != nil {
-		return errResponse(fmt.Sprintf("read file: %v", err))
+		return errResponse(protocol.IpcError_INTERNAL, "read file: %v", err)
 	}
 	var cfg state.CentralCfg
 	if err = yaml.Unmarshal(data, &cfg); err != nil {
-		return errResponse(fmt.Sprintf("parse config: %v", err))
+		return errResponse(protocol.IpcError_INVALID_REQUEST, "parse config: %v", err)
 	}
 	// We're running on the dispatch goroutine, so call ApplyCentralConfig
 	// directly rather than re-dispatching (which would deadlock).
@@ -489,46 +583,35 @@ func handleIPCReload(n *Nylon, req *protocol.ReloadRequest) *protocol.IpcRespons
 	case ApplyRestartRequired:
 		protoResult = protocol.ReloadResult_RESTART_REQUIRED
 	}
-	return &protocol.IpcResponse{
-		Ok: result != ApplyRejected,
+	resp := &protocol.IpcResponse{
 		Response: &protocol.IpcResponse_Reload{Reload: &protocol.ReloadResponse{
 			Result:  protoResult,
 			Message: msg,
 		}},
 	}
+	if result == ApplyRejected {
+		resp.Error = ipc.Errorf(protocol.IpcError_INVALID_REQUEST, "config rejected: %s", msg)
+	}
+	return resp
 }
 
-func handleTrace(n *Nylon, rw *bufio.ReadWriter) error {
+// handleTrace sends each trace line until ctx ends: the client cancels, hangs up, or nylon stops.
+func handleTrace(ctx context.Context, n *Nylon, send func(*protocol.IpcResponse) error) {
 	if !n.DBG_trace_tc {
-		if err := writeResponse(rw, errResponse("tracing not enabled; restart with --dbg-trace-tc")); err != nil {
-			return err
-		}
-		return ErrIPCStatusHandled
+		_ = send(errResponse(protocol.IpcError_FAILED_PRECONDITION, "tracing not enabled; restart with --dbg-trace-tc"))
+		return
 	}
-	// Send initial OK
-	if err := writeResponse(rw, &protocol.IpcResponse{Ok: true}); err != nil {
-		return err
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_, _ = rw.ReadByte() // wait for EOF / disconnect
-		cancel()
-	}()
 	ch := make(chan interface{})
 	n.Trace.Register(ch)
 	defer n.Trace.Unregister(ch)
 	for {
 		select {
 		case <-ctx.Done():
-			return ErrIPCStatusHandled
+			return
 		case msg := <-ch:
 			if str, ok := msg.(string); ok {
-				resp := &protocol.IpcResponse{
-					Ok:       true,
-					Response: &protocol.IpcResponse_Trace{Trace: &protocol.TraceEvent{Line: str}},
-				}
-				if err := writeResponse(rw, resp); err != nil {
-					return ErrIPCStatusHandled
+				if err := send(&protocol.IpcResponse{Response: &protocol.IpcResponse_Trace{Trace: &protocol.TraceEvent{Line: str}}}); err != nil {
+					return
 				}
 			}
 		}

@@ -38,8 +38,8 @@ func (n *Nylon) initTransport() error {
 			return err
 		}
 	}
-	if n.wireGuard != nil {
-		n.wireGuard.serve(n.Context, n.Log)
+	if n.ipc != nil {
+		n.ipc.serve(n)
 	}
 	n.startTUNReader()
 	n.watchTUNEvents()
@@ -108,8 +108,8 @@ func (n *Nylon) cleanupTransport() error {
 		}
 	}
 	var err error
-	if n.wireGuard != nil {
-		err = errors.Join(err, n.wireGuard.close())
+	if n.ipc != nil {
+		err = errors.Join(err, n.ipc.close())
 	}
 	if n.Tun != nil {
 		err = errors.Join(err, n.Tun.Close())

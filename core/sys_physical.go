@@ -7,6 +7,7 @@ import (
 	"net"
 	"runtime"
 
+	"github.com/encodeous/nylon/ipc"
 	"github.com/encodeous/nylon/polyamide"
 	"github.com/encodeous/polyamide-wireguard-go/device"
 	"github.com/encodeous/polyamide-wireguard-go/tun"
@@ -35,14 +36,15 @@ func newDefaultRuntime(n *Nylon) (Runtime, error) {
 	actual, err := host.Name()
 	var listener net.Listener
 	if err == nil {
-		listener, err = InitUAPI(n.Log, actual)
+		// named after nylon's interface, not the OS's (utunN on macOS), so `nylon -i <name>` finds it
+		listener, err = ipc.Listen(n.InterfaceName)
 	}
 	if err != nil {
 		host.Close()
 		transport.Close()
 		return Runtime{}, err
 	}
-	n.wireGuard = &legacyWireGuard{transport: transport, listener: listener}
+	n.ipc = &ipcServer{listener: listener}
 	if n.NoTun {
 		n.Log.Info("Created userspace-only WireGuard device", "name", actual)
 	} else {
