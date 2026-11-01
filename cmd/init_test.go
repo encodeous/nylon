@@ -80,13 +80,31 @@ func freePort(t *testing.T) int {
 	return port
 }
 
+// creates an existing single node network for --serve to enrol into
+func setupHub(t *testing.T, dir string, port int) []byte {
+	cmd := newInitCmd()
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"--id", "hub", "--port", strconv.Itoa(port), "-o", filepath.Join(dir, "node.yaml")})
+	require.NoError(t, cmd.Execute())
+	data, err := os.ReadFile(filepath.Join(dir, "node.yaml"))
+	require.NoError(t, err)
+	node, err := state.ParseLocalConfig(data)
+	require.NoError(t, err)
+	central, err := yaml.Marshal(state.CentralCfg{Routers: []state.RouterCfg{{
+		NodeCfg:   state.NodeCfg{Id: "hub", PubKey: node.Key.Pubkey(), Addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1")}},
+		Endpoints: []string{"127.0.0.1:" + strconv.Itoa(port)},
+	}}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "central.yaml"), central, 0o600))
+	return central
+}
+
 // starts --serve and returns its token and a channel with its result
-func startServe(t *testing.T, dir string, port int, args ...string) (string, chan error) {
+func startServe(t *testing.T, dir string) (string, chan error) {
 	pr, pw := io.Pipe()
 	serve := newInitCmd()
 	serve.SetOut(pw)
-	serve.SetArgs(append([]string{"--serve", "--id", "hub", "--port", strconv.Itoa(port),
-		"-o", filepath.Join(dir, "node.yaml"), "-c", filepath.Join(dir, "central.yaml")}, args...))
+	serve.SetArgs([]string{"--serve", "-o", filepath.Join(dir, "node.yaml"), "-c", filepath.Join(dir, "central.yaml")})
 	done := make(chan error, 1)
 	go func() {
 		err := serve.Execute()
@@ -128,8 +146,13 @@ func TestInitServeConnect(t *testing.T) {
 	serverCentral := filepath.Join(serverDir, "central.yaml")
 	joinCentral := filepath.Join(serverDir, "central.join.yaml")
 
-	// new network writes central.yaml directly
-	token, done := startServe(t, serverDir, port, "--address", "10.0.0.1")
+	// serving needs an existing network
+	serve := newInitCmd()
+	serve.SetArgs([]string{"--serve", "-o", filepath.Join(serverDir, "node.yaml"), "-c", serverCentral})
+	require.ErrorContains(t, serve.Execute(), "node.yaml")
+	serverData := setupHub(t, serverDir, port)
+
+	token, done := startServe(t, serverDir)
 	require.NotEmpty(t, token)
 	// rejected joins must not consume the token
 	require.ErrorContains(t, connect(t.TempDir(), port, "nope", "evil"), "invalid setup token")
@@ -137,47 +160,44 @@ func TestInitServeConnect(t *testing.T) {
 	require.NoError(t, connect(leafDir, port, token, "leaf", "--address", "10.0.0.2", "--prefix", "192.168.5.0/24"))
 	require.NoError(t, <-done)
 
-	central, serverData := readCentral(t, serverCentral)
+	// central.yaml is untouched and the join is written beside it
+	_, after := readCentral(t, serverCentral)
+	assert.Equal(t, serverData, after)
+	joined, joinData := readCentral(t, joinCentral)
 	_, leafData := readCentral(t, filepath.Join(leafDir, "central.yaml"))
-	assert.Equal(t, serverData, leafData)
-	assert.NoFileExists(t, joinCentral)
-	assert.Equal(t, []string{"127.0.0.1:" + strconv.Itoa(port)}, central.GetRouter("hub").Endpoints)
-	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.1")}, central.GetRouter("hub").Addresses)
-	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.2")}, central.GetRouter("leaf").Addresses)
-	require.Len(t, central.GetRouter("leaf").Prefixes, 1)
-	assert.Equal(t, netip.MustParsePrefix("192.168.5.0/24"), central.GetRouter("leaf").Prefixes[0].GetPrefix())
-	assert.Empty(t, central.Graph)
+	assert.Equal(t, joinData, leafData)
+	assert.Equal(t, []string{"127.0.0.1:" + strconv.Itoa(port)}, joined.GetRouter("hub").Endpoints)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.2")}, joined.GetRouter("leaf").Addresses)
+	require.Len(t, joined.GetRouter("leaf").Prefixes, 1)
+	assert.Equal(t, netip.MustParsePrefix("192.168.5.0/24"), joined.GetRouter("leaf").Prefixes[0].GetPrefix())
+	assert.Empty(t, joined.Graph)
 	for _, dir := range []string{serverDir, leafDir} {
 		data, err := os.ReadFile(filepath.Join(dir, "node.yaml"))
 		require.NoError(t, err)
 		node, err := state.ParseLocalConfig(data)
 		require.NoError(t, err)
-		require.NoError(t, state.NodeConfigValidator(&central, node))
-		assert.Equal(t, central.GetNode(node.Id).PubKey, node.Key.Pubkey())
+		require.NoError(t, state.NodeConfigValidator(&joined, node))
+		assert.Equal(t, joined.GetNode(node.Id).PubKey, node.Key.Pubkey())
 	}
 
-	// existing network keeps central.yaml and writes the join beside it
-	token, done = startServe(t, serverDir, port)
-	require.NoError(t, connect(leaf2Dir, port, token, "leaf2", "--address", "10.0.0.3"))
-	require.NoError(t, <-done)
-
-	_, after := readCentral(t, serverCentral)
-	assert.Equal(t, serverData, after)
-	joined, joinData := readCentral(t, joinCentral)
-	_, leaf2Data := readCentral(t, filepath.Join(leaf2Dir, "central.yaml"))
-	assert.Equal(t, joinData, leaf2Data)
-	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.3")}, joined.GetRouter("leaf2").Addresses)
-	assert.Empty(t, joined.Graph)
-
 	// an undistributed join must not be overwritten
-	serve := newInitCmd()
-	serve.SetArgs([]string{"--serve", "--port", strconv.Itoa(freePort(t)),
-		"-o", filepath.Join(serverDir, "node.yaml"), "-c", serverCentral})
-	require.ErrorContains(t, serve.Execute(), "undistributed join for leaf2")
+	serve = newInitCmd()
+	serve.SetArgs([]string{"--serve", "-o", filepath.Join(serverDir, "node.yaml"), "-c", serverCentral})
+	require.ErrorContains(t, serve.Execute(), "undistributed join for leaf")
 
 	// once distributed a new join is allowed again
 	require.NoError(t, os.WriteFile(serverCentral, joinData, 0o600))
-	token, done = startServe(t, serverDir, port)
-	require.NoError(t, connect(t.TempDir(), port, token, "leaf3"))
+	token, done = startServe(t, serverDir)
+	require.NoError(t, connect(leaf2Dir, port, token, "leaf2", "--address", "10.0.0.3"))
 	require.NoError(t, <-done)
+	joined, _ = readCentral(t, joinCentral)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("10.0.0.3")}, joined.GetRouter("leaf2").Addresses)
+}
+
+func TestInitAddressRequiresConnect(t *testing.T) {
+	for _, args := range [][]string{{"--serve"}, {"--id", "x"}} {
+		cmd := newInitCmd()
+		cmd.SetArgs(append(args, "--address", "10.0.0.1", "-o", filepath.Join(t.TempDir(), "node.yaml")))
+		require.ErrorContains(t, cmd.Execute(), "only used with --connect")
+	}
 }

@@ -117,16 +117,16 @@ The Linux and macOS versions are well tested, but the Windows TUN interface has 
 
 ## Quick Setup with a Setup Token
 
-Instead of writing `central.yaml` by hand, you can enrol nodes with a one-time setup token. On an existing node (or the first node of a new network), run:
+Once your network is running, you can enrol more nodes with a one-time setup token instead of editing `central.yaml` by hand. On a node that is already part of the network, run:
 
 ```bash
-nylon init --serve --address 10.0.0.1
+nylon init --serve
 ```
 
-This creates `node.yaml` and `central.yaml` if they are missing, prints a setup token, and waits on TCP port `57175` for one node to join. On the new node, run:
+This reads its existing `node.yaml` and `central.yaml`, prints a setup token, and waits on TCP port `57175` for one node to join. On the new node, run:
 
 ```bash
-nylon init --connect <first-node-ip> --token <setup-token> --address 10.0.0.2
+nylon init --connect <serving-node-ip> --token <setup-token> --address 10.0.0.2
 ```
 
 The new node generates its key, is added to the central configuration with the addresses given by `--address` and any prefixes given by `--prefix` (both repeatable), and receives a copy of the updated configuration. The new node has no connections yet: add it to `graph` before distributing the configuration. The node ID defaults to the hostname; pass `--id` to choose another. The exchange is encrypted with the token, and the token can only be used once.
