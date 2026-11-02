@@ -30,7 +30,8 @@ func SeqnoGe(a, b uint16) bool {
 }
 
 
-func abs(a int) int {
+// int64 so uint32 metrics dont wrap on 32-bit builds
+func abs(a int64) int64 {
 	if a < 0 {
 		return -a
 	}

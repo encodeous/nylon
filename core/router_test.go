@@ -1524,3 +1524,42 @@ func TestRouterNet6A_ConvergeOptimal(t *testing.T) {
 10.0.0.3/32 via (nh: C, router: C, prefix: 10.0.0.3/32, seqno: 0, metric: 10000000)
 10.0.0.4/32 via (nh: C, router: D, prefix: 10.0.0.4/32, seqno: 0, metric: 10000001)`, rs.StringRoutes())
 }
+
+func TestRouter_HeldRouteRecoveryBroadcastsUpdate(t *testing.T) {
+	tunables := ConfigureConstants()
+	// the A-B link flaps so A retracts S and then the same route comes back with the
+	// same seqno so A must advertise the recovered route to undo its retraction
+	// on 32-bit builds int(INF) used to wrap and hide the change
+	//
+	//   S --(1000)-- B --(1000)-- A --(1000)-- D
+
+	h := &RouterHarness{}
+	sPrefix := nodeToPrefix("S")
+	rs := &state.RouterState{
+		RouterTunables: tunables,
+		Id:             "A",
+		SelfSeqno:      make(map[netip.Prefix]uint16),
+		Routes:         make(map[netip.Prefix]state.SelRoute),
+		Sources:        make(map[state.Source]state.FD),
+		Neighbours:     MakeNeighbours("B", "D"),
+		Advertised:     map[netip.Prefix]state.Advertisement{nodeToPrefix("A"): {NodeId: state.NodeId("A"), Expiry: maxTime}},
+	}
+
+	AB := AddLink(rs, NewMockEndpoint("B", 1000))
+	_ = AddLink(rs, NewMockEndpoint("D", 1000))
+
+	h.NeighUpdate(rs, "B", "S", sPrefix, 0, 1000)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, uint32(2000), rs.Routes[sPrefix].Metric)
+	h.GetActions()
+
+	RemoveLink(rs, AB)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, state.INF, rs.Routes[sPrefix].Metric)
+	h.GetActions().AssertContains(t, BroadcastUpdateRoute(MakePubRoute("S", sPrefix, 0, state.INF)))
+
+	_ = AddLink(rs, AB)
+	ComputeRoutes(rs, h)
+	assert.Equal(t, uint32(2000), rs.Routes[sPrefix].Metric)
+	h.GetActions().AssertContains(t, BroadcastUpdateRoute(MakePubRoute("S", sPrefix, 0, 2000)))
+}

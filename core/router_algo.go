@@ -584,7 +584,7 @@ func ComputeRoutes(s *state.RouterState, r Router) {
 		if !exists ||
 			oldRoute.Source.NodeId != newRoute.Source.NodeId ||
 			oldRoute.FD.Seqno != newRoute.FD.Seqno ||
-			abs(int(newRoute.Metric)-int(oldRoute.Metric)) > int(s.LargeChangeThreshold) && newRoute.Metric != state.INF {
+			abs(int64(newRoute.Metric)-int64(oldRoute.Metric)) > int64(s.LargeChangeThreshold) && newRoute.Metric != state.INF {
 			// criteria met, send update
 			updateFeasibility(s, newRoute.PubRoute)
 			r.RouterEvent(log.EventMajorRouteChange, "major change", "prefix", prefix, "old", oldRoute, "new", newRoute)
