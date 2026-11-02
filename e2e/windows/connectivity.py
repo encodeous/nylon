@@ -94,6 +94,10 @@ class WindowsConnectivity(unittest.TestCase):
             if process.poll() is not None:
                 self.fail(f"{name} QEMU exited; see {directory / 'qemu.log'}")
             return powershell(port, f"""
+# WinRM shells share profile handles; don't unload the hive while another still uses it.
+$policy = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System'
+New-Item -Path $policy -Force | Out-Null
+New-ItemProperty -Path $policy -Name DisableForceUnload -PropertyType DWord -Value 1 -Force | Out-Null
 $adapter = Get-NetAdapter | Where-Object {{ $_.MacAddress -eq '52-54-00-00-00-0{index}' }}
 Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -Dhcp Disabled
 Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false

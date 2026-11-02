@@ -95,9 +95,9 @@ jobs:
         run: |
           revision=$(git ls-remote https://github.com/starcatmeow/nylon-ci-windows-image.git refs/heads/main | cut -f1)
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
-      - name: Cache Windows image
+      - name: Restore Windows image
         id: windows_image_cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/windows.qcow2.zst
           key: windows-image-zstd-${{ runner.os }}-${{ runner.arch }}-${{ steps.windows_image_revision.outputs.revision }}
@@ -117,6 +117,12 @@ jobs:
           nix build github:starcatmeow/nylon-ci-windows-image/${{ steps.windows_image_revision.outputs.revision }}#nylon-ci-win2025 \
             --out-link "$RUNNER_TEMP/windows-image" --fallback
           cp "$RUNNER_TEMP/windows-image/nylon-ci-win2025.qcow2.zst" "$RUNNER_TEMP/windows.qcow2.zst"
+      - name: Save Windows image
+        if: steps.windows_image_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/windows.qcow2.zst
+          key: ${{ steps.windows_image_cache.outputs.cache-primary-key }}
       - name: Decompress Windows image
         run: zstd -d "$RUNNER_TEMP/windows.qcow2.zst" -o "$RUNNER_TEMP/windows.qcow2"
       - name: Run Windows e2e
