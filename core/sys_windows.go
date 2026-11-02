@@ -19,7 +19,7 @@ func ConfigureAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {
 	if addr.Is6() {
 		return Exec(logger, "netsh", "interface", "ipv6", "add", "address", ifName, addr.String())
 	}
-	return Exec(logger, "netsh", "interface", "ip", "add", "address", ifName, addr.String())
+	return Exec(logger, "netsh", "interface", "ip", "add", "address", ifName, addr.String(), "255.255.255.255")
 }
 
 func RemoveAlias(logger *slog.Logger, ifName string, addr netip.Addr) error {

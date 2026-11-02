@@ -2,6 +2,8 @@ package core
 
 import (
 	"net/netip"
+	"runtime"
+	"slices"
 	"time"
 
 	"github.com/gaissmai/bart"
@@ -226,13 +228,32 @@ func (n *Nylon) ComputeSysRouteTable() []netip.Prefix {
 	excludes.RemoveSet(state.MakeSet(n.LocalCfg.UnexcludeIPs))
 	excludes.AddSet(state.MakeSet(n.LocalCfg.ExcludeIPs))
 
-	final := netipx.IPSetBuilder{}
-	final.AddSet(state.MakeSet(prefixes))
 	res, _ := excludes.IPSet()
-	final.RemoveSet(res)
+	return systemRoutePrefixes(prefixes, res, runtime.GOOS)
+}
 
-	res, _ = final.IPSet()
-	return res.Prefixes()
+// systemRoutePrefixes subtracts exclusions before routes are reconciled.
+// Windows keeps each selected prefix separate: merging adjacent host routes
+// creates on-link subnets whose upper address Windows treats as broadcast.
+func systemRoutePrefixes(prefixes []netip.Prefix, excluded *netipx.IPSet, goos string) []netip.Prefix {
+	if goos != "windows" {
+		included := netipx.IPSetBuilder{}
+		included.AddSet(state.MakeSet(prefixes))
+		included.RemoveSet(excluded)
+		set, _ := included.IPSet()
+		return set.Prefixes()
+	}
+
+	result := make([]netip.Prefix, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		included := netipx.IPSetBuilder{}
+		included.AddPrefix(prefix)
+		included.RemoveSet(excluded)
+		set, _ := included.IPSet()
+		result = append(result, set.Prefixes()...)
+	}
+	slices.SortFunc(result, func(a, b netip.Prefix) int { return a.Compare(b) })
+	return slices.Compact(result)
 }
 
 func (n *Nylon) updatePassiveClient(prefix state.PrefixHealthWrapper, node state.NodeId, passiveHold bool) {

@@ -75,3 +75,41 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: go run gotest.tools/gotestsum@latest -- -count=1 -tags=e2e ./e2e/... -run '^TestConnectivity$'
+  e2e_windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install Windows e2e dependencies
+        run: |
+          # Leave room for the installation ISOs, qcow2 and compressed Nix output.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf python3-venv unzip zstd
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://pub-b7e688bb852e422d84f49c2dce8e3461.r2.dev
+            extra-trusted-public-keys = nylon-cache-1:B87/nHkgelYp2qg2AsYQ+Hmsg99ErIbbvkFCfS7u2WI=
+            fallback = true
+            connect-timeout = 5
+            download-attempts = 1
+            extra-system-features = kvm
+      - name: Build Windows image
+        id: windows_image
+        run: |
+          nix build github:starcatmeow/nylon-ci-windows-image/main#nylon-ci-win2025 \
+            --out-link "$RUNNER_TEMP/windows-image" --fallback
+          zstd -d "$RUNNER_TEMP/windows-image/nylon-ci-win2025.qcow2.zst" -o "$RUNNER_TEMP/windows.qcow2"
+          echo "qcow2=$RUNNER_TEMP/windows.qcow2" >> "$GITHUB_OUTPUT"
+      - name: Run Windows e2e
+        run: e2e/windows/run.sh '${{ steps.windows_image.outputs.qcow2 }}'
+      - name: Upload Windows e2e logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-e2e-logs
+          path: workdir/e2e/windows/**/*.log

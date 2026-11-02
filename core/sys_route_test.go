@@ -2,6 +2,7 @@ package core
 
 import (
 	"net/netip"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -87,7 +88,22 @@ func TestComputeSysRouteTableCoalescesAdjacentResults(t *testing.T) {
 		},
 	)
 
-	assert.Equal(t, []netip.Prefix{pfx("10.0.0.0/24")}, sortedPrefixes(n.ComputeSysRouteTable()))
+	want := []netip.Prefix{pfx("10.0.0.0/24")}
+	if runtime.GOOS == "windows" {
+		want = []netip.Prefix{pfx("10.0.0.0/25"), pfx("10.0.0.128/25")}
+	}
+	assert.Equal(t, want, sortedPrefixes(n.ComputeSysRouteTable()))
+}
+
+func TestSystemRoutePrefixesWindowsKeepsAdvertisedPrefixes(t *testing.T) {
+	hosts := []netip.Prefix{pfx("10.0.0.2/32"), pfx("10.0.0.3/32")}
+	empty := state.MakeSet(nil)
+	assert.Equal(t, hosts, systemRoutePrefixes(hosts, empty, "windows"))
+	assert.Equal(t, []netip.Prefix{pfx("10.0.0.2/31")}, systemRoutePrefixes(hosts, empty, "linux"))
+
+	subnets := []netip.Prefix{pfx("10.0.0.0/25"), pfx("10.0.0.128/25")}
+	assert.Equal(t, subnets, systemRoutePrefixes(subnets, empty, "windows"))
+	assert.Equal(t, []netip.Prefix{pfx("10.0.0.0/24")}, systemRoutePrefixes(subnets, empty, "linux"))
 }
 
 func sysRouteTestNylon(local state.NodeId, centralExcludes, localUnexcludes, localExcludes []netip.Prefix, routes map[netip.Prefix]state.SelRoute) *Nylon {
