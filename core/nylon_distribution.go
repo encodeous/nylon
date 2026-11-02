@@ -8,10 +8,13 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
 )
+
+var fetchConfigTimeout = 30 * time.Second
 
 // fetches and unbundles central config from url
 func FetchConfig(repoStr string, key state.NyPublicKey, maxSize int64) (*state.CentralCfg, error) {
@@ -32,9 +35,12 @@ func fetchConfig(repoStr string, key state.NyPublicKey, maxSize int64, resolver 
 		}
 		cfgBody = file
 	} else if repo.Scheme == "http" || repo.Scheme == "https" {
+		// fresh transport per fetch so dont keep connections alive
 		client := &http.Client{
+			Timeout: fetchConfigTimeout,
 			Transport: &http.Transport{
-				DialContext: resolver.DialContext,
+				DialContext:       resolver.DialContext,
+				DisableKeepAlives: true,
 			},
 		}
 		res, err := client.Get(repo.String())
