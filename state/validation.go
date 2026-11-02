@@ -120,7 +120,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 		routerPrefixes := make(map[netip.Prefix]struct{})
 		for _, p := range router.Prefixes {
 			if _, ok := routerPrefixes[p.GetPrefix()]; ok {
-				return fmt.Errorf("router %s has duplicate prefix %s", router.Id, p)
+				return fmt.Errorf("router %s has duplicate prefix %s", router.Id, p.GetPrefix())
 			}
 			routerPrefixes[p.GetPrefix()] = struct{}{}
 		}
@@ -129,7 +129,7 @@ func CentralConfigValidator(cfg *CentralCfg) error {
 				client := cfg.GetClient(peer)
 				for _, cp := range client.Prefixes {
 					if _, ok := routerPrefixes[cp.GetPrefix()]; ok {
-						return fmt.Errorf("router %s has duplicate prefix %s (provided by client %s)", router.Id, cp, client.Id)
+						return fmt.Errorf("router %s has duplicate prefix %s (provided by client %s)", router.Id, cp.GetPrefix(), client.Id)
 					}
 					routerPrefixes[cp.GetPrefix()] = struct{}{}
 				}

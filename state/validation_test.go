@@ -244,3 +244,21 @@ func TestCentralConfigValidator_AnycastPrefix(t *testing.T) {
 	}
 	assert.NoError(t, CentralConfigValidator(cfg))
 }
+
+func TestCentralConfigValidator_DuplicatePrefixMessage(t *testing.T) {
+	prefix := PrefixHealthWrapper{&StaticPrefixHealth{Prefix: netip.MustParsePrefix("10.5.0.0/24")}}
+	cfg := CentralCfg{Routers: []RouterCfg{{NodeCfg: NodeCfg{Id: "r1", Prefixes: []PrefixHealthWrapper{prefix, prefix}}}}}
+	assert.EqualError(t, CentralConfigValidator(&cfg), "router r1 has duplicate prefix 10.5.0.0/24")
+
+	addr := []netip.Addr{netip.MustParseAddr("10.0.0.5")}
+	cfg = CentralCfg{
+		Routers: []RouterCfg{{NodeCfg: NodeCfg{Id: "r1"}}},
+		Clients: []ClientCfg{
+			{NodeCfg: NodeCfg{Id: "phone", Addresses: addr}},
+			{NodeCfg: NodeCfg{Id: "laptop", Addresses: addr}},
+		},
+		Graph: []string{"r1, phone, laptop"},
+	}
+	ExpandCentralConfig(&cfg)
+	assert.ErrorContains(t, CentralConfigValidator(&cfg), "router r1 has duplicate prefix 10.0.0.5/32 (provided by client")
+}
