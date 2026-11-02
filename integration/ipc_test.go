@@ -279,3 +279,23 @@ func TestIPCConcurrentRequestsAndCancel(t *testing.T) {
 		require.Less(t, time.Since(start), 4*time.Second, "the cancelled probe should end before its timeout")
 	})
 }
+
+// A node stopped by a fatal error must report it so nylon run exits non-zero.
+func TestStartReturnsFatalDispatchError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHarness(t)
+		errs := make(chan error, 2)
+		h.OnStartError = func(_ state.NodeId, err error) { errs <- err }
+		a1, b1 := "192.168.54.1:1234", "192.168.54.2:1234"
+		h.AddNode("a", "10.0.0.1/32", a1)
+		h.AddNode("b", "10.0.0.2/32", b1)
+		h.Central.Graph = []string{"a, b"}
+		h.Connect(a1, b1)
+		h.Start()
+		time.Sleep(time.Second) // let both nodes start
+
+		h.Nylon("a").Dispatch(func() error { return errors.New("fatal") })
+		err := await(h, errs, 5*time.Second, "a's Start to return")
+		require.ErrorContains(t, err, "fatal")
+	})
+}

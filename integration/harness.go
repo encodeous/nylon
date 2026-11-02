@@ -75,6 +75,9 @@ type Harness struct {
 	// UntrackedRouting turns off UseSystemRouting on every node, so packets
 	// for peers stay inside polyamide instead of coming out of the TUN.
 	UntrackedRouting bool
+	// OnStartError, if set, receives errors returned by a node's Start
+	// instead of failing the test.
+	OnStartError func(id state.NodeId, err error)
 
 	ctx    context.Context
 	cancel context.CancelCauseFunc
@@ -238,7 +241,11 @@ func (h *Harness) launch(nd *node, n *core.Nylon, delay time.Duration) {
 		}
 		pprof.Do(context.Background(), pprof.Labels("nylon node", string(n.LocalCfg.Id)), func(context.Context) {
 			if err := n.Start(); err != nil {
-				h.fail("node %s: %v", n.LocalCfg.Id, err)
+				if h.OnStartError != nil {
+					h.OnStartError(n.LocalCfg.Id, err)
+				} else {
+					h.fail("node %s: %v", n.LocalCfg.Id, err)
+				}
 			}
 		})
 	}()

@@ -329,6 +329,8 @@ func (n *Nylon) Init() error {
 	return nil
 }
 
+var errShutdownSignal = errors.New("received shutdown signal")
+
 func (n *Nylon) Start() error {
 	n.Log.Info("init modules complete")
 
@@ -343,7 +345,7 @@ func (n *Nylon) Start() error {
 	go func() {
 		select {
 		case _ = <-c:
-			n.Cancel(errors.New("received shutdown signal"))
+			n.Cancel(errShutdownSignal)
 		case <-n.Context.Done():
 			return
 		}
@@ -402,7 +404,12 @@ endLoop:
 		n.Log.Error("error occurred during Stop: ", "error", err)
 	}
 	n.Log.Info("stopped")
-	return nil
+	// report fatal errors so the process exits non-zero
+	cause := context.Cause(n.Context)
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, errShutdownSignal) {
+		return nil
+	}
+	return cause
 }
 
 func (n *Nylon) Cleanup() error {
