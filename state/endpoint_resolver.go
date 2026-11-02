@@ -45,8 +45,19 @@ func newEndpointResolver(dns dnsLookup) *EndpointResolver {
 	}
 }
 
-func (r *EndpointResolver) Resolve(endpoint string, expiry time.Duration) (netip.AddrPort, error) {
+// literalEndpoint parses ip:port or a bare ip on the default port
+func literalEndpoint(endpoint string) (netip.AddrPort, bool) {
 	if addr, err := netip.ParseAddrPort(endpoint); err == nil {
+		return addr, true
+	}
+	if addr, err := netip.ParseAddr(endpoint); err == nil {
+		return netip.AddrPortFrom(addr, uint16(DefaultPort)), true
+	}
+	return netip.AddrPort{}, false
+}
+
+func (r *EndpointResolver) Resolve(endpoint string, expiry time.Duration) (netip.AddrPort, error) {
+	if addr, ok := literalEndpoint(endpoint); ok {
 		return addr, nil
 	}
 
@@ -106,7 +117,7 @@ func (r *EndpointResolver) Resolve(endpoint string, expiry time.Duration) (netip
 }
 
 func (r *EndpointResolver) Get(endpoint string) (netip.AddrPort, error) {
-	if addr, err := netip.ParseAddrPort(endpoint); err == nil {
+	if addr, ok := literalEndpoint(endpoint); ok {
 		return addr, nil
 	}
 
