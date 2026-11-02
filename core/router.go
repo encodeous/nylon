@@ -68,14 +68,11 @@ func (n *Nylon) BroadcastSendRouteUpdate(advRoute state.PubRoute) {
 func (n *Nylon) RequestSeqno(neigh state.NodeId, src state.Source, seqno uint16, hopCnt uint8) {
 	nio := n.GetNeighIO(neigh)
 	old := nio.SeqnoDedup.Get(src)
-	maxSeq := seqno
-	if old != nil {
-		maxSeq = max(seqno, old.Value())
-		if SeqnoGe(old.Value(), seqno) {
-			return // we have already sent such a request before
-		}
+	if old != nil && SeqnoGe(old.Value(), seqno) {
+		return // we have already sent such a request before
 	}
-	nio.SeqnoDedup.Set(src, maxSeq, ttlcache.DefaultTTL)
+	// seqno is newer modulo 2^16 than anything requested so far
+	nio.SeqnoDedup.Set(src, seqno, ttlcache.DefaultTTL)
 	req, ok := nio.SeqnoReq[src]
 	if !ok || seqno < req.V1 {
 		req = state.Pair[uint16, uint8]{V1: seqno, V2: hopCnt}
