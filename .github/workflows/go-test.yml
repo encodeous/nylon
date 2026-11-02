@@ -92,38 +92,17 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
+            extra-substituters = https://pub-b7e688bb852e422d84f49c2dce8e3461.r2.dev
+            extra-trusted-public-keys = nylon-cache-1:B87/nHkgelYp2qg2AsYQ+Hmsg99ErIbbvkFCfS7u2WI=
             fallback = true
             connect-timeout = 5
             download-attempts = 1
             extra-system-features = kvm
       - name: Build Windows image
         id: windows_image
-        env:
-          AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          PUBLISH_CACHE: ${{ github.event_name == 'push' }}
         run: |
-          cache_args=()
-          if [[ -n "$AWS_ACCESS_KEY_ID" ]]; then
-            # Both the Nix daemon (reads) and nix copy (writes) need credentials.
-            mkdir -p "$HOME/.aws"
-            printf '[default]\naws_access_key_id=%s\naws_secret_access_key=%s\n' \
-              "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > "$HOME/.aws/credentials"
-            chmod 600 "$HOME/.aws/credentials"
-            sudo mkdir -p /root/.aws
-            sudo install -m 600 "$HOME/.aws/credentials" /root/.aws/credentials
-            # This private, authenticated bucket is trusted directly.
-            cache="s3://nylon-ci-windows-image?endpoint=${AWS_ENDPOINT_URL_S3#https://}&region=auto&trusted=true"
-            cache_args=(--option extra-substituters "$cache")
-          fi
           nix build github:starcatmeow/nylon-ci-windows-image/main#nylon-ci-win2025 \
-            --out-link "$RUNNER_TEMP/windows-image" --fallback "${cache_args[@]}"
-          if [[ -n "$AWS_ACCESS_KEY_ID" && "$PUBLISH_CACHE" == true ]]; then
-            # The output contains an already compressed qcow2; don't recompress it.
-            nix copy --no-recursive --to "$cache&compression=none&multipart-upload=true" "$RUNNER_TEMP/windows-image" \
-              || echo '::warning::Could not upload Windows image to the Nix cache'
-          fi
+            --out-link "$RUNNER_TEMP/windows-image" --fallback
           zstd -d "$RUNNER_TEMP/windows-image/nylon-ci-win2025.qcow2.zst" -o "$RUNNER_TEMP/windows.qcow2"
           echo "qcow2=$RUNNER_TEMP/windows.qcow2" >> "$GITHUB_OUTPUT"
       - name: Run Windows e2e

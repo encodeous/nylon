@@ -23,9 +23,8 @@ Logs stay in `workdir/e2e/windows`; VMs, overlays, TAPs and containers are remov
 
 CI builds `github:starcatmeow/nylon-ci-windows-image/main#nylon-ci-win2025`,
 decompresses its output, and passes the qcow2 path to the same script.
-The private S3 Nix cache uses the existing `nylon-ci-windows-image` R2 bucket and
-`AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` secrets.
-Without credentials it builds without this cache. Cache download failures fall
-back to local builds; uploads on pushes to main are best effort and include only
-the final image output. The authenticated bucket is trusted directly, so no Nix
-signing key is needed. Vault credential provisioning can replace these secrets later.
+CI reads the public Nix cache at
+`https://pub-b7e688bb852e422d84f49c2dce8e3461.r2.dev`, trusting the
+`nylon-cache-1` public key configured in the workflow. Cache misses or download
+failures fall back to local builds. No cache credentials or uploads are needed;
+publish the signed final image output to the cache separately.
