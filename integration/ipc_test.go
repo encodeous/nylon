@@ -5,6 +5,7 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"net"
 	"os"
@@ -287,5 +288,21 @@ func TestIPCSocketResponseHasNoUAPIErrnoTrailer(t *testing.T) {
 	case err := <-errs:
 		t.Fatal(err)
 	default:
+	}
+}
+
+// a node stopped by a fatal error must report it so nylon run exits non-zero
+func TestStartReturnsFatalDispatchError(t *testing.T) {
+	vh, errs := setupTwoNodeHarness(t)
+	defer vh.Stop()
+
+	a := vh.Nylons[vh.IndexOf("a")].Load()
+	a.Dispatch(func() error { return errors.New("fatal") })
+
+	select {
+	case err := <-errs:
+		require.ErrorContains(t, err, "fatal")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Start returned no error after the node stopped with: %v", context.Cause(a.Context))
 	}
 }
