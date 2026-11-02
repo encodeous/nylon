@@ -94,6 +94,10 @@ class WindowsConnectivity(unittest.TestCase):
             if process.poll() is not None:
                 self.fail(f"{name} QEMU exited; see {directory / 'qemu.log'}")
             return powershell(port, f"""
+# WinRM shells share profile handles; don't unload the hive while another still uses it.
+$policy = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System'
+New-Item -Path $policy -Force | Out-Null
+New-ItemProperty -Path $policy -Name DisableForceUnload -PropertyType DWord -Value 1 -Force | Out-Null
 $adapter = Get-NetAdapter | Where-Object {{ $_.MacAddress -eq '52-54-00-00-00-0{index}' }}
 Set-NetIPInterface -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -Dhcp Disabled
 Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false
@@ -146,12 +150,15 @@ foreach ($file in @('nylon.exe', 'wintun.dll', 'central.json', '{name}.json')) {
 # SYSTEM provides UAPI privileges and the scheduled task survives closing WinRM.
 $action = New-ScheduledTaskAction -Execute 'C:\\nylon-e2e\\nylon.exe' -WorkingDirectory 'C:\\nylon-e2e' -Argument 'run -v -w --config central.json --node {name}.json'
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-Register-ScheduledTask -TaskName 'nylon-e2e' -Action $action -Principal $principal | Out-Null
+# Task Scheduler defaults to background priority; Nylon must keep up with probes.
+$settings = New-ScheduledTaskSettingsSet -Priority 4
+Register-ScheduledTask -TaskName 'nylon-e2e' -Action $action -Principal $principal -Settings $settings | Out-Null
 Start-ScheduledTask -TaskName 'nylon-e2e'
 """)
 
         def collect_logs():
-            (WORK / "linux.log").write_text(run("docker", "logs", LINUX))
+            logs = subprocess.run(["docker", "logs", LINUX], check=True, capture_output=True, text=True)
+            (WORK / "linux.log").write_text(logs.stdout + logs.stderr)
             for name, port in ports.items():
                 try:
                     (WORK / name / "nylon.log").write_text(powershell(port,
