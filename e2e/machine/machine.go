@@ -28,7 +28,6 @@ type Info struct {
 type Command struct {
 	Path string
 	Args []string
-	Dir  string
 }
 
 type Result struct {

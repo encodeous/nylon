@@ -430,15 +430,15 @@ func (h *Harness) Cleanup() {
 	h.logWG.Wait()
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 	if len(h.processes) != 0 {
 		dir := filepath.Join(h.RootDir, "workdir", "e2e", "logs", h.t.Name())
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			h.t.Logf("create machine log directory: %v", err)
 		} else {
 			for name, p := range h.processes {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				r, _, err := p.Poll(cleanupCtx)
-				cancel()
 				if err != nil {
 					h.t.Logf("save machine logs for %s: %v", name, err)
 					continue
@@ -452,17 +452,13 @@ func (h *Harness) Cleanup() {
 		}
 	}
 	for name, m := range h.Machines {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		err := m.Close(cleanupCtx)
-		cancel()
 		if err != nil {
 			h.t.Logf("failed to close machine %s: %v", name, err)
 		}
 	}
 	for name, c := range h.Nodes {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		err := c.Terminate(cleanupCtx)
-		cancel()
 		if err != nil {
 			h.t.Logf("failed to terminate container %s: %v", name, err)
 		}
@@ -477,9 +473,6 @@ func (h *Harness) Exec(nodeName string, cmd []string) (string, string, error) {
 	container, ok := h.Nodes[nodeName]
 	h.mu.Unlock()
 	if m != nil {
-		if len(cmd) == 0 {
-			return "", "", fmt.Errorf("empty command")
-		}
 		path := cmd[0]
 		if path == "nylon" && m.Info().OS == machine.Windows {
 			path = m.Info().WorkDir + `\nylon.exe`

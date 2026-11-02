@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && linux
 
 package e2e
 
@@ -86,7 +86,7 @@ func TestConnectivity(t *testing.T) {
 	// Wait for the data plane before asserting consecutive successful replies.
 	deadline := time.Now().Add(WaitTimeout)
 	for {
-		result, err := h.Ping("node3", netip.MustParseAddr(node1NylonIP), machine.PingOptions{Count: 1})
+		result, err := h.Ping("node3", netip.MustParseAddr(node1NylonIP), 1)
 		if err == nil {
 			break
 		}
@@ -101,7 +101,7 @@ func TestConnectivity(t *testing.T) {
 		{"node3", node1NylonIP}, {"node2", node1NylonIP}, {"node1", node3NylonIP},
 	} {
 		t.Logf("Pinging %s from %s...", peer.to, peer.from)
-		result, err := h.Ping(peer.from, netip.MustParseAddr(peer.to), machine.PingOptions{Count: 3})
+		result, err := h.Ping(peer.from, netip.MustParseAddr(peer.to), 3)
 		if err != nil {
 			for _, node := range []string{"node1", "node2", "node3"} {
 				h.PrintLogs(node)

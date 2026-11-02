@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && linux
 
 package e2e
 
@@ -43,7 +43,7 @@ func TestMachines(t *testing.T) {
 		h.WaitForStatus(t, peer.name, func(status *protocol.StatusResponse) bool {
 			return HasSelectedRoute(status, peer.destination+"/32", peer.nextHop, peer.nextHop)
 		})
-		result, err := h.Ping(peer.name, netip.MustParseAddr(peer.destination), machine.PingOptions{Count: 3})
+		result, err := h.Ping(peer.name, netip.MustParseAddr(peer.destination), 3)
 		if err != nil {
 			h.PrintLogs(peer.name)
 			t.Fatalf("%s ping: %v\n%s\n%s", peer.name, err, result.Stdout, result.Stderr)

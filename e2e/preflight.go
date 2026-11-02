@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && linux
 
 package e2e
 
@@ -15,15 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/encodeous/nylon/e2e/machine"
-	"github.com/moby/moby/client"
-	"github.com/testcontainers/testcontainers-go"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/joho/godotenv"
+	"github.com/klauspost/compress/zstd"
 )
 
-type windowsPrerequisites struct {
-	config      machine.WindowsConfig
-	binary, dll string
-}
+type windowsPrerequisites struct{ image, binary, dll string }
 
 var windowsPreflight struct {
 	sync.Once
@@ -31,132 +29,101 @@ var windowsPreflight struct {
 	err      error
 }
 
-// preflight completes shared preparation before StartMachines launches goroutines.
-// Linux scenarios need no Windows artifacts. Explicit Windows NodeSpec overrides
-// take this path too, regardless of the default placement.
-func (h *Harness) preflight(needsWindows bool) (windowsPrerequisites, error) {
-	if !needsWindows {
-		return windowsPrerequisites{}, nil
-	}
-	windowsPreflight.Do(func() {
-		fmt.Println("Preflight: preparing Windows base image and Nylon artifacts...")
-		cfg, err := machine.WindowsConfigFromEnv(h.RootDir)
-		if err == nil {
-			cfg.BaseImage, err = machine.PrepareWindowsImage(h.ctx, cfg)
-		}
-		prepared := windowsPrerequisites{config: cfg}
-		if err == nil {
-			prepared.binary, prepared.dll, err = prepareWindowsArtifacts(h.ctx, h.RootDir)
-		}
-		windowsPreflight.prepared, windowsPreflight.err = prepared, err
-	})
-	if windowsPreflight.err != nil {
-		return windowsPrerequisites{}, windowsPreflight.err
-	}
-	provider, err := testcontainers.NewDockerProvider()
-	if err != nil {
-		return windowsPrerequisites{}, err
-	}
-	defer provider.Close()
-	inspection, err := provider.Client().NetworkInspect(h.ctx, h.Network.ID, client.NetworkInspectOptions{})
-	if err != nil {
-		return windowsPrerequisites{}, err
-	}
-	prepared := windowsPreflight.prepared
-	prepared.config.Subnet, prepared.config.HostHelperImage = h.Subnet, ImageName
-	prepared.config.Bridge = inspection.Network.Options["com.docker.network.bridge.name"]
-	if prepared.config.Bridge == "" {
-		prepared.config.Bridge = "br-" + inspection.Network.ID[:12]
-	}
-	return prepared, nil
+func preflight(ctx context.Context, root string) (windowsPrerequisites, error) {
+	windowsPreflight.Do(func() { windowsPreflight.prepared, windowsPreflight.err = prepareWindows(ctx, root) })
+	return windowsPreflight.prepared, windowsPreflight.err
 }
 
-func prepareWindowsArtifacts(ctx context.Context, root string) (string, string, error) {
-	dir := filepath.Join(root, "workdir", "e2e", "artifacts")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", "", err
+func prepareWindows(ctx context.Context, root string) (windowsPrerequisites, error) {
+	dir := filepath.Join(root, "workdir", "e2e")
+	p := windowsPrerequisites{
+		image:  filepath.Join(dir, "images", "nylon-ci-win2025.qcow2"),
+		binary: filepath.Join(dir, "nylon.exe"),
+		dll:    filepath.Join(dir, "artifacts", "wintun-0.14.1-amd64.dll"),
 	}
-	binary := os.Getenv("NYLON_E2E_WINDOWS_BINARY")
-	if binary != "" && !filepath.IsAbs(binary) {
-		binary = filepath.Join(root, binary)
+	if err := os.MkdirAll(filepath.Dir(p.image), 0755); err != nil {
+		return p, err
 	}
-	if binary == "" {
-		binary = filepath.Join(dir, "nylon.exe")
-		cmd := exec.CommandContext(ctx, "go", "build", "-o", binary, ".")
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return "", "", fmt.Errorf("build Windows Nylon: %w: %s", err, out)
+	if _, err := os.Stat(p.image); os.IsNotExist(err) {
+		_ = godotenv.Load(filepath.Join(root, ".env"))
+		if err := downloadWindowsImage(ctx, p.image); err != nil {
+			return p, err
 		}
 	}
-	if _, err := os.Stat(binary); err != nil {
-		return "", "", err
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", p.binary, ".")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return p, fmt.Errorf("build Windows Nylon: %w: %s", err, out)
 	}
-	dll := os.Getenv("NYLON_E2E_WINTUN_DLL")
-	if dll != "" {
-		if !filepath.IsAbs(dll) {
-			dll = filepath.Join(root, dll)
+	if _, err := os.Stat(p.dll); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(p.dll), 0755); err != nil {
+			return p, err
 		}
-		if _, err := os.Stat(dll); err != nil {
-			return "", "", err
+		resp, err := http.Get("https://www.wintun.net/builds/wintun-0.14.1.zip")
+		if err != nil {
+			return p, err
 		}
-		return binary, dll, nil
+		defer resp.Body.Close()
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return p, err
+		}
+		archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return p, err
+		}
+		dll, err := archive.Open("wintun/bin/amd64/wintun.dll")
+		if err != nil {
+			return p, err
+		}
+		defer dll.Close()
+		data, err = io.ReadAll(dll)
+		if err != nil {
+			return p, err
+		}
+		if err := os.WriteFile(p.dll, data, 0644); err != nil {
+			return p, err
+		}
 	}
-	// Match the version and architecture already used by the release workflow.
-	dll = filepath.Join(dir, "wintun-0.14.1-amd64.dll")
-	if _, err := os.Stat(dll); err == nil {
-		return binary, dll, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.wintun.net/builds/wintun-0.14.1.zip", nil)
+	return p, nil
+}
+
+func downloadWindowsImage(ctx context.Context, path string) error {
+	const payloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	url := os.Getenv("AWS_ENDPOINT_URL_S3") + "/nylon-ci-windows-image/nylon-ci-win2025.qcow2.zst"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	credentials := aws.Credentials{AccessKeyID: os.Getenv("AWS_ACCESS_KEY_ID"), SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY")}
+	if err := v4.NewSigner().SignHTTP(ctx, credentials, req, payloadHash, "s3", "auto", time.Now()); err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("download Wintun: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("download Windows image: HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	decoder, err := zstd.NewReader(resp.Body)
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	defer decoder.Close()
+	file, err := os.Create(path + ".partial")
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	for _, entry := range archive.File {
-		if entry.Name != "wintun/bin/amd64/wintun.dll" {
-			continue
-		}
-		reader, err := entry.Open()
-		if err != nil {
-			return "", "", err
-		}
-		defer reader.Close()
-		data, err := io.ReadAll(io.LimitReader(reader, 16<<20))
-		if err != nil {
-			return "", "", err
-		}
-		tmp, err := os.CreateTemp(dir, ".wintun-*.dll")
-		if err != nil {
-			return "", "", err
-		}
-		defer os.Remove(tmp.Name())
-		_, writeErr := tmp.Write(data)
-		closeErr := tmp.Close()
-		if writeErr != nil {
-			return "", "", writeErr
-		}
-		if closeErr != nil {
-			return "", "", closeErr
-		}
-		if err := os.Rename(tmp.Name(), dll); err != nil {
-			return "", "", err
-		}
-		return binary, dll, nil
+	defer file.Close()
+	if _, err := io.Copy(file, decoder); err != nil {
+		return err
 	}
-	return "", "", fmt.Errorf("Wintun archive has no amd64 DLL")
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }

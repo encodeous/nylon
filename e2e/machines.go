@@ -1,32 +1,24 @@
-//go:build e2e
+//go:build e2e && linux
 
 package e2e
 
 import (
-	"fmt"
+	"errors"
 	"net/netip"
 	"os"
-	"strings"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/encodeous/nylon/e2e/machine"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
-	"github.com/testcontainers/testcontainers-go"
 )
 
 // StartMachines is the portable replacement for StartNodes. Existing fixtures
 // may continue using StartNodes/Nodes until their OS-specific operations migrate.
 func (h *Harness) StartMachines(specs ...NodeSpec) {
 	h.t.Helper()
-	names := make(map[string]bool)
-	ips := make(map[string]bool)
-	h.mu.Lock()
-	for name := range h.Machines {
-		names[name] = true
-	}
-	h.mu.Unlock()
 	needsWindows := false
 	for i := range specs {
 		spec := &specs[i]
@@ -36,44 +28,26 @@ func (h *Harness) StartMachines(specs ...NodeSpec) {
 				spec.OS = machine.Linux
 			}
 		}
-		if spec.OS != machine.Linux && spec.OS != machine.Windows {
-			h.t.Fatalf("unsupported machine OS %q (use linux or windows)", spec.OS)
-		}
 		needsWindows = needsWindows || spec.OS == machine.Windows
-		if spec.Name == "" || names[spec.Name] {
-			h.t.Fatalf("empty or duplicate machine name %q", spec.Name)
-		}
-		names[spec.Name] = true
-		if spec.IP != "" {
-			if ips[spec.IP] {
-				h.t.Fatalf("duplicate machine data IP %q", spec.IP)
-			}
-			ips[spec.IP] = true
-		}
 	}
+
 	h.t.Log("Running machine preflight")
-	prepared, err := h.preflight(needsWindows)
-	if err != nil {
-		h.t.Fatalf("machine preflight: %v", err)
+	var prepared windowsPrerequisites
+	if needsWindows {
+		var err error
+		prepared, err = preflight(h.ctx, h.RootDir)
+		if err != nil {
+			h.t.Fatal(err)
+		}
 	}
-	errs := make(chan error, len(specs))
+	errs := make([]error, len(specs))
 	var wg sync.WaitGroup
-	for _, spec := range specs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := h.startMachine(spec, prepared); err != nil {
-				errs <- fmt.Errorf("machine %s: %w", spec.Name, err)
-			}
-		}()
+	for i, spec := range specs {
+		wg.Go(func() { errs[i] = h.startMachine(spec, prepared) })
 	}
 	wg.Wait()
-	close(errs)
-	for err := range errs {
-		h.t.Error(err)
-	}
-	if h.t.Failed() {
-		h.t.FailNow()
+	if err := errors.Join(errs...); err != nil {
+		h.t.Fatal(err)
 	}
 }
 
@@ -86,17 +60,13 @@ func (h *Harness) startMachine(spec NodeSpec, prepared windowsPrerequisites) err
 	h.t.Logf("Starting %s machine %s at %s", osType, spec.Name, spec.IP)
 	switch osType {
 	case machine.Linux:
-		m, err = machine.NewDocker(h.ctx, machine.DockerConfig{Name: spec.Name, Image: ImageName, Network: h.Network.Name, IP: spec.IP})
+		m, err = machine.NewDocker(h.ctx, machine.DockerConfig{Name: spec.Name, Network: h.Network.Name, IP: spec.IP})
 	case machine.Windows:
-		addr, parseErr := netip.ParseAddr(spec.IP)
-		if parseErr != nil || !addr.Is4() || addr.As4()[3] < 2 || addr.As4()[3] >= 128 {
-			return fmt.Errorf("Windows requires an explicit data IP in hosts .2 through .127")
-		}
-		cfg := prepared.config
 		opts.Binary, opts.WintunDLL = prepared.binary, prepared.dll
-		cfg.Name, cfg.IP = spec.Name, spec.IP
-		m, err = machine.NewWindows(h.ctx, cfg)
-		opts.StartupTimeout = time.Minute
+		m, err = machine.NewWindows(h.ctx, machine.WindowsConfig{
+			IP: spec.IP, Bridge: "br-" + h.Network.ID[:12], Image: prepared.image,
+			Dir: filepath.Join(h.RootDir, "workdir", "e2e", "vms", h.t.Name(), spec.Name),
+		})
 	}
 	if err != nil {
 		return err
@@ -139,32 +109,18 @@ func (h *Harness) followProcess(name string, p machine.Process) {
 	go func() {
 		defer h.logWG.Done()
 		var offsets [2]int
-		consumer := UnifiedLogConsumer{Node: name, Manager: h.LogManager}
+		writers := [2]managerWriter{}
+		for i := range writers {
+			writers[i] = managerWriter{node: name, source: SourceStdout, manager: h.LogManager}
+		}
 		for {
 			r, exited, err := p.Poll(h.ctx)
 			if err != nil {
-				if h.ctx.Err() == nil {
-					h.t.Logf("read logs for %s: %v", name, err)
-				}
 				return
 			}
 			for i, data := range []string{r.Stdout, r.Stderr} {
-				chunk := data[offsets[i]:]
-				end := strings.LastIndexByte(chunk, '\n') + 1
-				if exited {
-					end = len(chunk)
-				}
-				// Preserve per-line matching, including Windows logs on stderr.
-				for _, line := range strings.SplitAfter(chunk[:end], "\n") {
-					if line == "" {
-						continue
-					}
-					consumer.Accept(testcontainers.Log{LogType: "stdout", Content: []byte(line)})
-					if i == 1 {
-						h.LogManager.Accept(name, SourceStderr, StripAnsi(line))
-					}
-				}
-				offsets[i] += end
+				_, _ = writers[i].Write([]byte(data[offsets[i]:]))
+				offsets[i] = len(data)
 			}
 			if exited {
 				return
@@ -178,12 +134,9 @@ func (h *Harness) followProcess(name string, p machine.Process) {
 	}()
 }
 
-func (h *Harness) Ping(name string, addr netip.Addr, opts machine.PingOptions) (machine.Result, error) {
+func (h *Harness) Ping(name string, addr netip.Addr, count int) (machine.Result, error) {
 	h.mu.Lock()
 	m := h.Machines[name]
 	h.mu.Unlock()
-	if m == nil {
-		return machine.Result{}, fmt.Errorf("machine %q not found", name)
-	}
-	return machine.Ping(h.ctx, m, addr, opts)
+	return machine.Ping(h.ctx, m, addr, count)
 }
