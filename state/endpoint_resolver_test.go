@@ -166,3 +166,32 @@ func (r *blockingDNSResolver) ResolveName(context.Context, string) ([]netip.Addr
 func (*blockingDNSResolver) ResolveSRV(context.Context, string, string, string) (string, uint16, error) {
 	return "", 0, errors.New("no SRV record")
 }
+
+// a bare ip endpoint is a literal and must not wait on dns
+func TestEndpointResolverBareIPSkipsDNS(t *testing.T) {
+	resolver := newEndpointResolver(noDNSResolver{t})
+	for endpoint, want := range map[string]netip.AddrPort{
+		"192.0.2.1":      netip.MustParseAddrPort("192.0.2.1:57175"),
+		"2001:db8::1":    netip.MustParseAddrPort("[2001:db8::1]:57175"),
+		"192.0.2.1:1234": netip.MustParseAddrPort("192.0.2.1:1234"),
+	} {
+		got, err := resolver.Resolve(endpoint, time.Hour)
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+		got, err = resolver.Get(endpoint)
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	}
+}
+
+type noDNSResolver struct{ t *testing.T }
+
+func (r noDNSResolver) ResolveName(_ context.Context, host string) ([]netip.Addr, error) {
+	r.t.Errorf("unexpected name lookup for %s", host)
+	return nil, errors.New("no dns")
+}
+
+func (r noDNSResolver) ResolveSRV(_ context.Context, _, _, name string) (string, uint16, error) {
+	r.t.Errorf("unexpected SRV lookup for %s", name)
+	return "", 0, errors.New("no dns")
+}
