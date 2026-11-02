@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/encodeous/nylon/e2e/machine"
 	"github.com/encodeous/nylon/protocol"
 	"github.com/encodeous/nylon/state"
 	"github.com/goccy/go-yaml"
@@ -43,10 +42,6 @@ type Harness struct {
 	ctx        context.Context
 	Network    *testcontainers.DockerNetwork
 	Nodes      map[string]testcontainers.Container
-	Machines   map[string]machine.Machine
-	processes  map[string]machine.Process
-	logCancel  context.CancelFunc
-	logWG      sync.WaitGroup
 	LogManager *LogManager
 	ImageName  string
 	RootDir    string
@@ -82,15 +77,11 @@ func NewHarness(t *testing.T) *Harness {
 	}
 	t.Logf("Allocated subnet: %s, gateway: %s", subnet, gateway)
 
-	ctx, logCancel := context.WithCancel(ctx)
 	h := &Harness{
 		t:          t,
 		ctx:        ctx,
 		Network:    newNetwork,
 		Nodes:      make(map[string]testcontainers.Container),
-		Machines:   make(map[string]machine.Machine),
-		processes:  make(map[string]machine.Process),
-		logCancel:  logCancel,
 		LogManager: NewLogManager(),
 		RootDir:    rootDir,
 		Subnet:     subnet,
@@ -126,9 +117,7 @@ func createNetwork(ctx context.Context) (*testcontainers.DockerNetwork, string, 
 				Driver: "default",
 				Config: []network.IPAMConfig{
 					{
-						Subnet: netip.MustParsePrefix(subnet),
-						// Dynamic Docker addresses stay clear of static VM addresses.
-						IPRange: netip.PrefixFrom(netip.MustParseAddr(GetIP(subnet, 128)), 25),
+						Subnet:  netip.MustParsePrefix(subnet),
 						Gateway: netip.MustParseAddr(gateway),
 					},
 				},
@@ -150,8 +139,6 @@ type NodeSpec struct {
 	CentralConfigPath string
 	NodeConfigPath    string
 	ExtraArgs         []string
-	// OS is used by StartMachines. Empty selects NYLON_E2E_MACHINE (linux by default).
-	OS machine.OS
 }
 
 func (h *Harness) StartNodes(specs ...NodeSpec) {
@@ -426,40 +413,10 @@ func (h *Harness) StartTrace(nodeName string) {
 	}()
 }
 func (h *Harness) Cleanup() {
-	h.logCancel()
-	h.logWG.Wait()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if len(h.processes) != 0 {
-		dir := filepath.Join(h.RootDir, "workdir", "e2e", "logs", h.t.Name())
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			h.t.Logf("create machine log directory: %v", err)
-		} else {
-			for name, p := range h.processes {
-				r, _, err := p.Poll(cleanupCtx)
-				if err != nil {
-					h.t.Logf("save machine logs for %s: %v", name, err)
-					continue
-				}
-				for suffix, content := range map[string]string{"stdout": r.Stdout, "stderr": r.Stderr} {
-					if err := os.WriteFile(filepath.Join(dir, name+"."+suffix+".log"), []byte(content), 0600); err != nil {
-						h.t.Logf("save machine log: %v", err)
-					}
-				}
-			}
-		}
-	}
-	for name, m := range h.Machines {
-		err := m.Close(cleanupCtx)
-		if err != nil {
-			h.t.Logf("failed to close machine %s: %v", name, err)
-		}
-	}
 	for name, c := range h.Nodes {
-		err := c.Terminate(cleanupCtx)
-		if err != nil {
+		if err := c.Terminate(h.ctx); err != nil {
 			h.t.Logf("failed to terminate container %s: %v", name, err)
 		}
 	}
@@ -469,17 +426,8 @@ func (h *Harness) Cleanup() {
 }
 func (h *Harness) Exec(nodeName string, cmd []string) (string, string, error) {
 	h.mu.Lock()
-	m := h.Machines[nodeName]
 	container, ok := h.Nodes[nodeName]
 	h.mu.Unlock()
-	if m != nil {
-		path := cmd[0]
-		if path == "nylon" && m.Info().OS == machine.Windows {
-			path = m.Info().WorkDir + `\nylon.exe`
-		}
-		r, err := m.Run(h.ctx, machine.Command{Path: path, Args: cmd[1:]})
-		return StripAnsi(r.Stdout), StripAnsi(r.Stderr), err
-	}
 
 	if !ok {
 		return "", "", fmt.Errorf("node %s not found", nodeName)
@@ -540,12 +488,8 @@ func (h *Harness) ExecBackground(nodeName string, cmd []string) *BackgroundExec 
 // GetIP returns the IP address of the node in the test network
 func (h *Harness) GetIP(nodeName string) (string, error) {
 	h.mu.Lock()
-	m := h.Machines[nodeName]
 	container, ok := h.Nodes[nodeName]
 	h.mu.Unlock()
-	if m != nil {
-		return m.Info().IP, nil
-	}
 	if !ok {
 		return "", fmt.Errorf("node %s not found", nodeName)
 	}
@@ -553,14 +497,8 @@ func (h *Harness) GetIP(nodeName string) (string, error) {
 }
 func (h *Harness) PrintLogs(nodeName string) {
 	h.mu.Lock()
-	p := h.processes[nodeName]
 	container, ok := h.Nodes[nodeName]
 	h.mu.Unlock()
-	if p != nil {
-		r, _, err := p.Poll(h.ctx)
-		h.t.Logf("Logs for %s (error: %v):\n%s\n%s", nodeName, err, r.Stdout, r.Stderr)
-		return
-	}
 	if !ok {
 		h.t.Logf("node %s not found for logging", nodeName)
 		return
