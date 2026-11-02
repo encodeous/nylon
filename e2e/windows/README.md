@@ -21,8 +21,11 @@ replies in both directions between the Windows nodes, and between win1 and Linux
 The Docker network and WinRM ports are fixed; run only one instance per host.
 Logs stay in `workdir/e2e/windows`; VMs, overlays, TAPs and containers are removed.
 
-CI builds `github:starcatmeow/nylon-ci-windows-image/main#nylon-ci-win2025`,
-decompresses its output, and passes the qcow2 path to the same script.
+CI caches the zstd-compressed qcow2 with GitHub Actions, keyed by the image
+repository's main revision. A cache hit skips installing Nix and building the
+image. On a miss, CI builds `#nylon-ci-win2025` at that exact revision of
+`github:starcatmeow/nylon-ci-windows-image`. Both paths decompress the cached
+output and pass the qcow2 path to the same script.
 CI reads the public Nix cache at
 `https://pub-b7e688bb852e422d84f49c2dce8e3461.r2.dev`, trusting the
 `nylon-cache-1` public key configured in the workflow. Cache misses or download

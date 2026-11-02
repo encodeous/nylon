@@ -89,7 +89,20 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf python3-venv unzip zstd
+          sudo chmod a+rw /dev/kvm
+      - name: Resolve Windows image revision
+        id: windows_image_revision
+        run: |
+          revision=$(git ls-remote https://github.com/starcatmeow/nylon-ci-windows-image.git refs/heads/main | cut -f1)
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+      - name: Cache Windows image
+        id: windows_image_cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/windows.qcow2.zst
+          key: windows-image-zstd-${{ runner.os }}-${{ runner.arch }}-${{ steps.windows_image_revision.outputs.revision }}
       - uses: cachix/install-nix-action@v31
+        if: steps.windows_image_cache.outputs.cache-hit != 'true'
         with:
           extra_nix_config: |
             extra-substituters = https://pub-b7e688bb852e422d84f49c2dce8e3461.r2.dev
@@ -99,14 +112,15 @@ jobs:
             download-attempts = 1
             extra-system-features = kvm
       - name: Build Windows image
-        id: windows_image
+        if: steps.windows_image_cache.outputs.cache-hit != 'true'
         run: |
-          nix build github:starcatmeow/nylon-ci-windows-image/main#nylon-ci-win2025 \
+          nix build github:starcatmeow/nylon-ci-windows-image/${{ steps.windows_image_revision.outputs.revision }}#nylon-ci-win2025 \
             --out-link "$RUNNER_TEMP/windows-image" --fallback
-          zstd -d "$RUNNER_TEMP/windows-image/nylon-ci-win2025.qcow2.zst" -o "$RUNNER_TEMP/windows.qcow2"
-          echo "qcow2=$RUNNER_TEMP/windows.qcow2" >> "$GITHUB_OUTPUT"
+          cp "$RUNNER_TEMP/windows-image/nylon-ci-win2025.qcow2.zst" "$RUNNER_TEMP/windows.qcow2.zst"
+      - name: Decompress Windows image
+        run: zstd -d "$RUNNER_TEMP/windows.qcow2.zst" -o "$RUNNER_TEMP/windows.qcow2"
       - name: Run Windows e2e
-        run: e2e/windows/run.sh '${{ steps.windows_image.outputs.qcow2 }}'
+        run: e2e/windows/run.sh "$RUNNER_TEMP/windows.qcow2"
       - name: Upload Windows e2e logs
         if: failure()
         uses: actions/upload-artifact@v4
