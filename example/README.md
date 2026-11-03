@@ -25,7 +25,7 @@ You can modify the `sample-central.yaml` to define your network topology. Here a
 > - A router is an active nylon node that participates in routing, and can forward packets to other nodes. Routers should have at least one endpoint that is reachable by other nodes.
 > - A client is a vanilla WireGuard client that does not participate in routing, and must connect through a router. Clients should not have any endpoints.
 
-You must declare a graph, which defines your network topology. Each edge in the graph represents a bidirectional link between two nodes. You may simply connect every node to every other node, but this is always not necessary.
+You must declare a graph, which defines your network topology. Each edge in the graph represents a bidirectional link between two nodes. You may simply connect every node to every other node, but this is not always necessary.
 
 Now, on every node, copy the same `central.yaml` file.
 
@@ -35,7 +35,7 @@ Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try t
 
 ### Running the network
 
-Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further to do, simply run `nylon run` (you may need CAP_NET_ADMIN or sudo).
+Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further ado, simply run `nylon run` (you may need CAP_NET_ADMIN or sudo).
 
 After a while (5-10 seconds), you will notice that the network has converged!
 
