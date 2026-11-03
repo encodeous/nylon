@@ -33,14 +33,14 @@ Then head to the [docs](https://nylon.jq.ax) for setup instructions.
 > **[Read the full documentation at nylon.jq.ax](https://nylon.jq.ax)**
 > includes configuration reference, guides for connecting WireGuard clients, port forwarding, and comparisons with Tailscale/Nebula.
 
-Sample systemd service and launchctl plist files can be found under the `examples` directory.
+Sample systemd service and launchctl plist files can be found under the [`example`](example/) directory.
 
 > [!NOTE]
 > **Stability:** I daily-drive nylon on Linux and macOS. The routing protocol has an [extensive test suite](https://github.com/encodeous/nylon/blob/main/core/router_test.go) and integration tests with simulated network conditions. The config format may still change between releases.
 >
 > **Security:** Nylon does not modify WireGuard's cryptographic code. All nylon control traffic (route updates, probes) is sent inside the encrypted WireGuard tunnel. For security concerns, [contact me directly](https://jiaqi.ch/).
 >
-> **Windows:** The Windows client has known issues. For now, I recommend connecting Windows machines as [passive WireGuard clients](/guides/wg-clients) via a Linux/macOS gateway.
+> **Windows:** The Windows client has known issues. For now, I recommend connecting Windows machines as [passive WireGuard clients](https://nylon.jq.ax/guides/wg-clients) via a Linux/macOS gateway.
 >
 > Bugs and feature requests welcome via [GitHub issues](https://github.com/encodeous/nylon/issues).
 

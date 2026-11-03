@@ -4,12 +4,12 @@
 On every node, copy the `sample-node.yaml`, and fill in the relevant details. run `nylon key` to generate the keypair. The first key printed (stdout) is the private key, and the second key printed (stderr) is the public key. Fill the private key in the node config, and put the public key in the central config later.
 
 #### Distribution
-(Optional) To setup key distribution, you can also generate a keypair. Save the private key into `central.key` (this will be used by `nylon seal`). You can put the public key into the central config under `dist/key`.
+(Optional) To setup key distribution, you can also generate a keypair. Save the private key into `central.key` (this will be used by `nylon seal`). You can put the public key into the central config under `dist.key`.
 
 > [!IMPORTANT]
 > Do not share this **public** key with anyone outside the network, as it can be used to decrypt the central config. Leaking this public key will compromise the confidentiality of your network topology, but it will not compromise the security of the network itself.
 
-If you run `nylon seal` on the central config, it will encrypt and sign the config using this public key. You may then distribute the sealed config to any http server, S3 bucket, etc (which supports GET), and put the URL in the node config under `dist/url`. Nylon will automatically download and verify the config before starting up. The config is versioned with a timestamp.
+If you run `nylon seal` on the central config, it will encrypt and sign the config using `central.key`. You may then distribute the sealed config to any http server, S3 bucket, etc (which supports GET), and list its URL in the central config under `dist.repos`. Every node still needs a copy of `central.yaml` before its first start; Nylon then polls the repos, verifies new configs and applies them. The config is versioned with a timestamp. See the [config distribution guide](https://nylon.jq.ax/guides/config-distribution) for details.
 
 #### Central Config
 
@@ -25,7 +25,7 @@ You can modify the `sample-central.yaml` to define your network topology. Here a
 > - A router is an active nylon node that participates in routing, and can forward packets to other nodes. Routers should have at least one endpoint that is reachable by other nodes.
 > - A client is a vanilla WireGuard client that does not participate in routing, and must connect through a router. Clients should not have any endpoints.
 
-You must declare a graph, which defines your network topology. Each edge in the graph represents a bidirectional link between two nodes. You may simply connect every node to every other node, but this is always not necessary.
+You must declare a graph, which defines your network topology. Each edge in the graph represents a bidirectional link between two nodes. You may simply connect every node to every other node, but this is not always necessary.
 
 Now, on every node, copy the same `central.yaml` file.
 
@@ -35,9 +35,9 @@ Notice nodes can have 0 or more accessible endpoints. Nylon will regularly try t
 
 ### Running the network
 
-Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further to do, simply run `nylon run` (you may need CAP_NET_ADMIN or sudo).
+Before running Nylon, make sure to open UDP port `57175` (or whatever port you configured) so that Nylon can communicate. Without further ado, simply run `nylon run` (you may need CAP_NET_ADMIN or sudo).
 
 After a while (5-10 seconds), you will notice that the network has converged!
 
 > [!TIP]
-> You can check the status of the node by running `nylon i <interface_name>`. This will show you the current routing table, peers, and other useful information.
+> You can check the status of the node by running `nylon status -i <interface_name>` (the interface defaults to `nylon`). This will show you the current peers, advertised prefixes, and other useful information. Add `--routes` to also show the forward and exit tables and neighbour route advertisements, or `--full` for full routing internals.

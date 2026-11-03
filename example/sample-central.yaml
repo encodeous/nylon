@@ -20,9 +20,9 @@ routers:
         max_failures: 3
         bind_if: en10 # optional bind, if empty, we bind to all interfaces
         # metric: 0 # optional metric, if set, this will be used instead of RTT
-      - type: http # similar to the http prefix, but uses an HTTP GET request to determine prefix health. the duration of the GET request is used as the metric.
+      - type: http # similar to the ping prefix, but uses an HTTP GET request to determine prefix health. the duration of the GET request is used as the metric.
         prefix: 10.2.0.0/24
-        url: http://example.com/healthz # will expect a success response
+        url: http://example.com/healthz # will expect an HTTP 200 response. unlike ping, there is no max_failures: any failed request stops advertising the prefix until the next successful one
         delay: 15s
         metric: 5 # optional static metric, overrides the GET duration
   - id: bob
