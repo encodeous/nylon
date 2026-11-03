@@ -40,7 +40,7 @@ func init() {
 	runCmd.Flags().BoolVarP(&opts.DBG_debug, "dbg-perf", "", false, "Enables performance debugging server on port 6060")
 	runCmd.Flags().BoolVarP(&opts.DBG_trace, "dbg-trace", "", false, "Enables trace to trace.out")
 	runCmd.Flags().BoolVarP(&opts.DBG_trace_tc, "dbg-trace-tc", "", false, "Enables logging of packet routing")
-	runCmd.Flags().BoolVarP(&opts.DBG_log_json, "json", "j", false, "Enables structured JSON logging")
+	runCmd.Flags().BoolVarP(&opts.DBG_log_json, "json", "j", false, "Enables structured JSON logging to stderr")
 	runCmd.Flags().StringP("config", "c", DefaultConfigPath, "Path to the config file")
 	runCmd.Flags().StringP("node", "n", DefaultNodeConfigPath, "Path to the node config file")
 	runCmd.Flags().StringP("log", "l", "", "Path to the log file (overrides config)")
